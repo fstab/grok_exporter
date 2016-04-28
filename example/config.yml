@@ -1,0 +1,18 @@
+input:
+    type: file
+    path: ./example/exim-rejected-RCPT-examples.log
+    readall: true # Read from the beginning of the file? False means we start at the end of the file and read only new lines.
+grok:
+    patterns_dir: ./logstash-patterns-core/patterns
+    patterns:
+    - 'EXIM_MESSAGE [a-zA-Z ]*'
+metrics:
+    - type: ConterVec
+      name: exim_rejected_rcpt_total
+      help: Total number of rejected recipients, partitioned by error message.
+      match: '%{EXIM_DATE} %{EXIM_REMOTE_HOST} F=<%{EMAILADDRESS}> rejected RCPT <%{EMAILADDRESS}>: %{EXIM_MESSAGE:message}'
+      labels:
+          - grok_field_name: message
+            prometheus_label: error_message
+server:
+    port: 8443
