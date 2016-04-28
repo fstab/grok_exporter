@@ -2,7 +2,7 @@ package metrics
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/fstab/grok_prometheus_exporter/config"
+	"github.com/fstab/grok_exporter/config"
 	"github.com/moovweb/rubex"
 	"fmt"
 )

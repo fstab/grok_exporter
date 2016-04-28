@@ -8,7 +8,7 @@ import (
 
 func loadPatterns(t *testing.T) *Patterns {
 	patterns := InitPatterns()
-	err := patterns.AddDir(fmt.Sprintf("%v/src/github.com/fstab/grok_prometheus_exporter/logstash-patterns-core/patterns", os.Getenv("GOPATH")))
+	err := patterns.AddDir(fmt.Sprintf("%v/src/github.com/fstab/grok_exporter/logstash-patterns-core/patterns", os.Getenv("GOPATH")))
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err.Error())
 	}
