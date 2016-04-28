@@ -1,16 +1,16 @@
 package metrics
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
+	"fmt"
 	"github.com/fstab/grok_exporter/config"
 	"github.com/moovweb/rubex"
-	"fmt"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type genericCounterVecMetric struct {
-	name string
-	labels []config.Label
-	regex *rubex.Regexp
+	name    string
+	labels  []config.Label
+	regex   *rubex.Regexp
 	counter *prometheus.CounterVec
 }
 
@@ -20,9 +20,9 @@ func CreateGenericCounterVecMetric(cfg *config.MetricConfig, regex *rubex.Regexp
 		prometheusLabels = append(prometheusLabels, label.PrometheusLabel)
 	}
 	return &genericCounterVecMetric{
-		name: cfg.Name,
+		name:   cfg.Name,
 		labels: cfg.Labels,
-		regex: regex,
+		regex:  regex,
 		counter: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: cfg.Name,
 			Help: cfg.Help,
