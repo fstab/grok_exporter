@@ -23,7 +23,7 @@ Status
 How to run the example
 ----------------------
 
-An example log file and configuration can be found in the `examples` directory. The file `exim-rejected-RCPT-examples.log` contains sample log messages from the [Exim] mail server.
+An example log file and configuration can be found in the `example` directory. The file `exim-rejected-RCPT-examples.log` contains sample log messages from the [Exim] mail server.
 The configuration and a `config.yml` extracts the total number of rejected recipients, partitioned by error message.
 
 There is no binary release yet. In order to compile `grok_exporter` from source, you need [Go] installed and `$GOPATH` set, and you need the [Oniguruma] library:
@@ -37,7 +37,7 @@ brew install oniguruma
 On Ubuntu Linux:
 
 ```bash
-sudo apt-get install libonig2
+sudo apt-get install libonig2 libonig-dev
 ```
 
 Then, download, compile, and run the example as follows:
@@ -45,7 +45,7 @@ Then, download, compile, and run the example as follows:
 ```bash
 go get github.com/fstab/grok_exporter
 cd $GOPATH/src/github.com/fstab/grok_exporter
-$GOPATH/bin/grok_exporter -config ./examples/config.yml
+$GOPATH/bin/grok_exporter -config ./example/config.yml
 ```
 
 The exporter provides the metrics on [https://localhost:8443/metrics]:
