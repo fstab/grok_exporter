@@ -77,6 +77,7 @@ As Grok is originally written in Ruby, and Ruby uses Oniguruma as its regular ex
 [Exim]: http://www.exim.org/
 [Oniguruma]: https://github.com/kkos/oniguruma
 [screenshot.png]: screenshot.png
+[https://localhost:8443/metrics]: https://localhost:8443/metrics
 [regexp]: https://golang.org/pkg/regexp
 [RE2]: https://github.com/google/re2/wiki/Syntax
 [regexp2]: https://github.com/dlclark/regexp2
