@@ -24,7 +24,7 @@ How to run the example
 ----------------------
 
 An example log file and configuration can be found in the `example` directory. The file `exim-rejected-RCPT-examples.log` contains sample log messages from the [Exim] mail server.
-The configuration and a `config.yml` extracts the total number of rejected recipients, partitioned by error message.
+The configuration in `config.yml` extracts the total number of rejected recipients, partitioned by error message.
 
 There is no binary release yet. In order to compile `grok_exporter` from source, you need [Go] installed and `$GOPATH` set, and you need the [Oniguruma] library:
 
