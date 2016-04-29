@@ -75,6 +75,7 @@ As Grok is originally written in Ruby, and Ruby uses Oniguruma as its regular ex
 [ElasticSearch]: https://www.elastic.co/
 [ELK stack]: https://www.elastic.co/webinars/introduction-elk-stack
 [Exim]: http://www.exim.org/
+[Go]: https://golang.org/
 [Oniguruma]: https://github.com/kkos/oniguruma
 [screenshot.png]: screenshot.png
 [https://localhost:8443/metrics]: https://localhost:8443/metrics
