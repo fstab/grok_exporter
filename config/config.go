@@ -156,8 +156,8 @@ func (c *MetricsConfig) validate() error {
 
 func (c *MetricConfig) validate() error {
 	switch {
-	case c.Type != "ConterVec":
-		return fmt.Errorf("Invalid 'metrics.type': '%v'. We currently only support CounterVec.", c.Type)
+	case c.Type != "Counter":
+		return fmt.Errorf("Invalid 'metrics.type': '%v'. We currently only support Counter.", c.Type)
 	case c.Name == "":
 		return fmt.Errorf("'metrics.name' must not be empty.")
 	case c.Help == "":

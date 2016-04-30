@@ -78,7 +78,7 @@ func createMetrics(cfg *config.Config, patterns *Patterns) ([]metrics.Metric, er
 			return nil, err
 		}
 		switch {
-		case m.Type == "ConterVec":
+		case m.Type == "Counter":
 			result = append(result, metrics.CreateGenericCounterVecMetric(m, regex))
 		default:
 			return nil, fmt.Errorf("Failed to initialize metrics: Metric type %v is not supported.\n", m.Type)
