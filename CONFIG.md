@@ -88,7 +88,7 @@ There is a lot of documentation available on Grok patterns: The [logstash-patter
 the [Grok documentation] shows how patterns are defined, and there are online pattern builders available
 here: [http://grokdebug.herokuapp.com] and here: [http://grokconstructor.appspot.com].
 
-In most cases, we will have a directory with all our pattern definitions.
+In most cases, we will have a directory containing all our pattern files.
 This directory can be configured with `patterns_dir`. All files in this directory must be valid pattern definition files.
 Examples of these files can be found in Grok's [pre-defined patterns].
 
