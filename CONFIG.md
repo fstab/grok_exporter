@@ -104,7 +104,7 @@ Metrics Section
 ---------------
 
 The metrics section contains a list of metrics.
-These metrics define how to map Grok fields to Prometheus metrics:
+These metrics define how Grok fields are mapped to Prometheus metrics:
 
 ```yaml
 metrics:
