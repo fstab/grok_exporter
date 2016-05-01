@@ -37,7 +37,7 @@ brew install oniguruma
 On Ubuntu Linux:
 
 ```bash
-sudo apt-get install libonig2 libonig-dev
+sudo apt-get install libonig-dev
 ```
 
 Then, download, compile, and run the example as follows:
@@ -70,7 +70,7 @@ Grok uses these features a lot, so implementing Grok on top of Go's default [reg
 
 * [regexp2] is a port of dotNET's regular expression engine. It is written in pure Go.
 * [pcre] is a Go wrapper around the Perl Compatible Regular Expression (PCRE) library (libpcre) (needs `brew install pcre` or `sudo apt-get install libpcre++-dev`)
-* [rubex] is a Go wrapper around the [Oniguruma] regular expression library (needs `brew install oniguruma` or `sudo apt-get install libonig2`).
+* [rubex] is a Go wrapper around the [Oniguruma] regular expression library (needs `brew install oniguruma` or `sudo apt-get install libonig-dev`).
 
 As Grok is originally written in Ruby, and Ruby uses Oniguruma as its regular expression library, we decided to use rubex for best compatibility.
 
