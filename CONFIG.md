@@ -58,10 +58,11 @@ input:
     type: stdin
 ```
 
-This is useful if you want to pipe log data to the `grok_exporter` command, like this:
+This is useful if you want to pipe log data to the `grok_exporter` command,
+for example if you want to monitor the output of `journalctl`:
 
 ```bash
-tail -f sample.log | grok_exporter -config config.yml
+journalctl -f | grok_exporter -config config.yml
 ```
 
 Note that `grok_exporter` terminates as soon as it finishes reading from `stdin`.
