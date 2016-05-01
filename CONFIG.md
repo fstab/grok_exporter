@@ -47,7 +47,7 @@ The `readall` flag defines if `grok_exporter` starts reading from the beginning 
 True means we read the whole file, false means we start at the end of the file and read only new lines.
 True is good for debugging, because we process all available log lines.
 False is good for production, because we avoid to process lines multiple times when `grok_exporter` is restarted.
-Default value for `readall` is `false`.
+The default value for `readall` is `false`.
 
 ### Stdin Input Type
 
@@ -84,21 +84,21 @@ grok:
 ```
 
 Grok patterns are key/value pairs: The key is the pattern name, and the value is a Grok macro defining a regular expression.
-There are a lot of resources available: The [logstash-patterns-core repository] contains a lot of [pre-defined patterns],
+There are a lot of resources available: The [logstash-patterns-core repository] contains [pre-defined patterns],
 the [Grok documentation] shows how patterns are defined, and there are online pattern builders available
-here [http://grokdebug.herokuapp.com] and here [http://grokconstructor.appspot.com].
+here: [http://grokdebug.herokuapp.com] and here: [http://grokconstructor.appspot.com].
 
 In most cases, we will have a directory with all our pattern definitions.
 This directory can be configured with `patterns_dir`. All files in this directory must be valid pattern definition files.
-Example of these files can be found in the [pre-defined patterns].
+Examples of these files can be found in Grok's [pre-defined patterns].
 
 The `patterns` configuration defines a list of additional Grok patterns.
 This is convenient to quickly add some patterns without the need to create new files in `patterns_dir`.
-The lines defined in `pattern` have the same format as the lines in the pattern files.
+The lines defined in the `patterns` list have the same format as the lines in the files in `patterns_dir`.
 
 `patterns_dir` and `patterns` are both optional:
-If `patterns_dir` is missing all patterns must be defined directly in the `patterns` config,
-and if `patterns` is missing all patterns must be defined in the `patterns_dir`.
+If `patterns_dir` is missing all patterns must be defined directly in the `patterns` config.
+If `patterns` is missing all patterns must be defined in the `patterns_dir`.
 
 Metrics Section
 ---------------
@@ -123,20 +123,24 @@ We describe the general metric configuration here, and provide additional info o
 
 * `type` corresponds to the [Prometheus metric type]. As of now, we only support `counter`.
 * `name` is the name of the metric. Metric names are described in the [Prometheus data model documentation].
-* `help` will be included as a comment when the metric is queried via HTTP(S).
-* `match` the Grok expression. See the [Grok documentation] for more info.
-* `labels` how to map Grok labels from the `match` line to Prometheus labels.
+* `help` will be included as a comment when the metric is exposed via HTTP(S).
+* `match` is the Grok expression. See the [Grok documentation] for more info.
+* `labels` define how to map Grok fields to Prometheus labels.
   The `labels` config contains a list of `grok_field_name`/`prometheus_label` pairs.
   The `grok_field_name` must be a field name that is used in the `match`.
-  For example, if `match` is `%{NUMBER:duration} %{IP:client}`, the Grok field names `duration` and `client` may be referenced as Grok field names.
+  For example, if `match` is `%{NUMBER:duration} %{IP:client}`, the names `duration` and `client` may be referenced as Grok field names.
   The `prometheus_label` defines how the Prometheus label will be called.
   It is common to use different names for the Grok field and the Prometheus label,
   because Prometheus has other naming conventions than Grok.
   The [Prometheus data model documentation] has more info on Prometheus label names.
 
-#### Counter Metric Type
+### Counter Metric Type
 
 The counter metric is incremented whenever a log line matches. There are no additional configuration parameters for counter metrics.
+
+### Gauge Metric Type
+
+_Not implemented yet._
 
 Server Section
 --------------
@@ -151,10 +155,10 @@ server:
     key: /path/to/key
 ```
 
-* `protocol` can be `http` or `https`. Default is `https`. Currently, only `https` is supported, `http` is not implemented yet.
+* `protocol` can be `http` or `https`. Default is `https`. Currently, only `https` is supported. `http` is not implemented yet.
 * `port` is the TCP port to be used.
-* `cert` is the path to the SSL certificate file. It is optional. If omitted, a default certificate will be used.
-* `key` is the path to the SSL key file. It is optional. If omitted, a default key will be used.
+* `cert` is the path to the SSL certificate file. It is optional. If omitted, a hard-coded default certificate will be used.
+* `key` is the path to the SSL key file. It is optional. If omitted, a hard-coded default key will be used.
 
 [example/config.yml]: example/config.yml
 [logstash-patterns-core repository]: https://github.com/logstash-plugins/logstash-patterns-core
