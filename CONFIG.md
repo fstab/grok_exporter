@@ -128,7 +128,7 @@ We describe the general metric configuration here, and provide additional info o
 * `labels` define how to map Grok fields to Prometheus labels.
   The `labels` config contains a list of `grok_field_name`/`prometheus_label` pairs.
   The `grok_field_name` must be a field name that is used in the `match`.
-  For example, if `match` is `%{NUMBER:duration} %{IP:client}`, the names `duration` and `client` may be referenced as Grok field names.
+  For example, if `match` is `%{NUMBER:duration} %{IP:client}`, the names `duration` and `client` may be used as Grok field names.
   The `prometheus_label` defines how the Prometheus label will be called.
   It is common to use different names for the Grok field and the Prometheus label,
   because Prometheus has other naming conventions than Grok.
