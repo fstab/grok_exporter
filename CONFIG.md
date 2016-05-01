@@ -30,28 +30,7 @@ The following shows the configuration options for each of these sections.
 Input Section
 -------------
 
-We currently support two input types: `file` and `stdin`.
-
-### Stdin Input Type
-
-The configuration for the `stdin` input type is straightforward:
-
-```yaml
-input:
-    type: stdin
-```
-
-This is useful if you want to pipe log data to the `grok_exporter` command, like this:
-
-```bash
-tail -f sample.log | grok_exporter -config config.yml
-```
-
-Note that the current implementation terminates as soon as it reads `EOF` from `stdin`.
-That means, if we run `cat sample.log | grok_exporter -config config.yml`,
-the exporter will terminate as soon as `sample.log` is processed,
-and we will not be able to access the result via HTTP(S) after that.
-Always use `tail -f` instead of `cat` when testing the `grok_exporter` with the `stdin` input.
+We currently support two input types: `file` and `stdin`. The following two sections describe the `file` input and the `stdin` input:
 
 ### File Input Type
 
@@ -70,6 +49,27 @@ True is good for debugging, because we process all available log lines.
 False is good for production, because we avoid to process lines multiple times when `grok_exporter` is restarted.
 Default value for `readall` is `false`.
 
+### Stdin Input Type
+
+The configuration for the `stdin` input type does not have any additional parameters:
+
+```yaml
+input:
+    type: stdin
+```
+
+This is useful if you want to pipe log data to the `grok_exporter` command, like this:
+
+```bash
+tail -f sample.log | grok_exporter -config config.yml
+```
+
+Note that `grok_exporter` terminates as soon as it finishes reading from `stdin`.
+That means, if we run `cat sample.log | grok_exporter -config config.yml`,
+the exporter will terminate as soon as `sample.log` is processed,
+and we will not be able to access the result via HTTP(S) after that.
+Always use a command that keeps the output open (like `tail -f`) when testing the `grok_exporter` with the `stdin` input.
+
 Grok Section
 ------------
 
@@ -84,13 +84,13 @@ grok:
 ```
 
 Grok patterns are key/value pairs: The key is the pattern name, and the value is a Grok macro defining a regular expression.
-There are a lot of resources available: The [logstash-patterns-core repository] contains a lot of [example patterns],
+There are a lot of resources available: The [logstash-patterns-core repository] contains a lot of [pre-defined patterns],
 the [Grok documentation] shows how patterns are defined, and there are online pattern builders available
 here [http://grokdebug.herokuapp.com] and here [http://grokconstructor.appspot.com].
 
 In most cases, we will have a directory with all our pattern definitions.
 This directory can be configured with `patterns_dir`. All files in this directory must be valid pattern definition files.
-Example of these files can be found in the [example patterns].
+Example of these files can be found in the [pre-defined patterns].
 
 The `patterns` configuration defines a list of additional Grok patterns.
 This is convenient to quickly add some patterns without the need to create new files in `patterns_dir`.
@@ -158,7 +158,7 @@ server:
 
 [example/config.yml]: example/config.yml
 [logstash-patterns-core repository]: https://github.com/logstash-plugins/logstash-patterns-core
-[example patterns]: https://github.com/logstash-plugins/logstash-patterns-core/tree/master/patterns
+[pre-defined patterns]: https://github.com/logstash-plugins/logstash-patterns-core/tree/master/patterns
 [Grok documentation]: https://www.elastic.co/guide/en/logstash/current/plugins-filters-grok.html
 [http://grokdebug.herokuapp.com]: http://grokdebug.herokuapp.com
 [http://grokconstructor.appspot.com]: http://grokconstructor.appspot.com
