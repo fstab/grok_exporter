@@ -84,7 +84,7 @@ grok:
 ```
 
 Grok patterns are key/value pairs: The key is the pattern name, and the value is a Grok macro defining a regular expression.
-There are a lot of resources available: The [logstash-patterns-core repository] contains [pre-defined patterns],
+There is a lot of documentation available on Grok patterns: The [logstash-patterns-core repository] contains [pre-defined patterns],
 the [Grok documentation] shows how patterns are defined, and there are online pattern builders available
 here: [http://grokdebug.herokuapp.com] and here: [http://grokconstructor.appspot.com].
 
