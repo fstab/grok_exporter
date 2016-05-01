@@ -30,7 +30,7 @@ The following shows the configuration options for each of these sections.
 Input Section
 -------------
 
-We currently support two input types: `file` and `stdin`. The following two sections describe the `file` input and the `stdin` input:
+We currently support two input types: `file` and `stdin`. The following two sections describe the `file` input type and the `stdin` input type:
 
 ### File Input Type
 
