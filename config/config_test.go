@@ -13,7 +13,7 @@ input:
 grok:
     patterns_dir: b/c
 metrics:
-    - type: Counter
+    - type: counter
       name: test_count_total
       help: Dummy help message.
       match: Some text here, then a %{DATE}.

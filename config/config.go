@@ -48,8 +48,8 @@ type InputConfig struct {
 }
 
 type GrokConfig struct {
-	PatternDir string   `yaml:"patterns_dir,omitempty"`
-	Patterns   []string `yaml:",omitempty"`
+	PatternsDir string   `yaml:"patterns_dir,omitempty"`
+	Patterns    []string `yaml:",omitempty"`
 }
 
 type Label struct {
@@ -68,9 +68,10 @@ type MetricConfig struct {
 type MetricsConfig []*MetricConfig
 
 type ServerConfig struct {
-	Port int    `yaml:",omitempty"`
-	Cert string `yaml:",omitempty"`
-	Key  string `yaml:",omitempty"`
+	Protocol string `yaml:",omitempty"`
+	Port     int    `yaml:",omitempty"`
+	Cert     string `yaml:",omitempty"`
+	Key      string `yaml:",omitempty"`
 }
 
 type Config struct {
@@ -129,8 +130,8 @@ func (c *InputConfig) validate() error {
 }
 
 func (c *GrokConfig) validate() error {
-	if c.PatternDir == "" {
-		return fmt.Errorf("'grok.pattern_dir' must not be empty.")
+	if c.PatternsDir == "" && len(c.Patterns) == 0 {
+		return fmt.Errorf("No patterns defined: 'grok.patterns_dir' and 'grok.patterns' are both empty.")
 	}
 	return nil
 }
@@ -156,8 +157,8 @@ func (c *MetricsConfig) validate() error {
 
 func (c *MetricConfig) validate() error {
 	switch {
-	case c.Type != "Counter":
-		return fmt.Errorf("Invalid 'metrics.type': '%v'. We currently only support Counter.", c.Type)
+	case c.Type != "counter":
+		return fmt.Errorf("Invalid 'metrics.type': '%v'. We currently only support 'counter'.", c.Type)
 	case c.Name == "":
 		return fmt.Errorf("'metrics.name' must not be empty.")
 	case c.Help == "":
@@ -190,6 +191,8 @@ func (l *Label) validate() error {
 
 func (c *ServerConfig) validate() error {
 	switch {
+	case c.Protocol != "" && c.Protocol != "https":
+		return fmt.Errorf("Invalid 'server.protocol': '%v'. We currently only support 'https'.", c.Protocol)
 	case c.Port == 0:
 		return fmt.Errorf("'server.port' must not be empty.")
 	case c.Cert != "" && c.Key == "":

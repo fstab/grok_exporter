@@ -18,7 +18,7 @@ The goal is to use Grok patterns for extracting Prometheus metrics from arbitrar
 Status
 ------
 
-`grok_exporter` is currently just a proof of concept. We are able to compile all of Grok's default patterns, but as of now we implemented only `Counter` as an example of a Prometheus metric.
+`grok_exporter` is currently just a proof of concept. We are able to compile all of Grok's default patterns, but as of now we implemented only `counter` as an example of a Prometheus metric.
 
 How to run the example
 ----------------------
@@ -52,6 +52,11 @@ The exporter provides the metrics on [https://localhost:8443/metrics]:
 
 ![screenshot.png]
 
+How to Configure Your Own Patterns and Metrics
+----------------------------------------------
+
+[CONFIG.md] describes the `grok_exporter` configuration file and shows how to define Grok patterns, Prometheus metrics, and labels.
+
 About the Regular Expression Library
 ------------------------------------
 
@@ -79,6 +84,7 @@ As Grok is originally written in Ruby, and Ruby uses Oniguruma as its regular ex
 [Oniguruma]: https://github.com/kkos/oniguruma
 [screenshot.png]: screenshot.png
 [https://localhost:8443/metrics]: https://localhost:8443/metrics
+[CONFIG.md]: CONFIG.md
 [regexp]: https://golang.org/pkg/regexp
 [RE2]: https://github.com/google/re2/wiki/Syntax
 [regexp2]: https://github.com/dlclark/regexp2

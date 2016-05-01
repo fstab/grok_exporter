@@ -55,11 +55,13 @@ func loadConfig() (*config.Config, error) {
 
 func initPatterns(cfg *config.Config) (*Patterns, error) {
 	patterns := InitPatterns()
-	err := patterns.AddDir(cfg.Grok.PatternDir)
-	if err != nil {
-		return nil, err
+	if len(cfg.Grok.Patterns) > 0 {
+		err := patterns.AddDir(cfg.Grok.PatternsDir)
+		if err != nil {
+			return nil, err
+		}
 	}
-	if cfg.Grok.Patterns != nil {
+	if len(cfg.Grok.Patterns) > 0 {
 		for _, pattern := range cfg.Grok.Patterns {
 			err := patterns.AddPattern(pattern)
 			if err != nil {
@@ -78,7 +80,7 @@ func createMetrics(cfg *config.Config, patterns *Patterns) ([]metrics.Metric, er
 			return nil, err
 		}
 		switch {
-		case m.Type == "Counter":
+		case m.Type == "counter":
 			result = append(result, metrics.CreateGenericCounterVecMetric(m, regex))
 		default:
 			return nil, fmt.Errorf("Failed to initialize metrics: Metric type %v is not supported.\n", m.Type)

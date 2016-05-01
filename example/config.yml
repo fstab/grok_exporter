@@ -7,7 +7,7 @@ grok:
     patterns:
     - 'EXIM_MESSAGE [a-zA-Z ]*'
 metrics:
-    - type: Counter
+    - type: counter
       name: exim_rejected_rcpt_total
       help: Total number of rejected recipients, partitioned by error message.
       match: '%{EXIM_DATE} %{EXIM_REMOTE_HOST} F=<%{EMAILADDRESS}> rejected RCPT <%{EMAILADDRESS}>: %{EXIM_MESSAGE:message}'
