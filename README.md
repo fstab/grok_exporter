@@ -45,6 +45,7 @@ Then, download, compile, and run the example as follows:
 ```bash
 go get github.com/fstab/grok_exporter
 cd $GOPATH/src/github.com/fstab/grok_exporter
+git submodule update --init --recursive
 $GOPATH/bin/grok_exporter -config ./example/config.yml
 ```
 
