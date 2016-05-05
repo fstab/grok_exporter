@@ -84,7 +84,7 @@ As Grok is originally written in Ruby, and Ruby uses Oniguruma as its regular ex
 [Go]: https://golang.org/
 [Oniguruma]: https://github.com/kkos/oniguruma
 [screenshot.png]: screenshot.png
-[https://localhost:9142/metrics]: https://localhost:9142/metrics
+[http://localhost:9142/metrics]: http://localhost:9142/metrics
 [CONFIG.md]: CONFIG.md
 [regexp]: https://golang.org/pkg/regexp
 [RE2]: https://github.com/google/re2/wiki/Syntax
