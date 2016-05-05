@@ -26,6 +26,7 @@ func LoadConfigString(content []byte) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	cfg.setDefaults()
 	err = cfg.validate()
 	if err != nil {
 		return nil, err
@@ -81,30 +82,57 @@ type Config struct {
 	Server  *ServerConfig  `yaml:",omitempty"`
 }
 
-func (cfg *Config) validate() error {
+func (cfg *Config) setDefaults() {
 	if cfg.Input == nil {
-		return fmt.Errorf("Cannot find 'input' configuration.")
+		cfg.Input = &InputConfig{}
 	}
+	cfg.Input.setDefaults()
+	if cfg.Grok == nil {
+		cfg.Grok = &GrokConfig{}
+	}
+	cfg.Grok.setDefaults()
+	if cfg.Metrics == nil {
+		metrics := MetricsConfig(make([]*MetricConfig, 0))
+		cfg.Metrics = &metrics
+	}
+	cfg.Metrics.setDefaults()
+	if cfg.Server == nil {
+		cfg.Server = &ServerConfig{}
+	}
+	cfg.Server.setDefaults()
+}
+
+func (c *InputConfig) setDefaults() {
+	if c.Type == "" {
+		c.Type = "stdin"
+	}
+}
+
+func (c *GrokConfig) setDefaults() {}
+
+func (c *MetricsConfig) setDefaults() {}
+
+func (c *ServerConfig) setDefaults() {
+	if c.Protocol == "" {
+		c.Protocol = "http"
+	}
+	if c.Port == 0 {
+		c.Port = 9142
+	}
+}
+
+func (cfg *Config) validate() error {
 	err := cfg.Input.validate()
 	if err != nil {
 		return err
-	}
-	if cfg.Grok == nil {
-		return fmt.Errorf("Cannot find 'grok' configuration.")
 	}
 	err = cfg.Grok.validate()
 	if err != nil {
 		return err
 	}
-	if cfg.Metrics == nil {
-		return fmt.Errorf("Cannot find 'metrics' configuration.")
-	}
 	err = cfg.Metrics.validate()
 	if err != nil {
 		return err
-	}
-	if cfg.Server == nil {
-		return fmt.Errorf("Cannot find 'server' configuration.")
 	}
 	err = cfg.Server.validate()
 	if err != nil {
@@ -131,7 +159,7 @@ func (c *InputConfig) validate() error {
 
 func (c *GrokConfig) validate() error {
 	if c.PatternsDir == "" && len(c.Patterns) == 0 {
-		return fmt.Errorf("No patterns defined: 'grok.patterns_dir' and 'grok.patterns' are both empty.")
+		return fmt.Errorf("No patterns defined: One of 'grok.patterns_dir' and 'grok.patterns' must be configured.")
 	}
 	return nil
 }
@@ -191,15 +219,21 @@ func (l *Label) validate() error {
 
 func (c *ServerConfig) validate() error {
 	switch {
-	case c.Protocol != "" && c.Protocol != "https":
-		return fmt.Errorf("Invalid 'server.protocol': '%v'. We currently only support 'https'.", c.Protocol)
-	case c.Port == 0:
-		return fmt.Errorf("'server.port' must not be empty.")
-	case c.Cert != "" && c.Key == "":
-		return fmt.Errorf("'server.cert' must not be specified without 'server.key'")
-	case c.Cert == "" && c.Key != "":
-		return fmt.Errorf("'server.key' must not be specified without 'server.cert'")
-	default:
-		return nil
+	case c.Protocol != "https" && c.Protocol != "http":
+		return fmt.Errorf("Invalid 'server.protocol': '%v'. Expecting 'http' or 'https'.", c.Protocol)
+	case c.Port <= 0:
+		return fmt.Errorf("Invalid 'server.port': '%v'.", c.Port)
+	case c.Protocol == "https":
+		if c.Cert != "" && c.Key == "" {
+			return fmt.Errorf("'server.cert' must not be specified without 'server.key'")
+		}
+		if c.Cert == "" && c.Key != "" {
+			return fmt.Errorf("'server.key' must not be specified without 'server.cert'")
+		}
+	case c.Protocol == "http":
+		if c.Cert != "" || c.Key != "" {
+			return fmt.Errorf("'server.cert' and 'server.key' can only be configured for protocol 'https'.")
+		}
 	}
+	return nil
 }

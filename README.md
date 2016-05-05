@@ -49,7 +49,7 @@ git submodule update --init --recursive
 $GOPATH/bin/grok_exporter -config ./example/config.yml
 ```
 
-The exporter provides the metrics on [https://localhost:8443/metrics]:
+The exporter provides the metrics on [http://localhost:9142/metrics]:
 
 ![screenshot.png]
 
@@ -84,7 +84,7 @@ As Grok is originally written in Ruby, and Ruby uses Oniguruma as its regular ex
 [Go]: https://golang.org/
 [Oniguruma]: https://github.com/kkos/oniguruma
 [screenshot.png]: screenshot.png
-[https://localhost:8443/metrics]: https://localhost:8443/metrics
+[https://localhost:9142/metrics]: https://localhost:9142/metrics
 [CONFIG.md]: CONFIG.md
 [regexp]: https://golang.org/pkg/regexp
 [RE2]: https://github.com/google/re2/wiki/Syntax

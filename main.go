@@ -37,7 +37,7 @@ func main() {
 		prometheus.MustRegister(m.Collector())
 	}
 	serverErrorChannel := startServer(cfg, "/metrics", prometheus.Handler())
-	fmt.Printf("Starting server on https://localhost:%v/metrics\n", 8443)
+	fmt.Printf("Starting server on %v://localhost:%v/metrics\n", cfg.Server.Protocol, cfg.Server.Port)
 	err = processLogLines(cfg, metrics, serverErrorChannel)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err.Error())
@@ -92,10 +92,18 @@ func createMetrics(cfg *config.Config, patterns *Patterns) ([]metrics.Metric, er
 func startServer(cfg *config.Config, path string, handler http.Handler) chan error {
 	result := make(chan error)
 	go func() {
-		if cfg.Server.Cert != "" && cfg.Server.Key != "" {
-			result <- server.Run(cfg.Server.Port, cfg.Server.Cert, cfg.Server.Key, path, handler)
-		} else {
-			result <- server.RunWithDefaultKeys(cfg.Server.Port, path, handler)
+		switch {
+		case cfg.Server.Protocol == "http":
+			result <- server.RunHttp(cfg.Server.Port, path, handler)
+		case cfg.Server.Protocol == "https":
+			if cfg.Server.Cert != "" && cfg.Server.Key != "" {
+				result <- server.RunHttps(cfg.Server.Port, cfg.Server.Cert, cfg.Server.Key, path, handler)
+			} else {
+				result <- server.RunHttpsWithDefaultKeys(cfg.Server.Port, path, handler)
+			}
+		default:
+			// This is a bug, because cfg.validate() should make sure that protocol is either http or https.
+			result <- fmt.Errorf("Configuration error: Invalid 'server.protocol': '%v'. Expecting 'http' or 'https'.", cfg.Server.Protocol)
 		}
 	}()
 	return result

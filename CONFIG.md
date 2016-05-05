@@ -151,15 +151,15 @@ The server section configures the HTTP(S) server for exposing the metrics:
 ```yaml
 server:
     protocol: https
-    port: 8443
+    port: 9142
     cert: /path/to/cert
     key: /path/to/key
 ```
 
-* `protocol` can be `http` or `https`. Default is `https`. Currently, only `https` is supported. `http` is not implemented yet.
-* `port` is the TCP port to be used.
-* `cert` is the path to the SSL certificate file. It is optional. If omitted, a hard-coded default certificate will be used.
-* `key` is the path to the SSL key file. It is optional. If omitted, a hard-coded default key will be used.
+* `protocol` can be `http` or `https`. Default is `http`.
+* `port` is the TCP port to be used. Default is `9142`.
+* `cert` is the path to the SSL certificate file for protocol `https`. It is optional. If omitted, a hard-coded default certificate will be used.
+* `key` is the path to the SSL key file for protocol `https`. It is optional. If omitted, a hard-coded default key will be used.
 
 [example/config.yml]: example/config.yml
 [logstash-patterns-core repository]: https://github.com/logstash-plugins/logstash-patterns-core

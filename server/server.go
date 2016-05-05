@@ -62,7 +62,7 @@ XLgD9hrDBrTbnKBHHQ6MHpT6ILi4w/e4+5XEUUOBf44ZJE71uRr4ZUA=
 -----END RSA PRIVATE KEY-----
 `
 
-func RunWithDefaultKeys(port int, path string, handler http.Handler) error {
+func RunHttpsWithDefaultKeys(port int, path string, handler http.Handler) error {
 	cert, err := createTempFile("cert", []byte(defaultCert))
 	if err != nil {
 		return err
@@ -73,12 +73,17 @@ func RunWithDefaultKeys(port int, path string, handler http.Handler) error {
 		return err
 	}
 	defer os.Remove(key)
-	return Run(port, cert, key, path, handler)
+	return RunHttps(port, cert, key, path, handler)
 }
 
-func Run(port int, cert, key, path string, handler http.Handler) error {
+func RunHttps(port int, cert, key, path string, handler http.Handler) error {
 	http.Handle(path, handler)
 	return http.ListenAndServeTLS(fmt.Sprintf(":%v", port), cert, key, nil)
+}
+
+func RunHttp(port int, path string, handler http.Handler) error {
+	http.Handle(path, handler)
+	return http.ListenAndServe(fmt.Sprintf(":%v", port), nil)
 }
 
 func createTempFile(prefix string, data []byte) (string, error) {

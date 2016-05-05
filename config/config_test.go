@@ -23,6 +23,7 @@ metrics:
           - grok_field_name: c
             prometheus_label: d
 server:
+    protocol: https
     port: 1111
 `
 
