@@ -7,7 +7,7 @@ set -e
 # The Darwin release is built natively, Linux and Windows are built in a Docker container
 #========================================================================================
 
-export VERSION=v0.0.1-SNAPSHOT
+export VERSION=v0.0.1
 
 cd $GOPATH/src/github.com/fstab/grok_exporter
 rm -rf dist
@@ -46,6 +46,8 @@ function make_release {
     cp -a logstash-patterns-core/patterns dist/grok_exporter.$ARCH
     cp -a example dist/grok_exporter.$ARCH
     cd dist
+    sed -i.bak s,/logstash-patterns-core/patterns,/patterns,g grok_exporter.$ARCH/example/*.yml
+    rm grok_exporter.$ARCH/example/*.yml.bak
     zip --quiet -r grok_exporter.$ARCH.zip grok_exporter.$ARCH
     rm -r grok_exporter.$ARCH
     cd ..
@@ -66,6 +68,8 @@ go build -o dist/grok_exporter.$ARCH/grok_exporter .
 cp -a logstash-patterns-core/patterns dist/grok_exporter.$ARCH
 cp -a example dist/grok_exporter.$ARCH
 cd dist
+sed -i.bak s,/logstash-patterns-core/patterns,/patterns,g grok_exporter.$ARCH/example/*.yml
+rm grok_exporter.$ARCH/example/*.yml.bak
 zip --quiet -r grok_exporter.$ARCH.zip grok_exporter.$ARCH
 rm -r grok_exporter.$ARCH
 cd ..

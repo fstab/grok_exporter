@@ -117,7 +117,7 @@ func (c *ServerConfig) setDefaults() {
 		c.Protocol = "http"
 	}
 	if c.Port == 0 {
-		c.Port = 9142
+		c.Port = 9144
 	}
 }
 

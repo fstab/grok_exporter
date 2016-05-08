@@ -32,7 +32,7 @@ To run the example, download `grok_exporter-$ARCH.zip` for your operating system
 grok_exporter -config ./example/config.yml
 ```
 
-The exporter provides the metrics on [http://localhost:9142/metrics]:
+The exporter provides the metrics on [http://localhost:9144/metrics]:
 
 ![screenshot.png]
 
@@ -98,7 +98,7 @@ You may obtain a copy of the License at [http://www.apache.org/licenses/LICENSE-
 [Go]: https://golang.org/
 [Oniguruma]: https://github.com/kkos/oniguruma
 [screenshot.png]: screenshot.png
-[http://localhost:9142/metrics]: http://localhost:9142/metrics
+[http://localhost:9144/metrics]: http://localhost:9144/metrics
 [CONFIG.md]: CONFIG.md
 [regexp]: https://golang.org/pkg/regexp
 [RE2]: https://github.com/google/re2/wiki/Syntax
