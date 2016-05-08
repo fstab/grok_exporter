@@ -26,7 +26,20 @@ How to run the example
 An example log file and configuration can be found in the `example` directory. The file `exim-rejected-RCPT-examples.log` contains sample log messages from the [Exim] mail server.
 The configuration in `config.yml` counts the total number of rejected recipients, partitioned by error message.
 
-There is no binary release yet. In order to compile `grok_exporter` from source, you need [Go] installed and `$GOPATH` set, and you need the [Oniguruma] regular expression library:
+To run the example, download `grok_exporter-$ARCH.zip` for your operating system from the [releases] page, extract the archive, `cd grok_exporter-$ARCH`, then run
+
+```bash
+grok_exporter -config ./example/config.yml
+```
+
+The exporter provides the metrics on [http://localhost:9142/metrics]:
+
+![screenshot.png]
+
+How to buid from source
+-----------------------
+
+In order to compile `grok_exporter` from source, you need [Go] installed and `$GOPATH` set, and you need the [Oniguruma] regular expression library:
 
 On OS X:
 
@@ -40,18 +53,13 @@ On Ubuntu Linux:
 sudo apt-get install libonig-dev
 ```
 
-Then, download, compile, and run the example as follows:
+Then, download and compile as follows:
 
 ```bash
 go get github.com/fstab/grok_exporter
 cd $GOPATH/src/github.com/fstab/grok_exporter
 git submodule update --init --recursive
-$GOPATH/bin/grok_exporter -config ./example/config.yml
 ```
-
-The exporter provides the metrics on [http://localhost:9142/metrics]:
-
-![screenshot.png]
 
 How to Configure Your Own Patterns and Metrics
 ----------------------------------------------
