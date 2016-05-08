@@ -98,6 +98,7 @@ You may obtain a copy of the License at [http://www.apache.org/licenses/LICENSE-
 [Go]: https://golang.org/
 [Oniguruma]: https://github.com/kkos/oniguruma
 [screenshot.png]: screenshot.png
+[releases]: https://github.com/fstab/grok_exporter/releases
 [http://localhost:9144/metrics]: http://localhost:9144/metrics
 [CONFIG.md]: CONFIG.md
 [regexp]: https://golang.org/pkg/regexp
