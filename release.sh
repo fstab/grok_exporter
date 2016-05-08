@@ -7,7 +7,7 @@ set -e
 # The Darwin release is built natively, Linux and Windows are built in a Docker container
 #========================================================================================
 
-export VERSION=v0.0.1
+export VERSION=0.0.1
 
 cd $GOPATH/src/github.com/fstab/grok_exporter
 rm -rf dist
@@ -40,16 +40,16 @@ go test ./...
 function make_release {
     ARCH=$1
     EXTENSION=$2
-    echo "Building grok_exporter.$ARCH"
-    mkdir -p dist/grok_exporter.$ARCH
-    docker run -v $GOPATH:/root/go -t -i fstab/grok_exporter-compiler compile-$ARCH.sh -o dist/grok_exporter.$ARCH/grok_exporter$EXTENSION
-    cp -a logstash-patterns-core/patterns dist/grok_exporter.$ARCH
-    cp -a example dist/grok_exporter.$ARCH
+    echo "Building grok_exporter-$VERSION.$ARCH"
+    mkdir -p dist/grok_exporter-$VERSION.$ARCH
+    docker run -v $GOPATH:/root/go -t -i fstab/grok_exporter-compiler compile-$ARCH.sh -o dist/grok_exporter-$VERSION.$ARCH/grok_exporter$EXTENSION
+    cp -a logstash-patterns-core/patterns dist/grok_exporter-$VERSION.$ARCH
+    cp -a example dist/grok_exporter-$VERSION.$ARCH
     cd dist
-    sed -i.bak s,/logstash-patterns-core/patterns,/patterns,g grok_exporter.$ARCH/example/*.yml
-    rm grok_exporter.$ARCH/example/*.yml.bak
-    zip --quiet -r grok_exporter.$ARCH.zip grok_exporter.$ARCH
-    rm -r grok_exporter.$ARCH
+    sed -i.bak s,/logstash-patterns-core/patterns,/patterns,g grok_exporter-$VERSION.$ARCH/example/*.yml
+    rm grok_exporter-$VERSION.$ARCH/example/*.yml.bak
+    zip --quiet -r grok_exporter-$VERSION.$ARCH.zip grok_exporter-$VERSION.$ARCH
+    rm -r grok_exporter-$VERSION.$ARCH
     cd ..
 }
 
@@ -62,14 +62,14 @@ make_release linux-amd64
 
 ARCH=darwin-amd64
 
-echo "Building grok_exporter.$ARCH"
-mkdir -p dist/grok_exporter.$ARCH
-go build -o dist/grok_exporter.$ARCH/grok_exporter .
-cp -a logstash-patterns-core/patterns dist/grok_exporter.$ARCH
-cp -a example dist/grok_exporter.$ARCH
+echo "Building grok_exporter-$VERSION.$ARCH"
+mkdir -p dist/grok_exporter-$VERSION.$ARCH
+go build -o dist/grok_exporter-$VERSION.$ARCH/grok_exporter .
+cp -a logstash-patterns-core/patterns dist/grok_exporter-$VERSION.$ARCH
+cp -a example dist/grok_exporter-$VERSION.$ARCH
 cd dist
-sed -i.bak s,/logstash-patterns-core/patterns,/patterns,g grok_exporter.$ARCH/example/*.yml
-rm grok_exporter.$ARCH/example/*.yml.bak
-zip --quiet -r grok_exporter.$ARCH.zip grok_exporter.$ARCH
-rm -r grok_exporter.$ARCH
+sed -i.bak s,/logstash-patterns-core/patterns,/patterns,g grok_exporter-$VERSION.$ARCH/example/*.yml
+rm grok_exporter-$VERSION.$ARCH/example/*.yml.bak
+zip --quiet -r grok_exporter-$VERSION.$ARCH.zip grok_exporter-$VERSION.$ARCH
+rm -r grok_exporter-$VERSION.$ARCH
 cd ..
