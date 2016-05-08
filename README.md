@@ -26,7 +26,7 @@ How to run the example
 An example log file and configuration can be found in the `example` directory. The file `exim-rejected-RCPT-examples.log` contains sample log messages from the [Exim] mail server.
 The configuration in `config.yml` counts the total number of rejected recipients, partitioned by error message.
 
-The `grok_exporter` depends on the [Oniguruma] regular expression library, which can be installed as follows:
+The `grok_exporter` depends on the [Oniguruma] regular expression library, which can be installed as follows (_Note: This is only necessary for release  0.0.1. The next release should get rid of this run-time dependency._):
 
 On OS X:
 
