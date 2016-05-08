@@ -75,6 +75,12 @@ Grok uses these features a lot, so implementing Grok on top of Go's default [reg
 
 As Grok is originally written in Ruby, and Ruby uses Oniguruma as its regular expression library, we decided to use rubex for best compatibility.
 
+License
+-------
+
+Licensed under the Apache License, Version 2.0.
+You may obtain a copy of the License at [http://www.apache.org/licenses/LICENSE-2.0].
+
 [Prometheus]: https://prometheus.io/
 [Grok]: https://www.elastic.co/guide/en/logstash/current/plugins-filters-grok.html
 [Logstash]: https://www.elastic.co/products/logstash
@@ -92,3 +98,4 @@ As Grok is originally written in Ruby, and Ruby uses Oniguruma as its regular ex
 [pcre]: https://github.com/glenn-brown/golang-pkg-pcre
 [libpcre]: http://www.pcre.org
 [rubex]: https://github.com/moovweb/rubex
+[http://www.apache.org/licenses/LICENSE-2.0]: http://www.apache.org/licenses/LICENSE-2.0

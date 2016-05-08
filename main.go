@@ -14,10 +14,16 @@ import (
 )
 
 var (
-	configPath = flag.String("config", "", "Path to the config file. Try '-config ./example/config.yml' to get started.")
+	showVersion = flag.Bool("version", false, "Show the grok_exporter version.")
+	configPath  = flag.String("config", "", "Path to the config file. Try '-config ./example/config.yml' to get started.")
 )
 
 func main() {
+	flag.Parse()
+	if *showVersion {
+		fmt.Printf("grok_exporter version %v build date %v.\n", VERSION, BUILD_DATE)
+		return
+	}
 	cfg, err := loadConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -46,7 +52,6 @@ func main() {
 }
 
 func loadConfig() (*config.Config, error) {
-	flag.Parse()
 	if *configPath == "" {
 		return nil, fmt.Errorf("Usage: grok_exporter -config <path>")
 	}
