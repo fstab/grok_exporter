@@ -7,7 +7,8 @@
 
 package main
 
-import re "rubex"
+import "fmt"
+import re "github.com/moovweb/rubex"
 import "time"
 import "regexp"
 import "runtime"
@@ -49,7 +50,7 @@ func init() {
 	for i := 0; i < 10; i++ {
 		STR += STR
 	}
-	println("len:", len(STR))
+	fmt.Println("len:", len(STR))
 }
 
 func render_pages(name string, marray []Matcher, num_routines, num_renders int) {
@@ -71,7 +72,7 @@ func render_pages(name string, marray []Matcher, num_routines, num_renders int) 
 					mu.Unlock()
 					totalDuration += time.Since(t).Nanoseconds()
 				}
-				println(name+"-average: ", totalDuration/int64(1000*NNN), "us")
+				fmt.Println(name+"-average: ", totalDuration/int64(1000*NNN), "us")
 			}
 		}()
 	}
@@ -95,7 +96,7 @@ func render_pages2(name string, marray []Matcher, num_routines, num_renders int)
 					m.MatchString(task.str)
 					totalDuration += time.Since(task.t).Nanoseconds()
 				}
-				println(name+"-average: ", totalDuration/int64(1000*NNN), "us")
+				fmt.Println(name+"-average: ", totalDuration/int64(1000*NNN), "us")
 			}
 		}()
 	}
@@ -105,7 +106,7 @@ func main() {
 	cpu, _ := strconv.Atoi(os.Args[1])
 	lib := os.Args[2]
 	method := os.Args[3]
-	println("using CPUs:", cpu)
+	fmt.Println("using CPUs:", cpu)
 	runtime.GOMAXPROCS(cpu)
 	num_routines := 6
 	num_renders := 20
@@ -126,9 +127,9 @@ func main() {
 	}
 	d, _ := time.ParseDuration("5s")
 	for i := 0; i < 100; i++ {
-		println("goroutine:", runtime.NumGoroutine())
+		fmt.Println("goroutine:", runtime.NumGoroutine())
 		time.Sleep(d)
 
 	}
-	println("Done")
+	fmt.Println("Done")
 }
