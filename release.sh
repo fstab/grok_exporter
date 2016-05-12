@@ -7,7 +7,7 @@ set -e
 # The Darwin release is built natively, Linux and Windows are built in a Docker container
 #========================================================================================
 
-export VERSION=0.0.1
+export VERSION=0.0.2-SNAPSHOT
 
 cd $GOPATH/src/github.com/fstab/grok_exporter
 rm -rf dist
@@ -30,19 +30,21 @@ go fmt version.go > /dev/null
 # Make sure all tests run.
 #--------------------------------------------------------------
 
-go fmt ./...
-go test ./...
-
-#--------------------------------------------------------------
-# Releases via Docker container (Windows, Linux)
-#--------------------------------------------------------------
+go fmt $(go list ./... | grep -v /vendor/)
+go test $(go list ./... | grep -v /vendor/)
 
 function make_release {
-    ARCH=$1
-    EXTENSION=$2
+    MACHINE=$1
+    ARCH=$2
+    EXTENSION=$3
     echo "Building grok_exporter-$VERSION.$ARCH"
     mkdir -p dist/grok_exporter-$VERSION.$ARCH
-    docker run -v $GOPATH:/root/go -t -i fstab/grok_exporter-compiler compile-$ARCH.sh -o dist/grok_exporter-$VERSION.$ARCH/grok_exporter$EXTENSION
+    if [ $MACHINE = "docker" ] ; then
+        docker run -v $GOPATH/src/github.com/fstab/grok_exporter:/root/go/src/github.com/fstab/grok_exporter --net none --rm -ti fstab/grok_exporter-compiler compile-$ARCH.sh -o dist/grok_exporter-$VERSION.$ARCH/grok_exporter$EXTENSION
+    else
+        export CGO_LDFLAGS=/usr/local/lib/libonig.a
+        go build -o dist/grok_exporter-$VERSION.$ARCH/grok_exporter .
+    fi
     cp -a logstash-patterns-core/patterns dist/grok_exporter-$VERSION.$ARCH
     cp -a example dist/grok_exporter-$VERSION.$ARCH
     cd dist
@@ -53,23 +55,6 @@ function make_release {
     cd ..
 }
 
-make_release windows-amd64 .exe
-make_release linux-amd64
-
-#--------------------------------------------------------------
-# Native Darwin release
-#--------------------------------------------------------------
-
-ARCH=darwin-amd64
-
-echo "Building grok_exporter-$VERSION.$ARCH"
-mkdir -p dist/grok_exporter-$VERSION.$ARCH
-go build -o dist/grok_exporter-$VERSION.$ARCH/grok_exporter .
-cp -a logstash-patterns-core/patterns dist/grok_exporter-$VERSION.$ARCH
-cp -a example dist/grok_exporter-$VERSION.$ARCH
-cd dist
-sed -i.bak s,/logstash-patterns-core/patterns,/patterns,g grok_exporter-$VERSION.$ARCH/example/*.yml
-rm grok_exporter-$VERSION.$ARCH/example/*.yml.bak
-zip --quiet -r grok_exporter-$VERSION.$ARCH.zip grok_exporter-$VERSION.$ARCH
-rm -r grok_exporter-$VERSION.$ARCH
-cd ..
+make_release native darwin-amd64
+make_release docker linux-amd64
+make_release docker windows-amd64 .exe
