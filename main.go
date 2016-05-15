@@ -7,7 +7,7 @@ import (
 	"github.com/fstab/grok_exporter/config"
 	"github.com/fstab/grok_exporter/metrics"
 	"github.com/fstab/grok_exporter/server"
-	"github.com/hpcloud/tail"
+	"github.com/google/mtail/tailer"
 	"github.com/prometheus/client_golang/prometheus"
 	"net/http"
 	"os"
@@ -126,35 +126,21 @@ func processLogLines(cfg *config.Config, metrics []metrics.Metric, serverErrorCh
 }
 
 func processLogLinesFile(cfg *config.Config, metrics []metrics.Metric, serverErrorChannel chan error) error {
-	tailFile, err := tailFile(cfg.Input.Path, cfg.Input.Readall)
+	lines := make(chan string)
+	t, err := tailer.New(tailer.Options{Lines: lines})
 	if err != nil {
-		return fmt.Errorf("Failed to read %v: %v", cfg.Input.Path, err.Error())
+		return fmt.Errorf("Initialization error: Failed to initialize the tail process: %v", err.Error())
 	}
+	go t.Tail(cfg.Input.Path, cfg.Input.Readall)
 	for {
 		select {
 		case err := <-serverErrorChannel:
-			tailFile.Stop()
+			t.Close()
 			return fmt.Errorf("Server error: %v", err.Error())
-		case line := <-tailFile.Lines:
-			if line.Err == nil {
-				process(line.Text, metrics)
-			}
+		case line := <-lines:
+			process(line, metrics)
 		}
 	}
-}
-
-func tailFile(logfile string, readall bool) (*tail.Tail, error) {
-	whence := os.SEEK_END
-	if readall {
-		whence = os.SEEK_SET
-	}
-	return tail.TailFile(logfile, tail.Config{
-		MustExist: true,                      // Fail early if the file does not exist
-		ReOpen:    true,                      // Reopen recreated files (tail -F)
-		Follow:    true,                      // Continue looking for new lines (tail -f)
-		Logger:    tail.DiscardingLogger,     // Disable logging
-		Location:  &tail.SeekInfo{0, whence}, // Start at the beginning or end of the file?
-	})
 }
 
 func processLogLinesStdin(cfg *config.Config, metrics []metrics.Metric, serverErrorChannel chan error) error {

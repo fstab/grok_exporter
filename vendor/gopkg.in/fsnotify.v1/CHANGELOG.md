@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.2.9 / 2016-01-13
+
+kqueue: Fix logic for CREATE after REMOVE [#111](https://github.com/go-fsnotify/fsnotify/pull/111) (thanks @bep)
+
+## v1.2.8 / 2015-12-17
+
+* kqueue: fix race condition in Close [#105](https://github.com/go-fsnotify/fsnotify/pull/105) (thanks @djui for reporting the issue and @ppknap for writing a failing test)
+* inotify: fix race in test
+* enable race detection for continuous integration (Linux, Mac, Windows)
+
+## v1.2.5 / 2015-10-17
+
+* inotify: use epoll_create1 for arm64 support (requires Linux 2.6.27 or later) [#100](https://github.com/go-fsnotify/fsnotify/pull/100) (thanks @suihkulokki)
+* inotify: fix path leaks [#73](https://github.com/go-fsnotify/fsnotify/pull/73) (thanks @chamaken)
+* kqueue: watch for rename events on subdirectories [#83](https://github.com/go-fsnotify/fsnotify/pull/83) (thanks @guotie)
+* kqueue: avoid infinite loops from symlinks cycles [#101](https://github.com/go-fsnotify/fsnotify/pull/101) (thanks @illicitonion)
+
 ## v1.2.1 / 2015-10-14
 
 * kqueue: don't watch named pipes [#98](https://github.com/go-fsnotify/fsnotify/pull/98) (thanks @evanphx)
@@ -51,7 +68,7 @@
 
 * Moved to [github.com/go-fsnotify/fsnotify](https://github.com/go-fsnotify/fsnotify).
 * Use os.NewSyscallError instead of returning errno (thanks @hariharan-uno)
- 
+
 ## dev / 2014-07-04
 
 * kqueue: fix incorrect mutex used in Close()
@@ -264,4 +281,3 @@
 [#25]: https://github.com/howeyc/fsnotify/issues/25
 [#24]: https://github.com/howeyc/fsnotify/issues/24
 [#21]: https://github.com/howeyc/fsnotify/issues/21
-
