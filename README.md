@@ -69,7 +69,7 @@ How to Configure Your Own Patterns and Metrics
 Related Projects
 ----------------
 
-Google's [mtail] goes in a similar direction. It uses RE2 regular expressions, which is a stripped-down regular expression language. That means, it does not support Grok patterns. It will not be possible to re-use existing Grok definitions with `mtail`. However, `mtail` is probably more CPU efficient than `grok_exporter`. We will provide some benchmarks soon.
+Google's [mtail] goes in a similar direction. It uses RE2 regular expressions, which is a stripped-down regular expression language. It will not be possible to re-use existing Grok definitions with `mtail`. However, `mtail` is probably more CPU efficient than `grok_exporter`. We will provide some benchmarks soon.
 
 About the Regular Expression Library
 ------------------------------------
