@@ -26,25 +26,7 @@ How to run the example
 An example log file and configuration can be found in the `example` directory. The file `exim-rejected-RCPT-examples.log` contains sample log messages from the [Exim] mail server.
 The configuration in `config.yml` counts the total number of rejected recipients, partitioned by error message.
 
-The `grok_exporter` depends on the [Oniguruma] regular expression library, which can be installed as follows (_Note: This is only necessary for release  0.0.1. The next release should get rid of this run-time dependency._):
-
-On OS X:
-
-```bash
-brew install oniguruma
-```
-
-On Ubuntu Linux:
-
-```bash
-sudo apt-get install libonig2
-```
-
-On Windows:
-
-_No external library needed, because Oniguruma is statically linked._
-
-With [Oniguruma] installed, download `grok_exporter-$ARCH.zip` for your operating system from the [releases] page, extract the archive, `cd grok_exporter-$ARCH`, then run
+In order to run the example, download `grok_exporter-$ARCH.zip` for your operating system from the [releases] page, extract the archive, `cd grok_exporter-$ARCH`, then run
 
 ```bash
 grok_exporter -config ./example/config.yml
@@ -57,7 +39,7 @@ The exporter provides the metrics on [http://localhost:9144/metrics]:
 How to buid from source
 -----------------------
 
-In order to compile `grok_exporter` from source, you need [Go] installed and `$GOPATH` set, and you need the source files for the [Oniguruma] regular expression library:
+In order to compile `grok_exporter` from source, you need [Go] installed and `$GOPATH` set, and you need the source files of the [Oniguruma] regular expression library:
 
 On OS X:
 
@@ -83,6 +65,11 @@ How to Configure Your Own Patterns and Metrics
 ----------------------------------------------
 
 [CONFIG.md] describes the `grok_exporter` configuration file and shows how to define Grok patterns, Prometheus metrics, and labels.
+
+Related Projects
+----------------
+
+Google's [mtail] goes in a similar direction. It uses RE2 regular expressions, which is a stripped-down regular expression language. That means, it does not support Grok patterns. It will not be possible to re-use existing Grok definitions with `mtail`. However, `mtail` is probably more CPU efficient than `grok_exporter`. We will provide some benchmarks soon.
 
 About the Regular Expression Library
 ------------------------------------
@@ -121,6 +108,7 @@ You may obtain a copy of the License at [http://www.apache.org/licenses/LICENSE-
 [CONFIG.md]: CONFIG.md
 [regexp]: https://golang.org/pkg/regexp
 [RE2]: https://github.com/google/re2/wiki/Syntax
+[mtail]: https://github.com/google/mtail
 [regexp2]: https://github.com/dlclark/regexp2
 [pcre]: https://github.com/glenn-brown/golang-pkg-pcre
 [libpcre]: http://www.pcre.org
