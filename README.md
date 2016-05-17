@@ -36,7 +36,7 @@ The exporter provides the metrics on [http://localhost:9144/metrics]:
 
 ![screenshot.png]
 
-How to buid from source
+How to build from source
 -----------------------
 
 In order to compile `grok_exporter` from source, you need [Go] installed and `$GOPATH` set, and you need the source files of the [Oniguruma] regular expression library:
