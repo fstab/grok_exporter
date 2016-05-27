@@ -19,7 +19,7 @@ import (
 	"path"
 	"path/filepath"
 	"sync"
-	//"syscall"
+	// "syscall"
 	"time"
 	"unicode/utf8"
 
@@ -42,14 +42,13 @@ var (
 type Tailer struct {
 	w watcher.Watcher
 
-	watched     map[string]struct{}   // Names of logs being watched.
-	watchedLock sync.RWMutex          // protects `watched'
-	lines       chan<- string         // Logfile lines being emitted.
-	files       map[string]afero.File // File handles for each pathname.
-	filesLock   sync.Mutex            // protects `files'
-	partials    map[string]string     // Accumulator for the currently read line for each pathname.
-
-	shutdown bool
+	watched      map[string]struct{}   // Names of logs being watched.
+	watchedLock  sync.RWMutex          // protects `watched'
+	lines        chan<- string         // Logfile lines being emitted.
+	files        map[string]afero.File // File handles for each pathname.
+	filesLock    sync.Mutex            // protects `files'
+	partials     map[string]string     // Accumulator for the currently read line for each pathname.
+	partialsLock sync.Mutex            // protects 'partials'
 
 	fs afero.Fs // mockable filesystem interface
 }
@@ -138,7 +137,9 @@ func (t *Tailer) handleLogUpdate(pathname string) {
 		return
 	}
 	var err error
+	t.partialsLock.Lock()
 	t.partials[pathname], err = t.read(fd, t.partials[pathname])
+	t.partialsLock.Unlock()
 	if err != nil && err != io.EOF {
 		glog.Info(err)
 	}
@@ -150,7 +151,7 @@ func (t *Tailer) handleLogUpdate(pathname string) {
 func (t *Tailer) read(f afero.File, partialIn string) (partialOut string, err error) {
 	partial := partialIn
 	b := make([]byte, 0, 4096)
-	for !t.shutdown {
+	for {
 		n, err := f.Read(b[:cap(b)])
 		b = b[:n]
 		if err != nil {
@@ -176,16 +177,7 @@ func (t *Tailer) read(f afero.File, partialIn string) (partialOut string, err er
 
 // inode returns the inode number of a file, or 0 if the file has no underlying Sys implementation.
 func inode(f os.FileInfo) uint64 {
-	//s := f.Sys()
-	//if s == nil {
-	//	return 0
-	//}
-	//switch s := s.(type) {
-	//case *syscall.Stat_t:
-	//	return s.Ino
-	//default:
-		return 0
-	//}
+	return 0
 }
 
 // handleLogCreate handles both new and rotated log files.
@@ -210,11 +202,15 @@ func (t *Tailer) handleLogCreate(pathname string) {
 			// flush the old log, pathname is still an index into t.files with the old inode.
 			t.handleLogUpdate(pathname)
 			fd.Close()
-			err := t.w.Remove(pathname)
-			if err != nil {
-				glog.Infof("Failed removing watches on %s: %s", pathname, err)
-			}
-			t.openLogPath(pathname, true)
+			go func() {
+				// Run in goroutine as Remove may block waiting on event processing.
+				err := t.w.Remove(pathname)
+				if err != nil {
+					glog.Infof("Failed removing watches on %s: %s", pathname, err)
+				}
+				// openLogPath readds the file to the watcher, so must be strictly after the Remove succeeds.
+				t.openLogPath(pathname, true)
+			}()
 		} else {
 			glog.V(1).Infof("Path %s already being watched, and inode not changed.",
 				pathname)
@@ -290,7 +286,9 @@ func (t *Tailer) startNewFile(f afero.File, seekStart bool) error {
 		}
 		// In case the new log has been written to already, attempt to read the
 		// first lines.
+		t.partialsLock.Lock()
 		t.partials[f.Name()], err = t.read(f, "")
+		t.partialsLock.Unlock()
 		if err != nil {
 			if err == io.EOF {
 				// Don't worry about EOF on first read, that's expected.
@@ -338,7 +336,7 @@ func (t *Tailer) run() {
 func (t *Tailer) readForever(f afero.File) {
 	var err error
 	partial := ""
-	for !t.shutdown {
+	for {
 		partial, err = t.read(f, partial)
 		// We want to exit at EOF, because the FD has been closed.
 		if err != nil {
@@ -351,6 +349,5 @@ func (t *Tailer) readForever(f afero.File) {
 
 // Close signals termination to the watcher.
 func (t *Tailer) Close() {
-	t.shutdown = true
 	t.w.Close()
 }

@@ -1,0 +1,33 @@
+diff -Naur afero_orig/util.go afero_patched/util.go
+--- afero_orig/util.go	2016-05-27 12:52:59.000000000 +0200
++++ afero_patched/util.go	2016-05-27 13:13:50.000000000 +0200
+@@ -26,8 +26,8 @@
+ 	"strings"
+ 	"unicode"
+ 
+-	"golang.org/x/text/transform"
+-	"golang.org/x/text/unicode/norm"
++//	"golang.org/x/text/transform"
++//	"golang.org/x/text/unicode/norm"
+ )
+ 
+ // Filepath separator defined by os.Separator.
+@@ -158,12 +158,12 @@
+ }
+ 
+ // Transform characters with accents into plan forms
+-func NeuterAccents(s string) string {
+-	t := transform.Chain(norm.NFD, transform.RemoveFunc(isMn), norm.NFC)
+-	result, _, _ := transform.String(t, string(s))
+-
+-	return result
+-}
++//func NeuterAccents(s string) string {
++//	t := transform.Chain(norm.NFD, transform.RemoveFunc(isMn), norm.NFC)
++//	result, _, _ := transform.String(t, string(s))
++//
++//	return result
++//}
+ 
+ func isMn(r rune) bool {
+ 	return unicode.Is(unicode.Mn, r) // Mn: nonspacing marks
