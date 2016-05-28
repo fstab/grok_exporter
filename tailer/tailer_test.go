@@ -22,15 +22,15 @@ func TestTailer(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to start tailer: %v", err.Error())
 	}
-	expect(tail.LineChan(), "line 1", 1 * time.Second, t)
-	expect(tail.LineChan(), "line 2", 1 * time.Second, t)
+	expect(tail.LineChan(), "line 1", 1*time.Second, t)
+	expect(tail.LineChan(), "line 2", 1*time.Second, t)
 	logfile = rotate(logfile, t)
 	log(logfile, "line 3")
 	log(logfile, "line 4")
-	expect(tail.LineChan(), "line 3", 1 * time.Second, t)
-	expect(tail.LineChan(), "line 4", 1 * time.Second, t)
+	expect(tail.LineChan(), "line 3", 1*time.Second, t)
+	expect(tail.LineChan(), "line 4", 1*time.Second, t)
 	log(logfile, "line 5")
-	expect(tail.LineChan(), "line 5", 1 * time.Second, t)
+	expect(tail.LineChan(), "line 5", 1*time.Second, t)
 	tail.Close()
 }
 
