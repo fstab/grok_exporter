@@ -11,9 +11,6 @@ import (
 	"strings"
 )
 
-// TODO: Read byte by byte to channel, then have other process to compose lines
-// TODO: On CHMOD event (and any other non-WRITE event): Check if file size changed, if so, start reading from beginning of file.
-
 type fileTailer2 struct {
 	lines   chan string
 	errors  chan error
@@ -51,19 +48,20 @@ func RunFileTailer2(path string, readall bool) (Tailer, error) {
 		return nil, fmt.Errorf("%v: %v", path, err.Error())
 	}
 	if !readall {
-		file.Seek(0, os.SEEK_END)
-	}
-	linesChannel, _, errorChannel := runWatcher(watcher, abspath, file)
-	for {
-		select {
-		case line := <-linesChannel:
-			fmt.Printf("Received line: %v\n", line)
-		case err = <-errorChannel:
-			fmt.Printf("Received error: %v", err.Error())
-			return nil, nil
+		_, err := file.Seek(0, os.SEEK_END)
+		if err != nil {
+			watcher.Close()
+			file.Close()
+			return nil, fmt.Errorf("Error while seeking to the end of the end of file %v: %v", path, err.Error())
 		}
 	}
-	return nil, nil
+	linesChannel, doneChannel, errorChannel := runWatcher(watcher, abspath, file)
+	return &fileTailer2{
+		lines:   linesChannel,
+		errors:  errorChannel,
+		done:    doneChannel,
+		watcher: watcher,
+	}, nil
 }
 
 func newWatcher(abspath string) (*fsnotify.Watcher, error) {
@@ -110,7 +108,7 @@ func runWatcher(watcher *fsnotify.Watcher, abspath string, file *os.File) (chan 
 				errorChannel <- fmt.Errorf("Error while watching files in %v: %v", path.Dir(abspath), err.Error())
 				return
 			case <-doneChannel:
-				debug("Shutting down file watcher loop.")
+				debug("Shutting down file watcher loop.\n")
 				return
 			}
 		}
