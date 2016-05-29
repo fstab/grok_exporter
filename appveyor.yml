@@ -10,6 +10,7 @@ environment:
  NOTIFY_TIMEOUT: 5s
 
 build_script:
+ - go version
  - go get github.com/fsnotify/fsnotify
  - go test -v -race ./...
 
