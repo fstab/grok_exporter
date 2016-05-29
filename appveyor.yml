@@ -13,7 +13,7 @@ build_script:
  - go version
  - go get github.com/fsnotify/fsnotify
  - go test -v github.com/fsnotify/fsnotify
- - go test -v github.com/fstab/tailer
+ - go test -v github.com/fstab/grok_exporter/tailer
 
 test: off
 
