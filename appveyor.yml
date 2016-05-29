@@ -12,7 +12,8 @@ environment:
 build_script:
  - go version
  - go get github.com/fsnotify/fsnotify
- - go test -v ./tailer
+ - go test -v github.com/fsnotify/fsnotify
+ - go test -v github.com/fstab/tailer
 
 test: off
 
