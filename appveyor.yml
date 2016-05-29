@@ -12,7 +12,6 @@ environment:
 build_script:
  - go version
  - go get github.com/fsnotify/fsnotify
- - go test  ./ ./config ./dummy_glog ./metrics ./server
  - go test -v ./tailer
 
 test: off
