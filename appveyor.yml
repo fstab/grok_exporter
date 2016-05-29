@@ -10,7 +10,6 @@ environment:
  NOTIFY_TIMEOUT: 5s
 
 build_script:
- - go tool vet -all .
  - go test -v -race ./...
 
 test: off
