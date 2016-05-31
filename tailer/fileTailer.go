@@ -69,7 +69,8 @@ func newWatcher(abspath string) (*fsnotify.Watcher, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Failed to initialize tail process: %v", err.Error())
 	}
-	dir := path.Dir(abspath)
+	dir := filepath.Dir(abspath)
+	debug("Adding watcher for %v\n", dir)
 	err = watcher.Add(dir)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to watch files in %v: %v", dir, err.Error())
