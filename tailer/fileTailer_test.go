@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
-	"path/filepath"
 )
 
 const OPEN_CLOSE = 1
@@ -28,8 +28,8 @@ func TestTailer(t *testing.T) {
 	logfile.Close()
 	fmt.Printf("Using tmp file %v\n", logfile.Name())
 	defer os.Remove(logfile.Name())
-	log(logfile, "test line 1", OPEN_CLOSE, t)
-	log(logfile, "test line 2", OPEN_CLOSE, t)
+	simulateLog(logfile, "test line 1", OPEN_CLOSE, t)
+	simulateLog(logfile, "test line 2", OPEN_CLOSE, t)
 	tail, err := RunFileTailer2(logfile.Name(), true)
 	if err != nil {
 		t.Errorf("Failed to start tailer: %v", err.Error())
@@ -39,20 +39,20 @@ func TestTailer(t *testing.T) {
 	expect(tail.LineChan(), "test line 1", 1*time.Second, t)
 	expect(tail.LineChan(), "test line 2", 1*time.Second, t)
 	// Append a line and see if the event is processed.
-	log(logfile, "test line 3", OPEN_CLOSE, t)
+	simulateLog(logfile, "test line 3", OPEN_CLOSE, t)
 	expect(tail.LineChan(), "test line 3", 10*time.Second, t)
 	// Simulate logrotate: Remove and Re-Create.
 	logfile = rotate(logfile, testdir, t)
 	logfile.Close()
 	// Log two more lines and see if they are received.
-	log(logfile, "line 4", OPEN_CLOSE, t)
-	log(logfile, "line 5", OPEN_CLOSE, t)
+	simulateLog(logfile, "line 4", OPEN_CLOSE, t)
+	simulateLog(logfile, "line 5", OPEN_CLOSE, t)
 	expect(tail.LineChan(), "line 4", 10*time.Second, t)
 	expect(tail.LineChan(), "line 5", 1*time.Second, t)
 	tail.Close()
 }
 
-func log(file *os.File, line string, mode int, t *testing.T) {
+func simulateLog(file *os.File, line string, mode int, t *testing.T) {
 	switch {
 	case mode == OPEN_CLOSE:
 		logOpenClose(file, line, t)
@@ -100,25 +100,25 @@ func ls(path string, t *testing.T) []os.FileInfo {
 
 func rotate(f *os.File, dir string, t *testing.T) *os.File {
 	filesBefore := ls(dir, t)
-	if ! containsFile(filesBefore, f) {
+	if !containsFile(filesBefore, f) {
 		t.Fatalf("%v does not contain %v before logrotate.", dir, filepath.Base(f.Name()))
 	}
-	time.Sleep(1*time.Second)
+	time.Sleep(1 * time.Second)
 	os.Remove(f.Name())
 	filesAfterRemove := ls(dir, t)
 	if containsFile(filesAfterRemove, f) {
 		t.Fatalf("%v still contains file %v after remove.", dir, filepath.Base(f.Name()))
 	}
-	time.Sleep(1*time.Second)
+	time.Sleep(1 * time.Second)
 	newF, err := os.Create(f.Name())
 	if err != nil {
 		t.Errorf("Failed to re-create %v while simulating logrotate: %v", f.Name(), err.Error())
 	}
 	filesAfterCreate := ls(dir, t)
-	if ! containsFile(filesAfterCreate, f) {
+	if !containsFile(filesAfterCreate, f) {
 		t.Fatalf("%v does not contain %v after logrotate.", dir, filepath.Base(f.Name()))
 	}
-	time.Sleep(1*time.Second)
+	time.Sleep(1 * time.Second)
 	return newF
 }
 
