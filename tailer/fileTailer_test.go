@@ -27,8 +27,8 @@ const (
 )
 
 const (
-	closeFileAfterEachLine loggerOption = iota
-	keepOpen                            // Not implemented yet. Will probably not work on Windows, because open files cannot be removed by logrotate.
+	closeFileAfterEachLine loggerOption = iota // Logger does not keep the file open.
+	keepOpen                                   // Logger keeps the file open.
 )
 
 func (opt logrotateOption) String() string {
@@ -69,28 +69,38 @@ func (opt loggerOption) String() string {
 		return "unknown"
 	}
 }
-func TestCloseFileAfterEachLine(t *testing.T) {
+
+func TestCloseLogfileAfterEachLine(t *testing.T) {
 	for _, mvOpt := range []logrotateMoveOption{mv, cp, rm} {
-		runTest(t, create, mvOpt, closeFileAfterEachLine)
-		runTest(t, nocreate, mvOpt, closeFileAfterEachLine)
+		testLogrotate(t, create, mvOpt, closeFileAfterEachLine)
+		testLogrotate(t, nocreate, mvOpt, closeFileAfterEachLine)
 	}
-	runTest(t, copy, cp, closeFileAfterEachLine)
-	runTest(t, copytruncate, cp, closeFileAfterEachLine)
+	// For logrotate options 'copy' and 'copytruncate', only the mvOpt 'cp' makes sense.
+	testLogrotate(t, copy, cp, closeFileAfterEachLine)
+	testLogrotate(t, copytruncate, cp, closeFileAfterEachLine)
 }
 
-func runTest(t *testing.T, logrotateOpt logrotateOption, logrotateMoveOpt logrotateMoveOption, loggerOpt loggerOption) {
+func TestKeepLogfileOpen(t *testing.T) {
+	// When the logger keeps the file open, only the logrotate options 'copy' and 'copytruncate' make sense.
+	testLogrotate(t, copy, cp, keepOpen)
+	testLogrotate(t, copytruncate, cp, keepOpen)
+}
+
+func testLogrotate(t *testing.T, logrotateOpt logrotateOption, logrotateMoveOpt logrotateMoveOption, loggerOpt loggerOption) {
 	fmt.Printf("Running test with logrotate option '%v', move option '%v', and logger option '%v'.\n", logrotateOpt, logrotateMoveOpt, loggerOpt)
 	tmpDir := mkTmpDirOrFail(t)
 	defer cleanUp(t, tmpDir)
 	logfile := mkTmpFileOrFail(t, tmpDir)
 	logger := newLogger(t, logfile, loggerOpt)
+	defer logger.close(t)
 
 	logger.log(t, "test line 1")
 	logger.log(t, "test line 2")
 
 	tail := RunFileTailer2(logfile, true)
+	defer tail.Close()
 
-	// We don't expect errors. However, start a goroutine listening on
+	// We don't expect errors. However, start a go-routine listening on
 	// the tailer's errorChannel in case something goes wrong.
 	stopFailOnError := failOnError(t, tail.ErrorChan())
 	defer func() {
@@ -114,7 +124,6 @@ func runTest(t *testing.T, logrotateOpt logrotateOption, logrotateMoveOpt logrot
 	logger.log(t, "line 5")
 	expect(tail.LineChan(), "line 4", 1*time.Second, t)
 	expect(tail.LineChan(), "line 5", 1*time.Second, t)
-	tail.Close()
 }
 
 // Consume the tailer's error channel in case something goes wrong.
@@ -140,24 +149,28 @@ func failOnError(t *testing.T, errorChan chan error) chan bool {
 func newLogger(t *testing.T, logfile string, opt loggerOption) logger {
 	switch {
 	case opt == closeFileAfterEachLine:
-		return &closeFileAfterEachLineLogger{
-			path: logfile,
-		}
+		return newCloseFileAfterEachLineLogger(t, logfile)
 	case opt == keepOpen:
-		t.Fatalf("keepOpen logger not implemented yet.")
-		return nil
+		return newKeepOpenLogger(t, logfile)
 	default:
-		t.Fatalf("Unsupported logger option.")
+		t.Fatalf("%v: Unsupported logger option.", opt)
 		return nil
 	}
 }
 
 type logger interface {
 	log(t *testing.T, msg string)
+	close(t *testing.T)
 }
 
 type closeFileAfterEachLineLogger struct {
 	path string
+}
+
+func newCloseFileAfterEachLineLogger(t *testing.T, logfile string) logger {
+	return &closeFileAfterEachLineLogger{
+		path: logfile,
+	}
 }
 
 func (l *closeFileAfterEachLineLogger) log(t *testing.T, msg string) {
@@ -173,6 +186,42 @@ func (l *closeFileAfterEachLineLogger) log(t *testing.T, msg string) {
 	err = f.Close()
 	if err != nil {
 		t.Fatalf("%v: Failed to close file: %v", l.path, err.Error())
+	}
+}
+
+func (l *closeFileAfterEachLineLogger) close(t *testing.T) {
+	// nothing to do
+}
+
+type keepOpenLogger struct {
+	file *os.File
+}
+
+func newKeepOpenLogger(t *testing.T, logfile string) logger {
+	f, err := os.OpenFile(logfile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+	if err != nil {
+		t.Fatalf("%v: Failed to open file for writing: %v", logfile, err.Error())
+	}
+	return &keepOpenLogger{
+		file: f,
+	}
+}
+
+func (l *keepOpenLogger) log(t *testing.T, msg string) {
+	_, err := l.file.WriteString(fmt.Sprintf("%v\n", msg))
+	if err != nil {
+		t.Fatalf("%v: Failed to write to file: %v", l.file.Name(), err.Error())
+	}
+	err = l.file.Sync()
+	if err != nil {
+		t.Fatalf("%v: Failed to flush the file: %v", l.file.Name(), err.Error())
+	}
+}
+
+func (l *keepOpenLogger) close(t *testing.T) {
+	err := l.file.Close()
+	if err != nil {
+		t.Fatalf("%v: Failed to close logfile: %v", l.file.Name(), err.Error())
 	}
 }
 

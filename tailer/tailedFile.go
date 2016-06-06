@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"os"
-	d "runtime/debug"
 )
 
 type tailedFile struct {
@@ -67,7 +66,6 @@ func (t *tailedFile) IsOpen() bool {
 
 func (t *tailedFile) Open() error {
 	if t.IsOpen() {
-		d.PrintStack()
 		log.Fatalf("%v: Cannot call Open() on an open file.\n", t.path)
 	}
 	file, err := os.Open(t.path)
