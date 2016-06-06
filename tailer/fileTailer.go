@@ -5,21 +5,19 @@ import (
 	"fmt"
 	"github.com/fsnotify/fsnotify"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 )
 
 type fileTailer2 struct {
-	lines   chan string
-	errors  chan error
-	done    chan bool
-	watcher *fsnotify.Watcher
+	lines  chan string
+	errors chan error
+	done   chan bool
 }
 
 func (f *fileTailer2) Close() {
 	f.done <- true
-	f.watcher.Close()
+	close(f.done)
 	close(f.lines)
 	close(f.errors)
 }
@@ -32,58 +30,47 @@ func (f *fileTailer2) ErrorChan() chan error {
 	return f.errors
 }
 
-func RunFileTailer2(path string, readall bool) (Tailer, error) {
-	abspath, err := filepath.Abs(path)
-	if err != nil {
-		return nil, fmt.Errorf("%v: %v", path, err.Error())
-	}
-	watcher, err := newWatcher(abspath)
-	if err != nil {
-		return nil, fmt.Errorf("%v: %v", path, err.Error())
-	}
-	file, err := NewTailedFile(abspath)
-	if err != nil {
-		watcher.Close()
-		return nil, err
-	}
-	if !readall {
-		err = file.SeekEnd()
-		if err != nil {
-			watcher.Close()
-			file.Close()
-			return nil, err
-		}
-	}
-	linesChannel, doneChannel, errorChannel := runWatcher(watcher, abspath, file)
-	return &fileTailer2{
-		lines:   linesChannel,
-		errors:  errorChannel,
-		done:    doneChannel,
-		watcher: watcher,
-	}, nil
-}
-
-func newWatcher(abspath string) (*fsnotify.Watcher, error) {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return nil, fmt.Errorf("Failed to initialize tail process: %v", err.Error())
-	}
-	dir := filepath.Dir(abspath)
-	debug("Adding watcher for %v\n", dir)
-	err = watcher.Add(dir)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to watch files in %v: %v", dir, err.Error())
-	}
-	return watcher, nil
-}
-
-func runWatcher(watcher *fsnotify.Watcher, abspath string, file *tailedFile) (chan string, chan bool, chan error) {
+func RunFileTailer2(path string, readall bool) Tailer {
 	linesChannel := make(chan string) // TODO: Add capacity, so that we can handle a few fsnotify events in advance, while lines are still processed.
 	doneChannel := make(chan bool)
 	errorChannel := make(chan error)
 	go func() {
+		abspath, err := filepath.Abs(path)
+		if err != nil {
+			errorChannel <- fmt.Errorf("%v: %v", path, err.Error())
+			return
+		}
+		watcher, err := fsnotify.NewWatcher()
+		if err != nil {
+			errorChannel <- fmt.Errorf("Failed to initialize tail process: %v", err.Error())
+			return
+		}
+		defer watcher.Close()
+		dir := filepath.Dir(abspath)
+		debug("Adding watcher for %v\n", dir)
+		err = watcher.Add(dir)
+		if err != nil {
+			errorChannel <- fmt.Errorf("Failed to watch files in %v: %v", dir, err.Error())
+			return
+		}
+		file, err := NewTailedFile(abspath)
+		if err != nil {
+			errorChannel <- err
+			return
+		}
+		defer func() {
+			if !file.IsClosed() {
+				file.Close()
+			}
+		}()
+		if !readall {
+			err = file.SeekEnd()
+			if err != nil {
+				errorChannel <- err
+				return
+			}
+		}
 		buf := make([]byte, 0) // Buffer for Bytes read from the logfile, but no newline yet, so we need to wait until we can send it to linesChannel.
-		var err error
 		for {
 			if file.IsOpen() {
 				buf, err = processAvailableLines(file, buf, linesChannel)
@@ -94,7 +81,6 @@ func runWatcher(watcher *fsnotify.Watcher, abspath string, file *tailedFile) (ch
 			}
 			select {
 			case event := <-watcher.Events:
-
 				if isRelevant(event, abspath) {
 					debug("processing event %v\n", event)
 					err := processEvent(event, file)
@@ -106,7 +92,7 @@ func runWatcher(watcher *fsnotify.Watcher, abspath string, file *tailedFile) (ch
 					debug("ignoring event %v\n", event)
 				}
 			case err := <-watcher.Errors:
-				errorChannel <- fmt.Errorf("Error while watching files in %v: %v", path.Dir(abspath), err.Error())
+				errorChannel <- fmt.Errorf("Error while watching files in %v: %v", dir, err.Error())
 				return
 			case <-doneChannel:
 				debug("Shutting down file watcher loop.\n")
@@ -114,7 +100,11 @@ func runWatcher(watcher *fsnotify.Watcher, abspath string, file *tailedFile) (ch
 			}
 		}
 	}()
-	return linesChannel, doneChannel, errorChannel
+	return &fileTailer2{
+		lines:  linesChannel,
+		errors: errorChannel,
+		done:   doneChannel,
+	}
 }
 
 func processAvailableLines(file *tailedFile, bytesFromLastRead []byte, linesChannel chan string) ([]byte, error) {
@@ -131,11 +121,13 @@ func processAvailableLines(file *tailedFile, bytesFromLastRead []byte, linesChan
 
 func processEvent(event fsnotify.Event, file *tailedFile) error {
 	switch {
-	case event.Op&fsnotify.Remove == fsnotify.Remove:
+	case event.Op&fsnotify.Remove == fsnotify.Remove || event.Op&fsnotify.Rename == fsnotify.Rename:
 		return file.Close()
 	case event.Op&fsnotify.Create == fsnotify.Create:
 		return file.Open()
-	case event.Op&fsnotify.Chmod == fsnotify.Chmod:
+	case event.Op&fsnotify.Chmod == fsnotify.Chmod || event.Op&fsnotify.Write == fsnotify.Write:
+		// When the file is truncated on Linux, we get CHMOD.
+		// On Windows we get no event directly, but check for truncation with each write.
 		trunkated, err := file.IsTruncated()
 		if err != nil {
 			return err
