@@ -2,6 +2,7 @@ package tailer
 
 import (
 	"fmt"
+	debugLogger "github.com/fstab/grok_exporter/logger"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -97,7 +98,7 @@ func testLogrotate(t *testing.T, logrotateOpt logrotateOption, logrotateMoveOpt 
 	logger.log(t, "test line 1")
 	logger.log(t, "test line 2")
 
-	tail := RunFileTailer2(logfile, true)
+	tail := RunFileTailer(logfile, true, debugLogger.New(true))
 	defer tail.Close()
 
 	// We don't expect errors. However, start a go-routine listening on

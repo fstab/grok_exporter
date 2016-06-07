@@ -1,13 +1,13 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"github.com/fstab/grok_exporter/config"
+	"github.com/fstab/grok_exporter/logger"
 	"github.com/fstab/grok_exporter/metrics"
 	"github.com/fstab/grok_exporter/server"
-	"github.com/google/mtail/tailer"
+	"github.com/fstab/grok_exporter/tailer"
 	"github.com/prometheus/client_golang/prometheus"
 	"net/http"
 	"os"
@@ -115,72 +115,26 @@ func startServer(cfg *config.Config, path string, handler http.Handler) chan err
 }
 
 func processLogLines(cfg *config.Config, metrics []metrics.Metric, serverErrorChannel chan error) error {
+	var tail tailer.Tailer
 	switch {
 	case cfg.Input.Type == "file":
-		return processLogLinesFile(cfg, metrics, serverErrorChannel)
+		tail = tailer.RunFileTailer(cfg.Input.Path, cfg.Input.Readall, logger.New(false))
 	case cfg.Input.Type == "stdin":
-		return processLogLinesStdin(cfg, metrics, serverErrorChannel)
+		tail = tailer.RunStdinTailer()
 	default:
 		return fmt.Errorf("Config error: Input type '%v' unknown.", cfg.Input.Type)
 	}
-}
-
-func processLogLinesFile(cfg *config.Config, metrics []metrics.Metric, serverErrorChannel chan error) error {
-	lines := make(chan string)
-	t, err := tailer.New(tailer.Options{Lines: lines})
-	if err != nil {
-		return fmt.Errorf("Initialization error: Failed to initialize the tail process: %v", err.Error())
-	}
-	go t.Tail(cfg.Input.Path, cfg.Input.Readall)
+	defer tail.Close()
 	for {
 		select {
 		case err := <-serverErrorChannel:
-			t.Close()
 			return fmt.Errorf("Server error: %v", err.Error())
-		case line := <-lines:
+		case err := <-tail.ErrorChan():
+			return fmt.Errorf("Error reading log lines: %v", err.Error())
+		case line := <-tail.LineChan():
 			process(line, metrics)
 		}
 	}
-}
-
-func processLogLinesStdin(cfg *config.Config, metrics []metrics.Metric, serverErrorChannel chan error) error {
-	c := stdinChan()
-	for {
-		select {
-		case err := <-serverErrorChannel:
-			// TODO: We should stop the STDIN reading goroutine here.
-			return fmt.Errorf("Server error: %v", err.Error())
-		case r := <-c:
-			if r.err != nil {
-				// TODO: We should stop the server here.
-				return fmt.Errorf("Stopped reading on stdin: %v", r.err.Error())
-			}
-			process(r.line, metrics)
-		}
-	}
-}
-
-type stdinRead struct {
-	line string
-	err  error
-}
-
-func stdinChan() chan (*stdinRead) {
-	out := make(chan (*stdinRead))
-	go func() {
-		reader := bufio.NewReader(os.Stdin)
-		for {
-			line, err := reader.ReadString('\n')
-			out <- &stdinRead{
-				line: line,
-				err:  err,
-			}
-			if err != nil {
-				close(out)
-			}
-		}
-	}()
-	return out
 }
 
 func process(line string, metrics []metrics.Metric) {

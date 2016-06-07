@@ -9,28 +9,29 @@ import (
 	"strings"
 )
 
-type fileTailer2 struct {
+type fileTailer struct {
 	lines  chan string
 	errors chan error
 	done   chan bool
 }
 
-func (f *fileTailer2) Close() {
+func (f *fileTailer) Close() {
+	// Will panic if Close() is called multiple times.
 	f.done <- true
 	close(f.done)
 	close(f.lines)
 	close(f.errors)
 }
 
-func (f *fileTailer2) LineChan() chan string {
+func (f *fileTailer) LineChan() chan string {
 	return f.lines
 }
 
-func (f *fileTailer2) ErrorChan() chan error {
+func (f *fileTailer) ErrorChan() chan error {
 	return f.errors
 }
 
-func RunFileTailer2(path string, readall bool) Tailer {
+func RunFileTailer(path string, readall bool, log simpleLogger) Tailer {
 	linesChannel := make(chan string) // TODO: Add capacity, so that we can handle a few fsnotify events in advance, while lines are still processed.
 	doneChannel := make(chan bool)
 	errorChannel := make(chan error)
@@ -47,7 +48,7 @@ func RunFileTailer2(path string, readall bool) Tailer {
 		}
 		defer watcher.Close()
 		dir := filepath.Dir(abspath)
-		debug("Adding watcher for %v\n", dir)
+		log.Debug("Watching file system notifications in '%v'.\n", dir)
 		err = watcher.Add(dir)
 		if err != nil {
 			errorChannel <- fmt.Errorf("Failed to watch files in %v: %v", dir, err.Error())
@@ -82,25 +83,25 @@ func RunFileTailer2(path string, readall bool) Tailer {
 			select {
 			case event := <-watcher.Events:
 				if isRelevant(event, abspath) {
-					debug("processing event %v\n", event)
+					log.Debug("Processing file system event %v\n", event)
 					err := processEvent(event, file)
 					if err != nil {
 						errorChannel <- err
 						return
 					}
 				} else {
-					debug("ignoring event %v\n", event)
+					log.Debug("Ignoring file system event %v\n", event)
 				}
 			case err := <-watcher.Errors:
 				errorChannel <- fmt.Errorf("Error while watching files in %v: %v", dir, err.Error())
 				return
 			case <-doneChannel:
-				debug("Shutting down file watcher loop.\n")
+				log.Debug("Shutting down file system notification watcher.\n")
 				return
 			}
 		}
 	}()
-	return &fileTailer2{
+	return &fileTailer{
 		lines:  linesChannel,
 		errors: errorChannel,
 		done:   doneChannel,
@@ -163,6 +164,6 @@ func stripLines(data []byte) ([]byte, []string) {
 	return make([]byte, 0), result
 }
 
-func debug(format string, a ...interface{}) {
-	fmt.Printf(format, a...)
+type simpleLogger interface {
+	Debug(format string, a ...interface{})
 }
