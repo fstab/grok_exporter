@@ -123,7 +123,7 @@ func testLogrotate(t *testing.T, logrotateOpt logrotateOption, logrotateMoveOpt 
 	// Log two more lines and see if they are received.
 	logger.log(t, "line 4")
 	logger.log(t, "line 5")
-	expect(tail.LineChan(), "line 4", 1*time.Second, t)
+	expect(tail.LineChan(), "line 4", 5*time.Second, t) // few seconds longer to get filesystem notifications for rotate()
 	expect(tail.LineChan(), "line 5", 1*time.Second, t)
 }
 

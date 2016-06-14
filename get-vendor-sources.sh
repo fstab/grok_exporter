@@ -11,6 +11,10 @@ cd $SRC
 #mv vendor vendor.bak
 rm -rf vendor
 
+###########################################################################
+# github.com/moovweb/rubex
+###########################################################################
+
 cd $SRC
 mkdir -p vendor/github.com/moovweb
 cd vendor/github.com/moovweb
@@ -93,50 +97,6 @@ git checkout 9e6977f30c91c78396e719e164e57f9287fff42c
 rm -rf .git .gitignore Make* jsonpb protoc-gen-go ptypes
 
 ###########################################################################
-# github.com/google/mtail/tailer
-###########################################################################
-
-cd $SRC
-mkdir -p vendor/github.com/google
-cd vendor/github.com/google
-git clone https://github.com/google/mtail.git
-cd mtail
-git checkout a54f860fe8b14440320014ed608e438a790f19ac
-ls -A | grep -v tailer | grep -v watcher | xargs rm -r
-patch -p1 < $SRC/vendor-patches/mtail.patch
-
-# Dependency: gopkg.in/fsnotify.v1
-
-cd $SRC
-mkdir -p vendor/gopkg.in
-cd vendor/gopkg.in
-git clone https://gopkg.in/fsnotify.v1
-cd fsnotify.v1
-git checkout v1.3.0
-rm -rf .git .gitignore .travis.yml
-
-# Dependency: golang.org/x/sys/unix
-
-cd $SRC
-mkdir -p vendor/golang.org/x
-cd vendor/golang.org/x
-git clone https://github.com/golang/sys.git
-cd sys
-git checkout d4feaf1a7e61e1d9e79e6c4e76c6349e9cab0a03
-rm -rf .git .gitattributes .gitignore
-
-# Dependency: github.com/spf13/afero
-
-cd $SRC
-mkdir -p vendor/github.com/spf13
-cd vendor/github.com/spf13
-git clone https://github.com/spf13/afero.git
-cd afero
-git checkout f0b36a98d372af4038e20729956792ec38df54e2
-rm -rf .git .travis.yml sftp*
-patch -p1 < $SRC/vendor-patches/afero.patch
-
-###########################################################################
 # gopkg.in/yaml.v2
 ###########################################################################
 
@@ -147,6 +107,28 @@ git clone https://gopkg.in/yaml.v2
 cd yaml.v2
 git checkout v2
 rm -rf .git .travis.yml
+
+###########################################################################
+# github.com/fsnotify/fsnotify
+###########################################################################
+
+cd $SRC
+mkdir -p vendor/github.com/fsnotify
+cd vendor/github.com/fsnotify
+git clone https://github.com/fsnotify/fsnotify
+cd fsnotify
+git checkout v1.3.0
+rm -rf .git .gitignore .travis.yml
+
+# Dependency: golang.org/x/sys
+
+cd $SRC
+mkdir -p vendor/golang.org/x/
+cd vendor/golang.org/x
+git clone https://go.googlesource.com/sys
+cd sys
+git checkout 5a8c7f28c1853e998847117cf1f3fe96ce88a59f
+rm -rf .git .gitattributes .gitignore
 
 ###########################################################################
 
