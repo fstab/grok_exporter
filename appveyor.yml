@@ -11,8 +11,11 @@ environment:
 
 build_script:
  - go version
- - go get github.com/fsnotify/fsnotify
- - go test -v github.com/fsnotify/fsnotify
+ - go test -v github.com/fstab/grok_exporter/config
+ - go test -v github.com/fstab/grok_exporter/dummy_glog
+ - go test -v github.com/fstab/grok_exporter/logger
+ - go test -v github.com/fstab/grok_exporter/metrics
+ - go test -v github.com/fstab/grok_exporter/server
  - go test -v github.com/fstab/grok_exporter/tailer
 
 test: off
