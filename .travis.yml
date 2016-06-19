@@ -1,5 +1,7 @@
 language: go
 
+install:
+
 script:
  - go version
  - go test -v github.com/fstab/grok_exporter/config
