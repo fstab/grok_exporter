@@ -1,6 +1,7 @@
 language: go
 
 install:
+ - echo "Skipping install phase, because github.com/fstab/grok_exporter has all its dependencies in the vendor/ folder."
 
 script:
  - go version
