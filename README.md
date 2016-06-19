@@ -18,7 +18,21 @@ The goal is to use Grok patterns for extracting Prometheus metrics from arbitrar
 Status
 ------
 
-`grok_exporter` is currently just a proof of concept. We are able to compile all of Grok's default patterns, but as of now we implemented only `counter` as an example of a Prometheus metric.
+`grok_exporter` is still in alpha phase. We plan to release the first beta before the [PromCon 2016](https://promcon.io).
+
+Operating system support:
+
+* Linux 64 Bit: Supported
+* Windows 64 Bit: Supported [![Build status](https://ci.appveyor.com/api/projects/status/d8aq0pa3yfoapd69?svg=true)](https://ci.appveyor.com/project/fstab/grok-exporter)
+* Mac OS 64 Bit: Supported
+
+Grok pattern support:
+
+* We are able to compile all of Grok's default patterns on [github.com/logstash-plugins/logstash-patterns-core](https://github.com/logstash-plugins/logstash-patterns-core/tree/818b7aa60d3c2fea008ea673dbbc49179c6df2c8/patterns).
+
+Prometheus support:
+
+* As of now, we implemented only `counter` as an example of a Prometheus metric. We will implement support for more metric types, as well as metrics to monitor `grok_exporter` itself.
 
 How to run the example
 ----------------------
