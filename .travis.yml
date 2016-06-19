@@ -1,6 +1,13 @@
 language: go
 
+script:
+ - go version
+ - go test -v github.com/fstab/grok_exporter/config
+ - go test -v github.com/fstab/grok_exporter/dummy_glog
+ - go test -v github.com/fstab/grok_exporter/logger
+ - go test -v github.com/fstab/grok_exporter/server
+ - go test -v github.com/fstab/grok_exporter/tailer
+# - go test -v github.com/fstab/grok_exporter/metrics
+
 go:
 - tip
-
-script: go test -v github.com/fstab/grok_exporter/config github.com/fstab/grok_exporter/dummy_glog github.com/fstab/grok_exporter/logger github.com/fstab/grok_exporter/server github.com/fstab/grok_exporter/tailer
