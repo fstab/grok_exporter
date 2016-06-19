@@ -2,3 +2,5 @@ language: go
 
 go:
 - tip
+
+script: go test -v github.com/fstab/grok_exporter/config github.com/fstab/grok_exporter/dummy_glog github.com/fstab/grok_exporter/logger github.com/fstab/grok_exporter/server github.com/fstab/grok_exporter/tailer
