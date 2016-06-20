@@ -381,6 +381,7 @@ func expect(c chan string, line string, timeout time.Duration, t *testing.T) {
 	go func() {
 		time.Sleep(timeout)
 		timeoutChan <- true
+		close(timeoutChan)
 	}()
 	select {
 	case result := <-c:
