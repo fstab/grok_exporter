@@ -383,14 +383,22 @@ func expect(c chan string, line string, timeout time.Duration, t *testing.T) {
 		timeoutChan <- true
 		close(timeoutChan)
 	}()
+	lineFound := false
 	select {
 	case result := <-c:
 		if result != line {
 			t.Errorf("Expected '%v', but got '%v'.", line, result)
 		} else {
 			fmt.Printf("Read expected line '%v'\n", line)
+			lineFound = true
 		}
-	case <-timeoutChan:
+	case b := <-timeoutChan:
+		if !b {
+			fmt.Printf("WAT??? READ %v FROM timeoutChan!!!\n", b)
+		}
+		if lineFound {
+			fmt.Printf("WAT??? READ FROM timeoutChan ALTHOUGH LINE FOUND!!!\n")
+		}
 		t.Errorf("Timeout while waiting for line '%v'", line)
 	}
 }
