@@ -6,14 +6,14 @@ os:
 
 before_install:
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update && brew install oniguruma ; fi
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get update && sudo apt-get install libonig-dev ; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get -qq update && sudo apt-get install libonig-dev ; fi
 
 install:
   - echo "Skipping install phase, because github.com/fstab/grok_exporter has all its dependencies in the vendor/ folder."
 
 script:
   - go version
-  - go test $(go list ./... | grep -v /vendor/)
+  - go test -v $(go list ./... | grep -v /vendor/)
 
 go:
 - tip
