@@ -127,8 +127,8 @@ func testLogrotate(t *testing.T, testRunNumber int, logrotateOpt logrotateOption
 
 	// Log two more lines and see if they are received.
 	logger.debug(t, "line 4")
-	logger.debug(t, "line 5")
 	expect(t, testRunNumber, tail.LineChan(), "line 4", 10*time.Second) // few seconds longer to get filesystem notifications for rotate()
+	logger.debug(t, "line 5")
 	expect(t, testRunNumber, tail.LineChan(), "line 5", 1*time.Second)
 }
 
@@ -396,7 +396,7 @@ func expect(t *testing.T, testRunNumber int, c chan string, line string, timeout
 			debug(testRunNumber, "Read expected line '%v'\n", line)
 		}
 	case <-timeoutChan:
-		debug(testRunNumber, "[%v] Timeout while waiting for line '%v'", testRunNumber, line)
+		debug(testRunNumber, "Timeout while waiting for line '%v'\n", line)
 		t.Errorf("[%v] Timeout while waiting for line '%v'", testRunNumber, line)
 	}
 }
