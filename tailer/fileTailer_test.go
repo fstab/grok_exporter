@@ -388,20 +388,18 @@ func expect(t *testing.T, testRunNumber int, c chan string, line string, timeout
 		timeoutChan <- true
 		close(timeoutChan)
 	}()
-	lineFound := false
 	select {
 	case result := <-c:
 		if result != line {
-			t.Errorf("Expected '%v', but got '%v'.", line, result)
+			t.Errorf("[%v] Expected '%v', but got '%v'.", testRunNumber, line, result)
 		} else {
 			debug(testRunNumber, "Read expected line '%v'\n", line)
-			lineFound = true
 		}
-	case b := <-timeoutChan:
-		t.Errorf("Timeout while waiting for line '%v' (b=%v, lineFound=%v, testRunNumber=%v)", line, b, lineFound, testRunNumber)
+	case <-timeoutChan:
+		t.Errorf("[%v] Timeout while waiting for line '%v'", testRunNumber, line)
 	}
 }
 
-func debug(id int, format string, a ...interface{}) {
-	fmt.Printf("%v: %v", id, fmt.Sprintf(format, a...))
+func debug(testRunNumber int, format string, a ...interface{}) {
+	fmt.Printf("[%v] %v", testRunNumber, fmt.Sprintf(format, a...))
 }
