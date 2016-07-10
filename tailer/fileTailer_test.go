@@ -396,6 +396,7 @@ func expect(t *testing.T, testRunNumber int, c chan string, line string, timeout
 			debug(testRunNumber, "Read expected line '%v'\n", line)
 		}
 	case <-timeoutChan:
+		debug(testRunNumber, "[%v] Timeout while waiting for line '%v'", testRunNumber, line)
 		t.Errorf("[%v] Timeout while waiting for line '%v'", testRunNumber, line)
 	}
 }
