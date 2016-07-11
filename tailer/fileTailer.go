@@ -32,7 +32,7 @@ func (f *fileTailer) ErrorChan() chan error {
 }
 
 func RunFileTailer(path string, readall bool, log simpleLogger) Tailer {
-	linesChannel := make(chan string) // TODO: Add capacity, so that we can handle a few fsnotify events in advance, while lines are still processed.
+	linesChannel := make(chan string)
 	doneChannel := make(chan bool)
 	errorChannel := make(chan error)
 	go func() {
@@ -72,6 +72,7 @@ func RunFileTailer(path string, readall bool, log simpleLogger) Tailer {
 			}
 		}
 		buf := make([]byte, 0) // Buffer for Bytes read from the logfile, but no newline yet, so we need to wait until we can send it to linesChannel.
+		bufferedEvents := runBufferingEventForwarder(watcher.Events)
 		for {
 			if file.IsOpen() {
 				buf, err = processAvailableLines(file, buf, linesChannel)
@@ -81,7 +82,7 @@ func RunFileTailer(path string, readall bool, log simpleLogger) Tailer {
 				}
 			}
 			select {
-			case event := <-watcher.Events:
+			case event := <-bufferedEvents:
 				if isRelevant(event, abspath) {
 					log.Debug("Processing file system event %v\n", event)
 					err := processEvent(event, file)
@@ -162,6 +163,22 @@ func stripLines(data []byte) ([]byte, []string) {
 		}
 	}
 	return make([]byte, 0), result
+}
+
+// fsnotify.Event is an unbuffered, synchronous, blocking channel.
+// If we take too long to read an event from it, subsequent events may be lost.
+// We reduce this problem by reading continuously from fsnotify.Events,
+// and forwarding the events to a buffered channel.
+// However, this only makes lost events less likely but does not really solve the problem.
+func runBufferingEventForwarder(events chan fsnotify.Event) chan fsnotify.Event {
+	result := make(chan fsnotify.Event, 100)
+	go func() {
+		for event := range events {
+			result <- event
+		}
+		close(result)
+	}()
+	return result
 }
 
 type simpleLogger interface {
