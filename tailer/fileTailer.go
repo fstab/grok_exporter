@@ -167,7 +167,7 @@ func stripLines(data []byte) ([]byte, []string) {
 
 // fsnotify.Event is an unbuffered, synchronous, blocking channel.
 // If we take too long to read an event from it, subsequent events may be lost.
-// We reduce this problem by reading continuously from fsnotify.Events,
+// We reduce this problem by reading continuously from fsnotify.Events
 // and forwarding the events to a buffered channel.
 // However, this only makes lost events less likely but does not really solve the problem.
 func runBufferingEventForwarder(events chan fsnotify.Event) chan fsnotify.Event {
