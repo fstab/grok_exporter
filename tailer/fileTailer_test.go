@@ -32,6 +32,8 @@ const (
 	keepOpen                                   // Logger keeps the file open.
 )
 
+var stdoutLogger = debugLogger.New(true)
+
 func (opt logrotateOption) String() string {
 	switch {
 	case opt == copy:
@@ -72,7 +74,7 @@ func (opt loggerOption) String() string {
 }
 
 func TestCloseLogfileAfterEachLine(t *testing.T) {
-	testRunNumber := 1
+	testRunNumber := 0
 	for _, mvOpt := range []logrotateMoveOption{mv, cp, rm} {
 		testRunNumber++
 		testLogrotate(t, testRunNumber, create, mvOpt, closeFileAfterEachLine)
@@ -100,10 +102,10 @@ func testLogrotate(t *testing.T, testRunNumber int, logrotateOpt logrotateOption
 	logger := newLogger(t, logfile, loggerOpt)
 	defer logger.close(t)
 
-	logger.debug(t, "test line 1")
-	logger.debug(t, "test line 2")
+	logger.debug(t, testRunNumber, "test line 1")
+	logger.debug(t, testRunNumber, "test line 2")
 
-	tail := RunFileTailer(logfile, true, debugLogger.New(true))
+	tail := RunFileTailer(logfile, true, stdoutLogger)
 	defer tail.Close()
 
 	// We don't expect errors. However, start a go-routine listening on
@@ -120,15 +122,15 @@ func testLogrotate(t *testing.T, testRunNumber int, logrotateOpt logrotateOption
 	expect(t, testRunNumber, tail.LineChan(), "test line 2", 1*time.Second)
 
 	// Append a line and see if the event is processed.
-	logger.debug(t, "test line 3")
+	logger.debug(t, testRunNumber, "test line 3")
 	expect(t, testRunNumber, tail.LineChan(), "test line 3", 1*time.Second)
 
-	rotate(t, logfile, logrotateOpt, logrotateMoveOpt)
+	rotate(t, testRunNumber, logfile, logrotateOpt, logrotateMoveOpt)
 
 	// Log two more lines and see if they are received.
-	logger.debug(t, "line 4")
+	logger.debug(t, testRunNumber, "line 4")
 	expect(t, testRunNumber, tail.LineChan(), "line 4", 10*time.Second) // few seconds longer to get filesystem notifications for rotate()
-	logger.debug(t, "line 5")
+	logger.debug(t, testRunNumber, "line 5")
 	expect(t, testRunNumber, tail.LineChan(), "line 5", 1*time.Second)
 }
 
@@ -165,7 +167,7 @@ func newLogger(t *testing.T, logfile string, opt loggerOption) logger {
 }
 
 type logger interface {
-	debug(t *testing.T, msg string)
+	debug(t *testing.T, testRunNumber int, msg string)
 	close(t *testing.T)
 }
 
@@ -179,20 +181,24 @@ func newCloseFileAfterEachLineLogger(t *testing.T, logfile string) logger {
 	}
 }
 
-func (l *closeFileAfterEachLineLogger) debug(t *testing.T, msg string) {
+func (l *closeFileAfterEachLineLogger) debug(t *testing.T, testRunNumber int, msg string) {
 	f, err := os.OpenFile(l.path, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
 		t.Fatalf("%v: Failed to open file for writing: %v", l.path, err.Error())
 	}
-	defer f.Close()
 	_, err = f.WriteString(fmt.Sprintf("%v\n", msg))
 	if err != nil {
 		t.Fatalf("%v: Failed to write to file: %v", l.path, err.Error())
+	}
+	err = f.Sync()
+	if err != nil {
+		t.Fatalf("%v: Failed to flush file: %v", l.path, err.Error())
 	}
 	err = f.Close()
 	if err != nil {
 		t.Fatalf("%v: Failed to close file: %v", l.path, err.Error())
 	}
+	debug(testRunNumber, "Wrote log line '%v' with closeFileAfterEachLineLogger.\n", msg)
 }
 
 func (l *closeFileAfterEachLineLogger) close(t *testing.T) {
@@ -213,7 +219,7 @@ func newKeepOpenLogger(t *testing.T, logfile string) logger {
 	}
 }
 
-func (l *keepOpenLogger) debug(t *testing.T, msg string) {
+func (l *keepOpenLogger) debug(t *testing.T, testRunNumber int, msg string) {
 	_, err := l.file.WriteString(fmt.Sprintf("%v\n", msg))
 	if err != nil {
 		t.Fatalf("%v: Failed to write to file: %v", l.file.Name(), err.Error())
@@ -222,6 +228,7 @@ func (l *keepOpenLogger) debug(t *testing.T, msg string) {
 	if err != nil {
 		t.Fatalf("%v: Failed to flush the file: %v", l.file.Name(), err.Error())
 	}
+	debug(testRunNumber, "Wrote log line '%v' with keepOpenLogger.\n", msg)
 }
 
 func (l *keepOpenLogger) close(t *testing.T) {
@@ -281,7 +288,7 @@ func ls(t *testing.T, path string) []os.FileInfo {
 	return result
 }
 
-func rotate(t *testing.T, logfile string, opt logrotateOption, mvOpt logrotateMoveOption) {
+func rotate(t *testing.T, testRunNumber int, logfile string, opt logrotateOption, mvOpt logrotateMoveOption) {
 	dir := filepath.Dir(logfile)
 	filename := filepath.Base(logfile)
 	filesBefore := ls(t, dir)
@@ -308,6 +315,7 @@ func rotate(t *testing.T, logfile string, opt logrotateOption, mvOpt logrotateMo
 	default:
 		t.Fatalf("Unknown logrotate option.")
 	}
+	debug(testRunNumber, "Simulated logrotate with option %v and mvOption %v\n", opt, mvOpt)
 }
 
 func moveOrFail(t *testing.T, mvOpt logrotateMoveOption, logfile string) {
@@ -402,5 +410,5 @@ func expect(t *testing.T, testRunNumber int, c chan string, line string, timeout
 }
 
 func debug(testRunNumber int, format string, a ...interface{}) {
-	fmt.Printf("[%v] %v", testRunNumber, fmt.Sprintf(format, a...))
+	stdoutLogger.Debug("[%v] %v", testRunNumber, fmt.Sprintf(format, a...))
 }

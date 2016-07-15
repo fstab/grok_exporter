@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"syscall"
 )
 
 type tailedFile struct {
@@ -62,6 +63,42 @@ func (t *tailedFile) IsClosed() bool {
 
 func (t *tailedFile) IsOpen() bool {
 	return !t.IsClosed()
+}
+
+func (t *tailedFile) WasMoved() bool {
+	if t.IsClosed() {
+		log.Fatalf("%v: Cannot call WasMoved() on a closed file.\n", t.path)
+	}
+	fileInfo, err := t.file.Stat()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to get inode of %v: %v\n", t.path, err.Error())
+		os.Exit(-1)
+	}
+	fileInfoFromFileSystem, err := os.Stat(t.path)
+	if err != nil {
+		return true // If the path does not exist anymore, the file was moved.
+	}
+	i1 := inode(fileInfo)
+	i2 := inode(fileInfoFromFileSystem)
+	fmt.Printf("inode(fileInfo) = %v, inode(fileInfoFromFileSystem) = %v\n", i1, i2)
+	return i1 != i2
+}
+
+// see github.com/google/mtail
+func inode(fileInfo os.FileInfo) uint64 {
+	s := fileInfo.Sys()
+	if s == nil {
+		fmt.Fprintf(os.Stderr, "Failed to get inode of %v.\n", fileInfo.Name())
+		os.Exit(-1)
+	}
+	switch s := s.(type) {
+	case *syscall.Stat_t:
+		return uint64(s.Ino)
+	default:
+		fmt.Fprintf(os.Stderr, "Failed to get inode of %v.\n", fileInfo.Name())
+		os.Exit(-1)
+	}
+	return 0
 }
 
 func (t *tailedFile) Open() error {
