@@ -126,18 +126,21 @@ func (t *tailedFile) Read2EOF() ([]byte, error) {
 	}
 }
 
-func (t *tailedFile) IsTruncated() (bool, error) {
+func (t *tailedFile) IsTruncated() bool {
 	if t.IsClosed() {
 		log.Fatalf("%v: Cannot call IsTruncated() on a closed file.\n", t.path)
 	}
 	file, err := os.Open(t.path)
 	if err != nil {
-		return false, fmt.Errorf("%v: %v", t.path, err.Error())
+		return false // May happen if file was removed. We treat this as "file was not truncated".
 	}
 	defer file.Close()
 	fileInfo, err := file.Stat()
 	if err != nil {
-		return false, fmt.Errorf("%v: Failed to get file info: %v", t.path, err.Error())
+		// We can successfully open the file, but Stat() fails.
+		// Maybe this might happen if the filesystem fails, like NFS becomes unreachable.
+		// Treat it as a catastrophic error.
+		log.Fatalf("%v: %v", t.path, err.Error())
 	}
-	return t.currentPos > fileInfo.Size(), nil
+	return t.currentPos > fileInfo.Size()
 }

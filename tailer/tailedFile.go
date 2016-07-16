@@ -71,34 +71,28 @@ func (t *tailedFile) WasMoved() bool {
 	}
 	fileInfo, err := t.file.Stat()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to get inode of %v: %v\n", t.path, err.Error())
-		os.Exit(-1)
+		log.Fatalf("Failed to get inode of %v: %v\n", t.path, err.Error())
 	}
 	fileInfoFromFileSystem, err := os.Stat(t.path)
 	if err != nil {
 		return true // If the path does not exist anymore, the file was moved.
 	}
-	i1 := inode(fileInfo)
-	i2 := inode(fileInfoFromFileSystem)
-	fmt.Printf("inode(fileInfo) = %v, inode(fileInfoFromFileSystem) = %v\n", i1, i2)
-	return i1 != i2
+	return inode(fileInfo) != inode(fileInfoFromFileSystem)
 }
 
 // see github.com/google/mtail
 func inode(fileInfo os.FileInfo) uint64 {
 	s := fileInfo.Sys()
 	if s == nil {
-		fmt.Fprintf(os.Stderr, "Failed to get inode of %v.\n", fileInfo.Name())
-		os.Exit(-1)
+		log.Fatalf("Failed to get inode of %v.\n", fileInfo.Name())
 	}
 	switch s := s.(type) {
 	case *syscall.Stat_t:
 		return uint64(s.Ino)
 	default:
-		fmt.Fprintf(os.Stderr, "Failed to get inode of %v.\n", fileInfo.Name())
-		os.Exit(-1)
+		log.Fatalf("Failed to get inode of %v.\n", fileInfo.Name())
 	}
-	return 0
+	return 0 // cannot happen
 }
 
 func (t *tailedFile) Open() error {
@@ -132,17 +126,23 @@ func (t *tailedFile) Read2EOF() ([]byte, error) {
 	}
 }
 
-func (t *tailedFile) IsTruncated() (bool, error) {
+func (t *tailedFile) IsTruncated() bool {
 	if t.IsClosed() {
 		log.Fatalf("%v: Cannot call IsTruncated() on a closed file.\n", t.path)
 	}
 	currentPos, err := t.file.Seek(0, os.SEEK_CUR)
 	if err != nil {
-		return false, fmt.Errorf("%v: Failed to get current read position: %v", t.path, err.Error())
+		// File is open, but we cannot call Seek().
+		// Maybe this might happen if the filesystem fails, like NFS becomes unreachable.
+		// Treat it as a catastrophic error.
+		log.Fatalf("%v: %v", t.path, err.Error())
 	}
 	fileInfo, err := t.file.Stat()
 	if err != nil {
-		return false, fmt.Errorf("%v: Failed to get file info: %v", t.path, err.Error())
+		// File is open, but we cannot call Stat().
+		// Maybe this might happen if the filesystem fails, like NFS becomes unreachable.
+		// Treat it as a catastrophic error.
+		log.Fatalf("%v: %v", t.path, err.Error())
 	}
-	return currentPos > fileInfo.Size(), nil
+	return currentPos > fileInfo.Size()
 }

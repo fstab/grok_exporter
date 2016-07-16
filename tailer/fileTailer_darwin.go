@@ -1,9 +1,9 @@
 package tailer
 
 import (
-	"bytes"
 	"fmt"
 	"golang.org/x/sys/unix"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -33,9 +33,9 @@ func (f *fileTailer) ErrorChan() chan error {
 
 // The original fileTailer implementation uses github.com/fsnotify/fsnotify.
 // While fsnotify works fine on Linux and Windows, we experienced lost events on macOS.
-// We suspect the reason to be a race condition: When logrotate moves a file, but the file is re-created immediately,
+// We suspect the reason to be a race condition: When logrotate moves a file but the file is re-created immediately
 // fsnotify will not trigger a CREATE event with the kqueue() and kevent() implementation on macOS.
-// To solve that, we hacked a simplified file watcher for macOS that comares inodes to learn if a file was moved.
+// To solve that, we hacked a simplified file watcher for macOS that compares inodes to learn if a file was moved.
 func RunFileTailer(path string, readall bool, log simpleLogger) Tailer {
 	linesChannel := make(chan string)
 	doneChannel := make(chan bool)
@@ -53,11 +53,7 @@ func RunFileTailer(path string, readall bool, log simpleLogger) Tailer {
 			return
 		}
 
-		dir, err := os.Open(filepath.Dir(abspath))
-		if err != nil {
-			errorChannel <- fmt.Errorf("%v: %v", path, err.Error())
-			return
-		}
+		lineReader := NewLineReader(file, linesChannel)
 
 		if !readall {
 			err = file.SeekEnd()
@@ -67,49 +63,21 @@ func RunFileTailer(path string, readall bool, log simpleLogger) Tailer {
 			}
 		}
 
-		kq, err := unix.Kqueue()
-		if kq == -1 || err != nil {
-			errorChannel <- fmt.Errorf("Failed to watch %v: %v\n", path, err.Error())
+		kqueueEventChannel, kqueueDoneChannel, err := runKeventLoop(abspath, readall)
+		if err != nil {
+			errorChannel <- err
 			return
 		}
-
-		kqueueEventChannel := make(chan int, 10)
-		kqueueDoneChannel := make(chan bool)
-
-		go func() {
-			if readall {
-				kqueueEventChannel <- 1 // Simulate event, so that pre-existing lines are read.
-			}
-			for {
-				timeout := unix.NsecToTimespec((100 * time.Millisecond).Nanoseconds())
-				events := make([]unix.Kevent_t, 10)
-				f, _ := os.Open(abspath) // f may be nil if not exists, in that case we just listen for events on dir.
-				n, _ := unix.Kevent(kq, makeChanges(dir, f), events, &timeout)
-				select {
-				case <-kqueueDoneChannel:
-					return
-				default:
-					if n > 0 {
-						kqueueEventChannel <- n
-					}
-				}
-			}
-		}()
-
-		buf := make([]byte, 0) // Buffer for Bytes read from the logfile, but no newline yet, so we need to wait until we can send it to linesChannel.
 
 		for {
 			select {
 			case <-doneChannel:
 				kqueueDoneChannel <- true
-				dir.Close()
 				if file.IsOpen() {
 					file.Close()
 				}
-				unix.Close(kq)
 				return
-			case n := <-kqueueEventChannel:
-				fmt.Printf("Processing event (n=%v)\n", n)
+			case <-kqueueEventChannel:
 				if file.IsClosed() {
 					err = file.Open()
 					if err != nil {
@@ -117,7 +85,7 @@ func RunFileTailer(path string, readall bool, log simpleLogger) Tailer {
 					}
 				}
 				if file.WasMoved() {
-					buf, err = processAvailableLines(file, buf, linesChannel) // lines in old file
+					err = lineReader.ProcessAvailableLines() // remaining lines in old file
 					if err != nil {
 						errorChannel <- err
 						return
@@ -128,19 +96,14 @@ func RunFileTailer(path string, readall bool, log simpleLogger) Tailer {
 						continue // File not found: New file was not created yet. Wait for next event.
 					}
 				}
-				trunkated, err := file.IsTruncated()
-				if err != nil {
-					errorChannel <- err
-					return
-				}
-				if trunkated {
+				if file.IsTruncated() {
 					err = file.SeekStart()
 					if err != nil {
 						errorChannel <- err
 						return
 					}
 				}
-				buf, err = processAvailableLines(file, buf, linesChannel)
+				err = lineReader.ProcessAvailableLines()
 				if err != nil {
 					errorChannel <- err
 					return
@@ -155,61 +118,78 @@ func RunFileTailer(path string, readall bool, log simpleLogger) Tailer {
 	}
 }
 
-func processAvailableLines(file *tailedFile, bytesFromLastRead []byte, linesChannel chan string) ([]byte, error) {
-	newBytes, err := file.Read2EOF()
+func runKeventLoop(abspath string, readall bool) (chan int, chan bool, error) {
+
+	dir, err := os.Open(filepath.Dir(abspath))
 	if err != nil {
-		return nil, err
+		return nil, nil, fmt.Errorf("%v: %v", abspath, err.Error())
 	}
-	remainingBytes, lines := stripLines(append(bytesFromLastRead, newBytes...))
-	for _, line := range lines {
-		linesChannel <- line
+
+	kq, err := unix.Kqueue()
+	if kq == -1 || err != nil {
+		dir.Close()
+		return nil, nil, fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
 	}
-	return remainingBytes, nil
+
+	kqueueEventChannel := make(chan int, 10)
+	kqueueDoneChannel := make(chan bool)
+
+	go func() {
+		defer unix.Close(kq)
+		defer dir.Close()
+		defer close(kqueueEventChannel)
+		defer close(kqueueDoneChannel)
+		timeout := unix.NsecToTimespec((5 * time.Second).Nanoseconds())
+		events := make([]unix.Kevent_t, 10)
+		if readall {
+			kqueueEventChannel <- 1 // Simulate event, so that pre-existing lines are read.
+		}
+		for {
+			// This loop has a race condition: If an event happens between two kevent() calls,
+			// the event will be lost. However, we will detect all new log lines with the next event,
+			// so eventually all log lines will be processed.
+
+			f, _ := os.Open(abspath) // f may be nil if abspath does not exist. In that case we just listen for events on dir.
+			n, err := unix.Kevent(kq, makeKeventFilter(dir, f), events, &timeout)
+			if err != nil {
+				// If we cannot call kevent(), there's not much we can do.
+				log.Fatalf("%v: kevent() failed: %v", dir.Name(), err.Error())
+			}
+			if f != nil {
+				f.Close()
+			}
+			select {
+			case <-kqueueDoneChannel:
+				return
+			default:
+				if n > 0 {
+					kqueueEventChannel <- n
+				}
+			}
+		}
+	}()
+	return kqueueEventChannel, kqueueDoneChannel, nil
 }
 
-func makeChanges(dir *os.File, file *os.File) []unix.Kevent_t {
-	changes := make([]unix.Kevent_t, 1)
-	changes[0] = unix.Kevent_t{
-		Ident:  uint64(dir.Fd()),
-		Filter: unix.EVFILT_VNODE,
-		Flags:  unix.EV_ADD | unix.EV_ENABLE | unix.EV_ONESHOT,
-		Fflags: unix.NOTE_DELETE | unix.NOTE_WRITE | unix.NOTE_EXTEND | unix.NOTE_ATTRIB | unix.NOTE_LINK | unix.NOTE_RENAME | unix.NOTE_REVOKE,
-		Data:   0,
-		Udata:  nil,
-	}
-	if file != nil {
-		changes = append(changes, unix.Kevent_t{
-			Ident:  uint64(file.Fd()),
+func makeKeventFilter(dir *os.File, file *os.File) []unix.Kevent_t {
+	newKevent := func(fd uintptr) unix.Kevent_t {
+		return unix.Kevent_t{
+			Ident:  uint64(fd),
 			Filter: unix.EVFILT_VNODE,
 			Flags:  unix.EV_ADD | unix.EV_ENABLE | unix.EV_ONESHOT,
 			Fflags: unix.NOTE_DELETE | unix.NOTE_WRITE | unix.NOTE_EXTEND | unix.NOTE_ATTRIB | unix.NOTE_LINK | unix.NOTE_RENAME | unix.NOTE_REVOKE,
 			Data:   0,
 			Udata:  nil,
-		})
+		}
+	}
+	changes := make([]unix.Kevent_t, 1)
+	changes[0] = newKevent(dir.Fd())
+	if file != nil {
+		changes = append(changes, newKevent(file.Fd()))
 	}
 	return changes
 }
 
 type simpleLogger interface {
 	Debug(format string, a ...interface{})
-}
-
-func stripLines(data []byte) ([]byte, []string) {
-	newline := []byte("\n")
-	result := make([]string, 0)
-	lines := bytes.SplitAfter(data, newline)
-	for i, line := range lines {
-		if bytes.HasSuffix(line, newline) {
-			line = bytes.TrimSuffix(line, newline)
-			line = bytes.TrimSuffix(line, []byte("\r")) // needed for Windows?
-			result = append(result, string(line))
-		} else {
-			if i != len(lines)-1 {
-				fmt.Fprintf(os.Stderr, "Unexpected error while splitting log data into lines. This is a bug.\n")
-				os.Exit(-1)
-			}
-			return line, result
-		}
-	}
-	return make([]byte, 0), result
 }

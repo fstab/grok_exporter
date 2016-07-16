@@ -3,10 +3,8 @@
 package tailer
 
 import (
-	"bytes"
 	"fmt"
 	"github.com/fsnotify/fsnotify"
-	"os"
 	"path/filepath"
 	"strings"
 )
@@ -73,11 +71,11 @@ func RunFileTailer(path string, readall bool, log simpleLogger) Tailer {
 				return
 			}
 		}
-		buf := make([]byte, 0) // Buffer for Bytes read from the logfile, but no newline yet, so we need to wait until we can send it to linesChannel.
+		lineReader := NewLineReader(file, linesChannel)
 		bufferedEvents := runBufferingEventForwarder(watcher.Events)
 		for {
 			if file.IsOpen() {
-				buf, err = processAvailableLines(file, buf, linesChannel)
+				err = lineReader.ProcessAvailableLines()
 				if err != nil {
 					errorChannel <- err
 					return
@@ -111,18 +109,6 @@ func RunFileTailer(path string, readall bool, log simpleLogger) Tailer {
 	}
 }
 
-func processAvailableLines(file *tailedFile, bytesFromLastRead []byte, linesChannel chan string) ([]byte, error) {
-	newBytes, err := file.Read2EOF()
-	if err != nil {
-		return nil, err
-	}
-	remainingBytes, lines := stripLines(append(bytesFromLastRead, newBytes...))
-	for _, line := range lines {
-		linesChannel <- line
-	}
-	return remainingBytes, nil
-}
-
 func processEvent(event fsnotify.Event, file *tailedFile) error {
 	switch {
 	case event.Op&fsnotify.Remove == fsnotify.Remove || event.Op&fsnotify.Rename == fsnotify.Rename:
@@ -132,11 +118,7 @@ func processEvent(event fsnotify.Event, file *tailedFile) error {
 	case event.Op&fsnotify.Chmod == fsnotify.Chmod || event.Op&fsnotify.Write == fsnotify.Write:
 		// When the file is truncated on Linux, we get CHMOD.
 		// On Windows we get no event directly, but check for truncation with each write.
-		trunkated, err := file.IsTruncated()
-		if err != nil {
-			return err
-		}
-		if trunkated {
+		if file.IsTruncated() {
 			return file.SeekStart()
 		}
 	}
@@ -145,26 +127,6 @@ func processEvent(event fsnotify.Event, file *tailedFile) error {
 
 func isRelevant(event fsnotify.Event, abspath string) bool {
 	return strings.HasSuffix(event.Name, abspath)
-}
-
-func stripLines(data []byte) ([]byte, []string) {
-	newline := []byte("\n")
-	result := make([]string, 0)
-	lines := bytes.SplitAfter(data, newline)
-	for i, line := range lines {
-		if bytes.HasSuffix(line, newline) {
-			line = bytes.TrimSuffix(line, newline)
-			line = bytes.TrimSuffix(line, []byte("\r")) // needed for Windows?
-			result = append(result, string(line))
-		} else {
-			if i != len(lines)-1 {
-				fmt.Fprintf(os.Stderr, "Unexpected error while splitting log data into lines. This is a bug.\n")
-				os.Exit(-1)
-			}
-			return line, result
-		}
-	}
-	return make([]byte, 0), result
 }
 
 // fsnotify.Event is an unbuffered, synchronous, blocking channel.
