@@ -35,8 +35,8 @@ func (f *fileTailer) ErrorChan() chan error {
 // While fsnotify works fine on Linux and Windows, we experienced lost events on macOS.
 // We suspect the reason to be a race condition: When logrotate moves a file but the file is re-created immediately
 // fsnotify will not trigger a CREATE event with the kqueue() and kevent() implementation on macOS.
-// To solve that, we hacked a simplified file watcher for macOS that compares inodes to learn if a file was moved.
-func RunFileTailer(path string, readall bool, log simpleLogger) Tailer {
+// To solve that, we hacked a simplified file watcher for macOS that compares inodes to learn if a file was re-created.
+func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 	linesChannel := make(chan string)
 	doneChannel := make(chan bool)
 	errorChannel := make(chan error)
@@ -63,7 +63,7 @@ func RunFileTailer(path string, readall bool, log simpleLogger) Tailer {
 			}
 		}
 
-		kqueueEventChannel, kqueueDoneChannel, err := runKeventLoop(abspath, readall)
+		kqueueEventChannel, kqueueDoneChannel, err := runKeventLoop(abspath, readall, logger)
 		if err != nil {
 			errorChannel <- err
 			return
@@ -118,7 +118,7 @@ func RunFileTailer(path string, readall bool, log simpleLogger) Tailer {
 	}
 }
 
-func runKeventLoop(abspath string, readall bool) (chan int, chan bool, error) {
+func runKeventLoop(abspath string, readall bool, logger simpleLogger) (chan int, chan bool, error) {
 
 	dir, err := os.Open(filepath.Dir(abspath))
 	if err != nil {
@@ -139,24 +139,33 @@ func runKeventLoop(abspath string, readall bool) (chan int, chan bool, error) {
 		defer dir.Close()
 		defer close(kqueueEventChannel)
 		defer close(kqueueDoneChannel)
-		timeout := unix.NsecToTimespec((5 * time.Second).Nanoseconds())
+		// Timeout is needed so we read from kqueueDoneChannel from time to time.
+		timeout := unix.NsecToTimespec((500 * time.Millisecond).Nanoseconds())
+		zeroTimeout := unix.NsecToTimespec(0) // timeout zero means non-blocking kevent() call
 		events := make([]unix.Kevent_t, 10)
 		if readall {
 			kqueueEventChannel <- 1 // Simulate event, so that pre-existing lines are read.
 		}
 		for {
-			// This loop has a race condition: If an event happens between two kevent() calls,
-			// the event will be lost. However, we will detect all new log lines with the next event,
-			// so eventually all log lines will be processed.
-
 			f, _ := os.Open(abspath) // f may be nil if abspath does not exist. In that case we just listen for events on dir.
+			logger.Debug("Waiting for file system events.\n")
 			n, err := unix.Kevent(kq, makeKeventFilter(dir, f), events, &timeout)
 			if err != nil {
 				// If we cannot call kevent(), there's not much we can do.
 				log.Fatalf("%v: kevent() failed: %v", dir.Name(), err.Error())
 			}
+			logger.Debug("Got %v file system events.\n", n)
+
+			// Remove the events, so we don't see them again with the next kevent() call.
+			for i := 0; i < n; i++ {
+				events[i].Flags = unix.EV_DELETE
+				_, err = unix.Kevent(kq, events[i:i+1], nil, &zeroTimeout)
+				if err != nil {
+					log.Fatalf("Failed to remove event (ident=%v, fflags=%v) from kqueue: %v", events[i].Ident, events[i].Fflags, err.Error())
+				}
+			}
 			if f != nil {
-				f.Close()
+				f.Close() // re-open with each loop, because logfile might be moved and re-created by logrotate.
 			}
 			select {
 			case <-kqueueDoneChannel:
@@ -175,8 +184,8 @@ func makeKeventFilter(dir *os.File, file *os.File) []unix.Kevent_t {
 	newKevent := func(fd uintptr) unix.Kevent_t {
 		return unix.Kevent_t{
 			Ident:  uint64(fd),
-			Filter: unix.EVFILT_VNODE,
-			Flags:  unix.EV_ADD | unix.EV_ENABLE | unix.EV_ONESHOT,
+			Filter: unix.EVFILT_VNODE, // File modification and deletion events
+			Flags:  unix.EV_ADD,       // Add a new event, automatically enabled unless EV_DISABLE is specified
 			Fflags: unix.NOTE_DELETE | unix.NOTE_WRITE | unix.NOTE_EXTEND | unix.NOTE_ATTRIB | unix.NOTE_LINK | unix.NOTE_RENAME | unix.NOTE_REVOKE,
 			Data:   0,
 			Udata:  nil,
