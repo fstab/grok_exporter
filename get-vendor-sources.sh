@@ -109,28 +109,6 @@ git checkout v2
 rm -rf .git .travis.yml
 
 ###########################################################################
-# github.com/fsnotify/fsnotify
-###########################################################################
-
-cd $SRC
-mkdir -p vendor/github.com/fsnotify
-cd vendor/github.com/fsnotify
-git clone https://github.com/fsnotify/fsnotify
-cd fsnotify
-git checkout v1.3.0
-rm -rf .git .gitignore .travis.yml
-
-# Dependency: golang.org/x/sys
-
-cd $SRC
-mkdir -p vendor/golang.org/x/
-cd vendor/golang.org/x
-git clone https://go.googlesource.com/sys
-cd sys
-git checkout 5a8c7f28c1853e998847117cf1f3fe96ce88a59f
-rm -rf .git .gitattributes .gitignore
-
-###########################################################################
 # golang.org/x/exp/inotify and golang.org/x/exp/winfsnotify
 ###########################################################################
 
@@ -142,6 +120,16 @@ cd exp
 git checkout 7be2ce36128ef1337a5348a7cb5a599830b42ac3
 find . -type f | grep -v inotify_linux.go | grep -v winfsnotify.go | xargs rm -f
 find . -type d -empty -delete
+
+# Dependency: golang.org/x/sys
+
+cd $SRC
+mkdir -p vendor/golang.org/x/
+cd vendor/golang.org/x
+git clone https://go.googlesource.com/sys
+cd sys
+git checkout 5a8c7f28c1853e998847117cf1f3fe96ce88a59f
+rm -rf .git .gitattributes .gitignore
 
 ###########################################################################
 
