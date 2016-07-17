@@ -159,7 +159,7 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 					if file == nil && events[i].Ident == uint64(dir.Fd()) {
 						if events[i].Fflags&unix.NOTE_WRITE == unix.NOTE_WRITE {
 							file, err = os.Open(abspath)
-							if file != nil && err == nil {
+							if err == nil {
 								_, err = unix.Kevent(kq, []unix.Kevent_t{makeEvent(file)}, nil, &zeroTimeout)
 								if err != nil {
 									closeAll(dir, file, kq)

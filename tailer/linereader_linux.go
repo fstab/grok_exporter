@@ -1,37 +1,54 @@
-// +build !darwin,!linux
-
 package tailer
 
 import (
 	"bytes"
+	"fmt"
+	"io"
 	"log"
+	"os"
 )
 
-type lineReader struct {
+type bufferedLineReader struct {
 	bytesFromLastRead []byte // bytesFromLastRead is a buffer for Bytes read from the logfile, but no newline yet, so we need to wait until we can send it to outputChannel.
 	outputChannel     chan string
-	file              *tailedFile
+	file              *os.File
 }
 
-func NewLineReader(file *tailedFile, outputChannel chan string) *lineReader {
-	return &lineReader{
+func NewBufferedLineReader(file *os.File, outputChannel chan string) *bufferedLineReader {
+	return &bufferedLineReader{
 		bytesFromLastRead: make([]byte, 0),
 		outputChannel:     outputChannel,
 		file:              file,
 	}
 }
 
-func (l *lineReader) ProcessAvailableLines() error {
-	newBytes, err := l.file.Read2EOF()
+func (r *bufferedLineReader) ProcessAvailableLines() error {
+	newBytes, err := read2EOF(r.file)
 	if err != nil {
 		return err
 	}
-	remainingBytes, lines := stripLines(append(l.bytesFromLastRead, newBytes...))
+	remainingBytes, lines := stripLines(append(r.bytesFromLastRead, newBytes...))
 	for _, line := range lines {
-		l.outputChannel <- line
+		r.outputChannel <- line
 	}
-	l.bytesFromLastRead = remainingBytes
+	r.bytesFromLastRead = remainingBytes
 	return nil
+}
+
+func read2EOF(file *os.File) ([]byte, error) {
+	result := make([]byte, 0)
+	buf := make([]byte, 512)
+	for {
+		n, err := file.Read(buf)
+		if err != nil {
+			if err == io.EOF {
+				return result, nil
+			} else {
+				return nil, fmt.Errorf("Error reading from %v: %v", file.Name(), err.Error())
+			}
+		}
+		result = append(result, buf[0:n]...)
+	}
 }
 
 func stripLines(data []byte) ([]byte, []string) {

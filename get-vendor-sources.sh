@@ -131,5 +131,18 @@ git checkout 5a8c7f28c1853e998847117cf1f3fe96ce88a59f
 rm -rf .git .gitattributes .gitignore
 
 ###########################################################################
+# golang.org/x/exp/inotify
+###########################################################################
+
+cd $SRC
+mkdir -p vendor/golang.org/x/
+cd vendor/golang.org/x
+git clone https://go.googlesource.com/exp
+cd exp
+git checkout 7be2ce36128ef1337a5348a7cb5a599830b42ac3
+find . -type f | grep -v inotify_linux.go | xargs rm -f
+find . -type d -empty -delete
+
+###########################################################################
 
 find $SRC/vendor -type f -name '*_test.go'  | xargs rm
