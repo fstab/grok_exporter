@@ -15,7 +15,8 @@ type fileTailer struct {
 }
 
 func (f *fileTailer) Close() {
-	// Will panic if Close() is called multiple times.
+	// TODO (1): If there was an error, this might hang forever, as the loop reading from 'done' has stopped.
+	// TODO (2): Will panic if Close() is called multiple times, because writing to closed 'done' channel.
 	f.done <- true
 	close(f.done)
 	close(f.lines)
