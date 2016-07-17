@@ -3,7 +3,6 @@ package tailer
 import (
 	"fmt"
 	"golang.org/x/sys/unix"
-	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -31,95 +30,153 @@ func (f *fileTailer) ErrorChan() chan error {
 	return f.errors
 }
 
-// The original fileTailer implementation uses github.com/fsnotify/fsnotify.
-// While fsnotify works fine on Linux and Windows, we experienced lost events on macOS.
-// We suspect the reason to be a race condition: When logrotate moves a file but the file is re-created immediately
-// fsnotify will not trigger a CREATE event with the kqueue() and kevent() implementation on macOS.
-// To solve that, we hacked a simplified file watcher for macOS that compares inodes to learn if a file was re-created.
+// We don't use github.com/fsnotify/fsnotify for Darwin, because there seems to be a race condition when
+// a new logfile is created and data is written to the new file before fsnotify adds it to the watch list.
 func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 	linesChannel := make(chan string)
 	doneChannel := make(chan bool)
 	errorChannel := make(chan error)
 	go func() {
+		var (
+			dir, file *os.File
+			kq        int
+		)
 		abspath, err := filepath.Abs(path)
 		if err != nil {
+			closeAll(dir, file, kq)
 			errorChannel <- fmt.Errorf("%v: %v", path, err.Error())
 			return
 		}
 
-		file, err := NewTailedFile(abspath)
+		file, err = os.Open(abspath)
 		if err != nil {
-			errorChannel <- err
+			closeAll(dir, file, kq)
+			errorChannel <- fmt.Errorf("%v: %v", abspath, err.Error())
 			return
 		}
 
-		lineReader := NewLineReader(file, linesChannel)
-
 		if !readall {
-			err = file.SeekEnd()
+			_, err := file.Seek(0, os.SEEK_END)
 			if err != nil {
-				errorChannel <- err
+				closeAll(dir, file, kq)
+				errorChannel <- fmt.Errorf("%v: Error while seeking to the end of file: %v", path, err.Error())
 				return
 			}
 		}
 
-		kqueueEventChannel, kqueueDoneChannel, err := runKeventLoop(abspath, readall, logger)
+		reader := NewBufferedLineReader(file, linesChannel)
+
+		dir, err = os.Open(filepath.Dir(abspath))
 		if err != nil {
-			errorChannel <- err
+			closeAll(dir, file, kq)
+			errorChannel <- fmt.Errorf("%v: %v", filepath.Dir(abspath), err.Error())
 			return
 		}
+
+		kq, err = unix.Kqueue()
+		if kq == -1 || err != nil {
+			closeAll(dir, file, kq)
+			errorChannel <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
+			return
+		}
+
+		timeout := unix.NsecToTimespec((1 * time.Second).Nanoseconds())
+		zeroTimeout := unix.NsecToTimespec(0) // timeout zero means non-blocking kevent() call
+
+		// Register for events on dir and file.
+		_, err = unix.Kevent(kq, []unix.Kevent_t{makeEvent(dir), makeEvent(file)}, nil, &zeroTimeout)
+		if err != nil {
+			closeAll(dir, file, kq)
+			errorChannel <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
+			return
+		}
+
+		if readall {
+			err = reader.ProcessAvailableLines()
+			if err != nil {
+				closeAll(dir, file, kq)
+				errorChannel <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
+				return
+			}
+		}
+
+		events := make([]unix.Kevent_t, 10)
 
 		for {
 			select {
 			case <-doneChannel:
-				kqueueDoneChannel <- true
-				if file.IsOpen() {
-					file.Close()
-				}
+				closeAll(dir, file, kq)
 				return
-			case <-kqueueEventChannel:
-				if len(kqueueEventChannel) == 0 {
-					// There is a race condition in the kevent() loop:
-					// If a logfile is created, it will be watched starting with the next kevent() call.
-					// All events before the next kevent() call are lost for new files.
-					// To avoid this, we delay a bit, so that we are sure kevent() is called before we process the event.
-					time.Sleep(200 * time.Millisecond)
-				}
-				logger.Debug("Got a notification from the filesystem watcher. Trying to figure out what is going on.\n")
-				if file.IsClosed() {
-					err = file.Open()
-					if err != nil {
-						continue // File not found. Wait for next event.
-					}
-					logger.Debug("Re-opened logfile after logrotate.\n")
-				}
-				if file.WasMoved() {
-					logger.Debug("Logfile was moved. Processing remaining lines in old logfile and closing it.\n")
-					err = lineReader.ProcessAvailableLines() // remaining lines in old file
-					if err != nil {
-						errorChannel <- err
-						return
-					}
-					file.Close()
-					err = file.Open()
-					if err != nil {
-						continue // File not found: New file was not created yet. Wait for next event.
-					}
-					logger.Debug("Re-opened logfile after logrotate.\n")
-				}
-				if file.IsTruncated() {
-					logger.Debug("Logfile is truncated. Seeking to the beginning of the file.\n")
-					err = file.SeekStart()
-					if err != nil {
-						errorChannel <- err
-						return
-					}
-				}
-				logger.Debug("Reading new lines from logfile, if available.\n")
-				err = lineReader.ProcessAvailableLines()
+			default:
+				n, err := unix.Kevent(kq, nil, events, &timeout)
 				if err != nil {
-					errorChannel <- err
+					closeAll(dir, file, kq)
+					errorChannel <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
 					return
+				}
+				logger.Debug("File system watcher got %v events:\n", n)
+				for i := 0; i < n; i++ {
+					logger.Debug(" * %s\n", event2string(dir, file, events[i]))
+				}
+				for i := 0; i < n; i++ {
+					// Handle truncate events.
+					if file != nil && events[i].Ident == uint64(file.Fd()) {
+						if events[i].Fflags&unix.NOTE_ATTRIB == unix.NOTE_ATTRIB {
+							_, err := file.Seek(0, os.SEEK_SET)
+							if err != nil {
+								closeAll(dir, file, kq)
+								errorChannel <- fmt.Errorf("Failed to seek to the beginning of file %v: %v", abspath, err.Error())
+								return
+							}
+						}
+					}
+				}
+				for i := 0; i < n; i++ {
+					// Handle write events.
+					if file != nil && events[i].Ident == uint64(file.Fd()) {
+						if events[i].Fflags&unix.NOTE_WRITE == unix.NOTE_WRITE {
+							err = reader.ProcessAvailableLines()
+							if err != nil {
+								closeAll(dir, file, kq)
+								errorChannel <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
+								return
+							}
+						}
+					}
+				}
+				for i := 0; i < n; i++ {
+					// Handle move and delete events.
+					if file != nil && events[i].Ident == uint64(file.Fd()) {
+						if events[i].Fflags&unix.NOTE_DELETE == unix.NOTE_DELETE || events[i].Fflags&unix.NOTE_RENAME == unix.NOTE_RENAME {
+							file.Close() // closing the fd will automatically remove event from kq.
+							file = nil
+							reader = nil
+						}
+					}
+				}
+				for i := 0; i < n; i++ {
+					// Handle create events.
+					if file == nil && events[i].Ident == uint64(dir.Fd()) {
+						if events[i].Fflags&unix.NOTE_WRITE == unix.NOTE_WRITE {
+							file, err = os.Open(abspath)
+							if file != nil && err == nil {
+								_, err = unix.Kevent(kq, []unix.Kevent_t{makeEvent(file)}, nil, &zeroTimeout)
+								if err != nil {
+									closeAll(dir, file, kq)
+									errorChannel <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
+									return
+								}
+								reader = NewBufferedLineReader(file, linesChannel)
+								err = reader.ProcessAvailableLines()
+								if err != nil {
+									closeAll(dir, file, kq)
+									errorChannel <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
+									return
+								}
+							}
+							// If file could not be opened, the CREATE event was for another file, we ignore this.
+						}
+					}
 				}
 			}
 		}
@@ -131,86 +188,44 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 	}
 }
 
-func runKeventLoop(abspath string, readall bool, logger simpleLogger) (chan int, chan bool, error) {
+func makeEvent(file *os.File) unix.Kevent_t {
 
-	dir, err := os.Open(filepath.Dir(abspath))
-	if err != nil {
-		return nil, nil, fmt.Errorf("%v: %v", abspath, err.Error())
+	// Note about the EV_CLEAR flag:
+	//
+	// The NOTE_WRITE event is triggered by the first write to the file after register, and remains set.
+	// This means that we continue to receive the event indefinitely.
+	//
+	// There are two flags to stop receiving the event over and over again:
+	//
+	// * EV_ONESHOT: This suppresses consecutive events of the same type. However, that means that means that
+	//               we don't receive new WRITE events even if new lines are written to the file.
+	//               Therefore we cannot use EV_ONESHOT.
+	// * EV_CLEAR:   This resets the state after the event, so that an event is only delivered once for each write.
+	//               (Actually it could be less than once per write, since events are coalesced.)
+	//               This is our desired behaviour.
+	//
+	// See also http://benno.id.au/blog/2008/05/15/simplefilemon
+
+	return unix.Kevent_t{
+		Ident:  uint64(file.Fd()),
+		Filter: unix.EVFILT_VNODE,           // File modification and deletion events
+		Flags:  unix.EV_ADD | unix.EV_CLEAR, // Add a new event, automatically enabled unless EV_DISABLE is specified
+		Fflags: unix.NOTE_DELETE | unix.NOTE_WRITE | unix.NOTE_EXTEND | unix.NOTE_ATTRIB | unix.NOTE_LINK | unix.NOTE_RENAME | unix.NOTE_REVOKE,
+		Data:   0,
+		Udata:  nil,
 	}
-
-	kq, err := unix.Kqueue()
-	if kq == -1 || err != nil {
-		dir.Close()
-		return nil, nil, fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
-	}
-
-	kqueueEventChannel := make(chan int, 10)
-	kqueueDoneChannel := make(chan bool)
-
-	go func() {
-		defer unix.Close(kq)
-		defer dir.Close()
-		defer close(kqueueEventChannel)
-		defer close(kqueueDoneChannel)
-		// Timeout is needed so we read from kqueueDoneChannel from time to time.
-		timeout := unix.NsecToTimespec((1 * time.Second).Nanoseconds())
-		zeroTimeout := unix.NsecToTimespec(0) // timeout zero means non-blocking kevent() call
-		events := make([]unix.Kevent_t, 10)
-		if readall {
-			kqueueEventChannel <- 1 // Simulate event, so that pre-existing lines are read.
-		}
-		for {
-			currentLogfile, _ := os.Open(abspath) // may be nil if abspath does not exist. In that case we just listen for events on dir.
-			logger.Debug("Waiting for file system events.\n")
-			n, err := unix.Kevent(kq, makeKeventFilter(dir, currentLogfile), events, &timeout)
-			if err != nil {
-				// If we cannot call kevent(), there's not much we can do.
-				log.Fatalf("%v: kevent() failed: %v", dir.Name(), err.Error())
-			}
-			logger.Debug("Got %v file system events:\n", n)
-
-			// Remove the events, so we don't see them again with the next kevent() call.
-			for i := 0; i < n; i++ {
-				logger.Debug(" * %v\n", event2string(dir, currentLogfile, events[i]))
-				events[i].Flags = unix.EV_DELETE
-				_, err = unix.Kevent(kq, events[i:i+1], nil, &zeroTimeout)
-				if err != nil {
-					log.Fatalf("Failed to remove event (ident=%v, fflags=%v) from kqueue: %v", events[i].Ident, events[i].Fflags, err.Error())
-				}
-			}
-			if currentLogfile != nil {
-				currentLogfile.Close()
-			}
-			select {
-			case <-kqueueDoneChannel:
-				return
-			default:
-				if n > 0 {
-					kqueueEventChannel <- n
-				}
-			}
-		}
-	}()
-	return kqueueEventChannel, kqueueDoneChannel, nil
 }
 
-func makeKeventFilter(dir *os.File, file *os.File) []unix.Kevent_t {
-	newKevent := func(fd uintptr) unix.Kevent_t {
-		return unix.Kevent_t{
-			Ident:  uint64(fd),
-			Filter: unix.EVFILT_VNODE, // File modification and deletion events
-			Flags:  unix.EV_ADD,       // Add a new event, automatically enabled unless EV_DISABLE is specified
-			Fflags: unix.NOTE_DELETE | unix.NOTE_WRITE | unix.NOTE_EXTEND | unix.NOTE_ATTRIB | unix.NOTE_LINK | unix.NOTE_RENAME | unix.NOTE_REVOKE,
-			Data:   0,
-			Udata:  nil,
-		}
+func closeAll(dir *os.File, file *os.File, kq int) {
+	if dir != nil {
+		dir.Close()
 	}
-	changes := make([]unix.Kevent_t, 1)
-	changes[0] = newKevent(dir.Fd())
 	if file != nil {
-		changes = append(changes, newKevent(file.Fd()))
+		file.Close()
 	}
-	return changes
+	if kq != 0 {
+		unix.Close(kq)
+	}
 }
 
 type simpleLogger interface {
