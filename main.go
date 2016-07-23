@@ -42,9 +42,15 @@ func main() {
 	for _, m := range metrics {
 		prometheus.MustRegister(m.Collector())
 	}
+	tail, err := startTailer(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(-1)
+	}
+	//defer tail.Close() // TODO
 	serverErrorChannel := startServer(cfg, "/metrics", prometheus.Handler())
 	fmt.Printf("Starting server on %v://localhost:%v/metrics\n", cfg.Server.Protocol, cfg.Server.Port)
-	err = processLogLines(cfg, metrics, serverErrorChannel)
+	err = processLogLines(tail, metrics, serverErrorChannel)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err.Error())
 		os.Exit(-1)
@@ -114,7 +120,7 @@ func startServer(cfg *config.Config, path string, handler http.Handler) chan err
 	return result
 }
 
-func processLogLines(cfg *config.Config, metrics []metrics.Metric, serverErrorChannel chan error) error {
+func startTailer(cfg *config.Config) (tailer.Tailer, error) {
 	var tail tailer.Tailer
 	switch {
 	case cfg.Input.Type == "file":
@@ -122,9 +128,12 @@ func processLogLines(cfg *config.Config, metrics []metrics.Metric, serverErrorCh
 	case cfg.Input.Type == "stdin":
 		tail = tailer.RunStdinTailer()
 	default:
-		return fmt.Errorf("Config error: Input type '%v' unknown.", cfg.Input.Type)
+		return nil, fmt.Errorf("Config error: Input type '%v' unknown.", cfg.Input.Type)
 	}
-	defer tail.Close()
+	return BufferedTailerWithMetrics(tail), nil
+}
+
+func processLogLines(tail tailer.Tailer, metrics []metrics.Metric, serverErrorChannel chan error) error {
 	for {
 		select {
 		case err := <-serverErrorChannel:
