@@ -4,73 +4,67 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
 )
 
 type bufferedLineReader struct {
-	bytesFromLastRead []byte // bytesFromLastRead is a buffer for Bytes read from the logfile, but no newline yet, so we need to wait until we can send it to outputChannel.
-	outputChannel     chan string
-	file              File
+	remainingBytesFromLastRead []byte
+	out                        chan string
+	in                         io.Reader
 }
 
-func NewBufferedLineReader(file File, outputChannel chan string) *bufferedLineReader {
+func NewBufferedLineReader(file io.Reader, out chan string) *bufferedLineReader {
 	return &bufferedLineReader{
-		bytesFromLastRead: make([]byte, 0),
-		outputChannel:     outputChannel,
-		file:              file,
+		remainingBytesFromLastRead: make([]byte, 0),
+		out: out,
+		in:  file,
 	}
 }
 
 func (r *bufferedLineReader) ProcessAvailableLines() error {
-	newBytes, err := read2EOF(r.file)
+	newBytes, err := read2EOF(r.in)
 	if err != nil {
 		return err
 	}
-	remainingBytes, lines := stripLines(append(r.bytesFromLastRead, newBytes...))
+	lines, remainingBytes := splitLines(append(r.remainingBytesFromLastRead, newBytes...))
 	for _, line := range lines {
-		r.outputChannel <- line
+		r.out <- line
 	}
-	r.bytesFromLastRead = remainingBytes
+	r.remainingBytesFromLastRead = remainingBytes
 	return nil
 }
 
-func read2EOF(file File) ([]byte, error) {
+func read2EOF(file io.Reader) ([]byte, error) {
 	result := make([]byte, 0)
 	buf := make([]byte, 512)
 	for {
 		n, err := file.Read(buf)
+		if n > 0 {
+			// Callers should always process the n > 0 bytes returned before considering the error err.
+			result = append(result, buf[0:n]...)
+		}
 		if err != nil {
 			if err == io.EOF {
 				return result, nil
 			} else {
-				return nil, fmt.Errorf("Error reading from %v: %v", file.Name(), err.Error())
+				return nil, fmt.Errorf("read error: %v", err.Error())
 			}
 		}
-		result = append(result, buf[0:n]...)
 	}
 }
 
-func stripLines(data []byte) ([]byte, []string) {
+func splitLines(data []byte) (lines []string, remainingBytes []byte) {
 	newline := []byte("\n")
-	result := make([]string, 0)
-	lines := bytes.SplitAfter(data, newline)
-	for i, line := range lines {
+	lines = make([]string, 0)
+	remainingBytes = make([]byte, 0)
+	for _, line := range bytes.SplitAfter(data, newline) {
 		if bytes.HasSuffix(line, newline) {
 			line = bytes.TrimSuffix(line, newline)
 			line = bytes.TrimSuffix(line, []byte("\r")) // Needed for CRLF line endings?
-			result = append(result, string(line))
+			lines = append(lines, string(line))
 		} else {
-			if i != len(lines)-1 {
-				log.Fatal("Unexpected error while splitting log data into lines. This is a bug.\n")
-			}
-			return line, result
+			// This is the last (incomplete) line returned by SplitAfter(). We will exit the for loop here.
+			remainingBytes = line
 		}
 	}
-	return make([]byte, 0), result
-}
-
-// implemented by *os.File
-type File interface {
-	Read(b []byte) (int, error)
-	Name() string
+	return lines, remainingBytes
 }

@@ -15,10 +15,10 @@ type logrotateMoveOption int
 type loggerOption int
 
 const ( // see 'man logrotate'
-	copy         logrotateOption = iota // Don’t change the original logfile at all.
-	copytruncate                        // Truncate the original log file in place instead of removing it.
-	nocreate                            // Don't create a new logfile after rotation.
-	create                              // Create a new empty logfile immediately after rotation.
+	_copy         logrotateOption = iota // Don’t change the original logfile at all.
+	_copytruncate                        // Truncate the original log file in place instead of removing it.
+	_nocreate                            // Don't create a new logfile after rotation.
+	_create                              // Create a new empty logfile immediately after rotation.
 )
 
 const (
@@ -34,13 +34,13 @@ const (
 
 func (opt logrotateOption) String() string {
 	switch {
-	case opt == copy:
+	case opt == _copy:
 		return "copy"
-	case opt == copytruncate:
+	case opt == _copytruncate:
 		return "copytruncate"
-	case opt == nocreate:
+	case opt == _nocreate:
 		return "nocreate"
-	case opt == create:
+	case opt == _create:
 		return "create"
 	default:
 		return "unknown"
@@ -75,21 +75,21 @@ func TestCloseLogfileAfterEachLine(t *testing.T) {
 	testRunNumber := 0
 	for _, mvOpt := range []logrotateMoveOption{mv, cp, rm} {
 		testRunNumber++
-		testLogrotate(t, NewTestRunLogger(testRunNumber), create, mvOpt, closeFileAfterEachLine)
+		testLogrotate(t, NewTestRunLogger(testRunNumber), _create, mvOpt, closeFileAfterEachLine)
 		testRunNumber++
-		testLogrotate(t, NewTestRunLogger(testRunNumber), nocreate, mvOpt, closeFileAfterEachLine)
+		testLogrotate(t, NewTestRunLogger(testRunNumber), _nocreate, mvOpt, closeFileAfterEachLine)
 	}
 	// For logrotate options 'copy' and 'copytruncate', only the mvOpt 'cp' makes sense.
 	testRunNumber++
-	testLogrotate(t, NewTestRunLogger(testRunNumber), copy, cp, closeFileAfterEachLine)
+	testLogrotate(t, NewTestRunLogger(testRunNumber), _copy, cp, closeFileAfterEachLine)
 	testRunNumber++
-	testLogrotate(t, NewTestRunLogger(testRunNumber), copytruncate, cp, closeFileAfterEachLine)
+	testLogrotate(t, NewTestRunLogger(testRunNumber), _copytruncate, cp, closeFileAfterEachLine)
 }
 
 func TestKeepLogfileOpen(t *testing.T) {
 	// When the logger keeps the file open, only the logrotate options 'copy' and 'copytruncate' make sense.
-	testLogrotate(t, NewTestRunLogger(100), copy, cp, keepOpen)
-	testLogrotate(t, NewTestRunLogger(101), copytruncate, cp, keepOpen)
+	testLogrotate(t, NewTestRunLogger(100), _copy, cp, keepOpen)
+	testLogrotate(t, NewTestRunLogger(101), _copytruncate, cp, keepOpen)
 }
 
 func testLogrotate(t *testing.T, testRunLogger simpleLogger, logrotateOpt logrotateOption, logrotateMoveOpt logrotateMoveOption, loggerOpt loggerOption) {
@@ -294,18 +294,18 @@ func rotate(t *testing.T, testRunLogger simpleLogger, logfile string, opt logrot
 		t.Fatalf("%v does not contain %v before logrotate.", dir, filename)
 	}
 	switch {
-	case opt == nocreate:
+	case opt == _nocreate:
 		moveOrFail(t, mvOpt, logfile)
-	case opt == create:
+	case opt == _create:
 		moveOrFail(t, mvOpt, logfile)
 		createOrFail(t, logfile)
-	case opt == copytruncate:
+	case opt == _copytruncate:
 		if mvOpt != cp {
 			t.Fatalf("Rotating with '%v' does not make sense when moving the logfile with '%v'", opt, mvOpt)
 		}
 		cpOrFail(t, logfile, fmt.Sprintf("%v.1", logfile))
 		truncateOrFail(t, logfile)
-	case opt == copy:
+	case opt == _copy:
 		if mvOpt != cp {
 			t.Fatalf("Rotating with '%v' does not make sense when moving the logfile with '%v'", opt, mvOpt)
 		}

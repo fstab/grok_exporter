@@ -34,9 +34,9 @@ func (f *fileTailer) Errors() chan error {
 }
 
 func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
-	linesChannel := make(chan string)
-	doneChannel := make(chan bool)
-	errorChannel := make(chan error)
+	lines := make(chan string)
+	done := make(chan bool)
+	errors := make(chan error)
 	go func() {
 		var (
 			dir, file *os.File
@@ -45,14 +45,14 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 		abspath, err := filepath.Abs(path)
 		if err != nil {
 			closeAll(dir, file, kq)
-			errorChannel <- fmt.Errorf("%v: %v", path, err.Error())
+			errors <- fmt.Errorf("%v: %v", path, err.Error())
 			return
 		}
 
 		file, err = os.Open(abspath)
 		if err != nil {
 			closeAll(dir, file, kq)
-			errorChannel <- fmt.Errorf("%v: %v", abspath, err.Error())
+			errors <- fmt.Errorf("%v: %v", abspath, err.Error())
 			return
 		}
 
@@ -60,24 +60,24 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 			_, err := file.Seek(0, os.SEEK_END)
 			if err != nil {
 				closeAll(dir, file, kq)
-				errorChannel <- fmt.Errorf("%v: Error while seeking to the end of file: %v", path, err.Error())
+				errors <- fmt.Errorf("%v: Error while seeking to the end of file: %v", path, err.Error())
 				return
 			}
 		}
 
-		reader := NewBufferedLineReader(file, linesChannel)
+		reader := NewBufferedLineReader(file, lines)
 
 		dir, err = os.Open(filepath.Dir(abspath))
 		if err != nil {
 			closeAll(dir, file, kq)
-			errorChannel <- fmt.Errorf("%v: %v", filepath.Dir(abspath), err.Error())
+			errors <- fmt.Errorf("%v: %v", filepath.Dir(abspath), err.Error())
 			return
 		}
 
 		kq, err = unix.Kqueue()
 		if kq == -1 || err != nil {
 			closeAll(dir, file, kq)
-			errorChannel <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
+			errors <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
 			return
 		}
 
@@ -88,7 +88,7 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 		_, err = unix.Kevent(kq, []unix.Kevent_t{makeEvent(dir), makeEvent(file)}, nil, &zeroTimeout)
 		if err != nil {
 			closeAll(dir, file, kq)
-			errorChannel <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
+			errors <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
 			return
 		}
 
@@ -96,7 +96,7 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 			err = reader.ProcessAvailableLines()
 			if err != nil {
 				closeAll(dir, file, kq)
-				errorChannel <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
+				errors <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
 				return
 			}
 		}
@@ -105,14 +105,14 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 
 		for {
 			select {
-			case <-doneChannel:
+			case <-done:
 				closeAll(dir, file, kq)
 				return
 			default:
 				n, err := unix.Kevent(kq, nil, events, &timeout)
 				if err != nil {
 					closeAll(dir, file, kq)
-					errorChannel <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
+					errors <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
 					return
 				}
 				logger.Debug("File system watcher got %v events:\n", n)
@@ -126,7 +126,7 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 							_, err := file.Seek(0, os.SEEK_SET)
 							if err != nil {
 								closeAll(dir, file, kq)
-								errorChannel <- fmt.Errorf("Failed to seek to the beginning of file %v: %v", abspath, err.Error())
+								errors <- fmt.Errorf("Failed to seek to the beginning of file %v: %v", abspath, err.Error())
 								return
 							}
 						}
@@ -139,7 +139,7 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 							err = reader.ProcessAvailableLines()
 							if err != nil {
 								closeAll(dir, file, kq)
-								errorChannel <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
+								errors <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
 								return
 							}
 						}
@@ -164,14 +164,14 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 								_, err = unix.Kevent(kq, []unix.Kevent_t{makeEvent(file)}, nil, &zeroTimeout)
 								if err != nil {
 									closeAll(dir, file, kq)
-									errorChannel <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
+									errors <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
 									return
 								}
-								reader = NewBufferedLineReader(file, linesChannel)
+								reader = NewBufferedLineReader(file, lines)
 								err = reader.ProcessAvailableLines()
 								if err != nil {
 									closeAll(dir, file, kq)
-									errorChannel <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
+									errors <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
 									return
 								}
 							}
@@ -183,9 +183,9 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 		}
 	}()
 	return &fileTailer{
-		lines:  linesChannel,
-		errors: errorChannel,
-		done:   doneChannel,
+		lines:  lines,
+		errors: errors,
+		done:   done,
 	}
 }
 

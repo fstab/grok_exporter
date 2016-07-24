@@ -32,42 +32,42 @@ func (f *fileTailer) Errors() chan error {
 }
 
 func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
-	linesChannel := make(chan string)
-	doneChannel := make(chan bool)
-	errorChannel := make(chan error)
+	lines := make(chan string)
+	done := make(chan bool)
+	errors := make(chan error)
 	go func() {
 		abspath, err := filepath.Abs(path)
 		if err != nil {
-			errorChannel <- fmt.Errorf("%v: %v", path, err.Error())
+			errors <- fmt.Errorf("%v: %v", path, err.Error())
 			return
 		}
 
 		file, err := Open(abspath)
 		if err != nil {
-			errorChannel <- fmt.Errorf("%v: %v", abspath, err.Error())
+			errors <- fmt.Errorf("%v: %v", abspath, err.Error())
 			return
 		}
 
 		if !readall {
 			_, err := file.Seek(0, os.SEEK_END)
 			if err != nil {
-				errorChannel <- fmt.Errorf("%v: Error while seeking to the end of file: %v", path, err.Error())
+				errors <- fmt.Errorf("%v: Error while seeking to the end of file: %v", path, err.Error())
 				return
 			}
 		}
 
-		reader := NewBufferedLineReader(file, linesChannel)
+		reader := NewBufferedLineReader(file, lines)
 
 		watcher, err := winfsnotify.NewWatcher()
 		if err != nil {
-			errorChannel <- fmt.Errorf("Failed to create file system watcher: %v", err.Error())
+			errors <- fmt.Errorf("Failed to create file system watcher: %v", err.Error())
 			return
 		}
 
 		err = watcher.Watch(filepath.Dir(abspath))
 		if err != nil {
 			watcher.Close()
-			errorChannel <- fmt.Errorf("Failed to watch directory %v: %v", filepath.Dir(abspath), err.Error())
+			errors <- fmt.Errorf("Failed to watch directory %v: %v", filepath.Dir(abspath), err.Error())
 			return
 		}
 
@@ -77,14 +77,14 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 			err = reader.ProcessAvailableLines()
 			if err != nil {
 				watcher.Close()
-				errorChannel <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
+				errors <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
 				return
 			}
 		}
 
 		for {
 			select {
-			case <-doneChannel:
+			case <-done:
 				watcher.Close()
 				return
 			case ev := <-watcher.Event:
@@ -95,21 +95,21 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 					truncated, err := checkTruncated(file)
 					if err != nil {
 						watcher.Close()
-						errorChannel <- err
+						errors <- err
 						return
 					}
 					if truncated {
 						_, err := file.Seek(0, os.SEEK_SET)
 						if err != nil {
 							watcher.Close()
-							errorChannel <- fmt.Errorf("Failed to seek to the beginning of file %v: %v", abspath, err.Error())
+							errors <- fmt.Errorf("Failed to seek to the beginning of file %v: %v", abspath, err.Error())
 							return
 						}
 					}
 					err = reader.ProcessAvailableLines()
 					if err != nil {
 						watcher.Close()
-						errorChannel <- err
+						errors <- fmt.Errorf("%v: %v", file.Name(), err)
 						return
 					}
 				}
@@ -126,28 +126,28 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 					if err != nil {
 						// Should not happen, because we just received the CREATE event for this file.
 						watcher.Close()
-						errorChannel <- fmt.Errorf("%v: Failed to open file: %v", abspath, err.Error())
+						errors <- fmt.Errorf("%v: Failed to open file: %v", abspath, err.Error())
 						return
 					}
-					reader = NewBufferedLineReader(file, linesChannel)
+					reader = NewBufferedLineReader(file, lines)
 					err = reader.ProcessAvailableLines()
 					if err != nil {
 						watcher.Close()
-						errorChannel <- err
+						errors <- fmt.Errorf("%v: %v", file.Name(), err)
 						return
 					}
 				}
 			case err := <-watcher.Error:
 				watcher.Close()
-				errorChannel <- fmt.Errorf("Error while watching %v: %v\n", filepath.Dir(abspath), err.Error())
+				errors <- fmt.Errorf("Error while watching %v: %v\n", filepath.Dir(abspath), err.Error())
 				return
 			}
 		}
 	}()
 	return &fileTailer{
-		lines:  linesChannel,
-		errors: errorChannel,
-		done:   doneChannel,
+		lines:  lines,
+		errors: errors,
+		done:   done,
 	}
 }
 
