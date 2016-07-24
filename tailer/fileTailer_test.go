@@ -108,7 +108,7 @@ func testLogrotate(t *testing.T, testRunLogger simpleLogger, logrotateOpt logrot
 
 	// We don't expect errors. However, start a go-routine listening on
 	// the tailer's errorChannel in case something goes wrong.
-	stopFailOnError := failOnError(t, tail.ErrorChan())
+	stopFailOnError := failOnError(t, tail.Errors())
 	defer func() {
 		stopFailOnError <- true
 		close(stopFailOnError)
@@ -116,20 +116,20 @@ func testLogrotate(t *testing.T, testRunLogger simpleLogger, logrotateOpt logrot
 
 	// The first two lines are received without any fsnotify event,
 	// because they were written before the watcher was started.
-	expect(t, testRunLogger, tail.LineChan(), "test line 1", 1*time.Second)
-	expect(t, testRunLogger, tail.LineChan(), "test line 2", 1*time.Second)
+	expect(t, testRunLogger, tail.Lines(), "test line 1", 1*time.Second)
+	expect(t, testRunLogger, tail.Lines(), "test line 2", 1*time.Second)
 
 	// Append a line and see if the event is processed.
 	logger.debug(t, testRunLogger, "test line 3")
-	expect(t, testRunLogger, tail.LineChan(), "test line 3", 1*time.Second)
+	expect(t, testRunLogger, tail.Lines(), "test line 3", 1*time.Second)
 
 	rotate(t, testRunLogger, logfile, logrotateOpt, logrotateMoveOpt)
 
 	// Log two more lines and see if they are received.
 	logger.debug(t, testRunLogger, "line 4")
-	expect(t, testRunLogger, tail.LineChan(), "line 4", 10*time.Second) // few seconds longer to get filesystem notifications for rotate()
+	expect(t, testRunLogger, tail.Lines(), "line 4", 10*time.Second) // few seconds longer to get filesystem notifications for rotate()
 	logger.debug(t, testRunLogger, "line 5")
-	expect(t, testRunLogger, tail.LineChan(), "line 5", 1*time.Second)
+	expect(t, testRunLogger, tail.Lines(), "line 5", 1*time.Second)
 }
 
 // Consume the tailer's error channel in case something goes wrong.

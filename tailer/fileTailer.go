@@ -25,11 +25,11 @@ func (f *fileTailer) Close() {
 	close(f.errors)
 }
 
-func (f *fileTailer) LineChan() chan string {
+func (f *fileTailer) Lines() chan string {
 	return f.lines
 }
 
-func (f *fileTailer) ErrorChan() chan error {
+func (f *fileTailer) Errors() chan error {
 	return f.errors
 }
 

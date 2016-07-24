@@ -138,9 +138,9 @@ func processLogLines(tail tailer.Tailer, metrics []metrics.Metric, serverErrorCh
 		select {
 		case err := <-serverErrorChannel:
 			return fmt.Errorf("Server error: %v", err.Error())
-		case err := <-tail.ErrorChan():
+		case err := <-tail.Errors():
 			return fmt.Errorf("Error reading log lines: %v", err.Error())
-		case line := <-tail.LineChan():
+		case line := <-tail.Lines():
 			process(line, metrics)
 		}
 	}

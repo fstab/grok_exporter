@@ -10,11 +10,11 @@ type stdinTailer struct {
 	errors chan error
 }
 
-func (t *stdinTailer) LineChan() chan string {
+func (t *stdinTailer) Lines() chan string {
 	return t.lines
 }
 
-func (t *stdinTailer) ErrorChan() chan error {
+func (t *stdinTailer) Errors() chan error {
 	return t.errors
 }
 

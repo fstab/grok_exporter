@@ -1,7 +1,7 @@
 package tailer
 
 type Tailer interface {
-	LineChan() chan string
-	ErrorChan() chan error
+	Lines() chan string
+	Errors() chan error
 	Close()
 }

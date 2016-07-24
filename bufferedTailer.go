@@ -10,23 +10,23 @@ import (
 )
 
 type bufferedTailerWithMetrics struct {
-	out        chan string
-	origTailer tailer.Tailer
+	out  chan string
+	orig tailer.Tailer
 }
 
-func (b *bufferedTailerWithMetrics) LineChan() chan string {
+func (b *bufferedTailerWithMetrics) Lines() chan string {
 	return b.out
 }
 
-func (b *bufferedTailerWithMetrics) ErrorChan() chan error {
-	return b.origTailer.ErrorChan()
+func (b *bufferedTailerWithMetrics) Errors() chan error {
+	return b.orig.Errors()
 }
 
 func (b *bufferedTailerWithMetrics) Close() {
-	b.origTailer.Close()
+	b.orig.Close()
 }
 
-func BufferedTailerWithMetrics(origTailer tailer.Tailer) tailer.Tailer {
+func BufferedTailerWithMetrics(orig tailer.Tailer) tailer.Tailer {
 	buffer := list.New()
 	bufferSync := sync.NewCond(&sync.Mutex{}) // coordinate producer and consumer
 	out := make(chan string)
@@ -38,15 +38,15 @@ func BufferedTailerWithMetrics(origTailer tailer.Tailer) tailer.Tailer {
 			Help: "Number of lines that are read from the logfile and waiting to be processed. Peak value per second.",
 		})
 		prometheus.MustRegister(bufferLoad)
-		bufferLoadLastSecond := 0
+		bufferLoadPeakValue := 0
 		tick := time.NewTicker(1 * time.Second)
 		for {
 			select {
-			case line, ok := <-origTailer.LineChan():
+			case line, ok := <-orig.Lines():
 				if ok {
 					bufferSync.L.Lock()
-					if buffer.Len() > bufferLoadLastSecond {
-						bufferLoadLastSecond = buffer.Len()
+					if buffer.Len() > bufferLoadPeakValue {
+						bufferLoadPeakValue = buffer.Len()
 					}
 					buffer.PushBack(line)
 					bufferSync.Signal()
@@ -62,8 +62,8 @@ func BufferedTailerWithMetrics(origTailer tailer.Tailer) tailer.Tailer {
 					return
 				}
 			case <-tick.C:
-				bufferLoad.Observe(float64(bufferLoadLastSecond))
-				bufferLoadLastSecond = 0
+				bufferLoad.Observe(float64(bufferLoadPeakValue))
+				bufferLoadPeakValue = 0
 			}
 		}
 	}()
@@ -92,7 +92,7 @@ func BufferedTailerWithMetrics(origTailer tailer.Tailer) tailer.Tailer {
 		}
 	}()
 	return &bufferedTailerWithMetrics{
-		out:        out,
-		origTailer: origTailer,
+		out:  out,
+		orig: orig,
 	}
 }

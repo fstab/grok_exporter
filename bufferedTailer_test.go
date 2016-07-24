@@ -12,11 +12,11 @@ type sourceTailer struct {
 	lines chan string
 }
 
-func (tail *sourceTailer) LineChan() chan string {
+func (tail *sourceTailer) Lines() chan string {
 	return tail.lines
 }
 
-func (tail *sourceTailer) ErrorChan() chan error {
+func (tail *sourceTailer) Errors() chan error {
 	return nil
 }
 
@@ -31,17 +31,17 @@ func TestSequential(t *testing.T) {
 		src.lines <- fmt.Sprintf("This is line number %v.", i)
 	}
 	for i := 0; i < 10000; i++ {
-		line := <-buffered.LineChan()
+		line := <-buffered.Lines()
 		if line != fmt.Sprintf("This is line number %v.", i) {
 			t.Errorf("Expected 'This is line number %v', but got '%v'.", i, line)
 		}
 	}
 	buffered.Close()
-	_, stillOpen := <-buffered.LineChan()
+	_, stillOpen := <-buffered.Lines()
 	if stillOpen {
 		t.Error("Buffered tailer was not closed.")
 	}
-	_, stillOpen = <-src.LineChan()
+	_, stillOpen = <-src.Lines()
 	if stillOpen {
 		t.Error("Source tailer was not closed.")
 	}
@@ -65,7 +65,7 @@ func TestParallel(t *testing.T) {
 	go func() {
 		start := time.Now()
 		for i := 0; i < 10000; i++ {
-			line := <-buffered.LineChan()
+			line := <-buffered.Lines()
 			if line != fmt.Sprintf("This is line number %v.", i) {
 				t.Errorf("Expected 'This is line number %v', but got '%v'.", i, line)
 			}
@@ -79,11 +79,11 @@ func TestParallel(t *testing.T) {
 	wg.Add(2)
 	wg.Wait()
 	buffered.Close()
-	_, stillOpen := <-buffered.LineChan()
+	_, stillOpen := <-buffered.Lines()
 	if stillOpen {
 		t.Error("Buffered tailer was not closed.")
 	}
-	_, stillOpen = <-src.LineChan()
+	_, stillOpen = <-src.Lines()
 	if stillOpen {
 		t.Error("Source tailer was not closed.")
 	}
