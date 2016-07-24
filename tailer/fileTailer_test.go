@@ -108,10 +108,10 @@ func testLogrotate(t *testing.T, testRunLogger simpleLogger, logrotateOpt logrot
 
 	// We don't expect errors. However, start a go-routine listening on
 	// the tailer's errorChannel in case something goes wrong.
-	stopFailOnError := failOnError(t, tail.Errors())
-	defer func() {
-		stopFailOnError <- true
-		close(stopFailOnError)
+	go func() {
+		for err := range tail.Errors() {
+			t.Fatalf("Tailer failed: %v", err.Error())
+		}
 	}()
 
 	// The first two lines are received without any fsnotify event,
@@ -130,26 +130,6 @@ func testLogrotate(t *testing.T, testRunLogger simpleLogger, logrotateOpt logrot
 	expect(t, testRunLogger, tail.Lines(), "line 4", 10*time.Second) // few seconds longer to get filesystem notifications for rotate()
 	logger.debug(t, testRunLogger, "line 5")
 	expect(t, testRunLogger, tail.Lines(), "line 5", 1*time.Second)
-}
-
-// Consume the tailer's error channel in case something goes wrong.
-func failOnError(t *testing.T, errorChan chan error) chan bool {
-	done := make(chan bool)
-	go func() {
-		for {
-			select {
-			case err := <-errorChan:
-				// err == nil means the tailer is shutting down, we will receive
-				// on done channel in that case.
-				if err != nil {
-					t.Fatalf("Tailer failed: %v", err.Error())
-				}
-			case <-done:
-				return
-			}
-		}
-	}()
-	return done
 }
 
 func newLogger(t *testing.T, logfile string, opt loggerOption) logger {
