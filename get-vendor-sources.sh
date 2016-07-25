@@ -109,7 +109,7 @@ git checkout v2
 rm -rf .git .travis.yml
 
 ###########################################################################
-# golang.org/x/exp/inotify and golang.org/x/exp/winfsnotify
+# golang.org/x/exp/winfsnotify
 ###########################################################################
 
 cd $SRC
@@ -118,7 +118,7 @@ cd vendor/golang.org/x
 git clone https://go.googlesource.com/exp
 cd exp
 git checkout 7be2ce36128ef1337a5348a7cb5a599830b42ac3
-find . -type f | grep -v inotify_linux.go | grep -v winfsnotify.go | xargs rm -f
+find . -type f | grep -v winfsnotify.go | xargs rm -f
 find . -type d -empty -delete
 
 # Dependency: golang.org/x/sys

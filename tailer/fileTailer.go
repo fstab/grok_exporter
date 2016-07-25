@@ -161,7 +161,7 @@ func processEvents(events []unix.Kevent_t, kq int, dir *os.File, fileBefore *os.
 
 	// Handle truncate events.
 	for _, event := range events {
-		if file != nil && event.Ident == uint64(file.Fd()) && event.Fflags & unix.NOTE_ATTRIB == unix.NOTE_ATTRIB {
+		if file != nil && event.Ident == uint64(file.Fd()) && event.Fflags&unix.NOTE_ATTRIB == unix.NOTE_ATTRIB {
 			_, err = file.Seek(0, os.SEEK_SET)
 			if err != nil {
 				return
@@ -171,7 +171,7 @@ func processEvents(events []unix.Kevent_t, kq int, dir *os.File, fileBefore *os.
 
 	// Handle write event.
 	for _, event := range events {
-		if file != nil && event.Ident == uint64(file.Fd()) && event.Fflags & unix.NOTE_WRITE == unix.NOTE_WRITE {
+		if file != nil && event.Ident == uint64(file.Fd()) && event.Fflags&unix.NOTE_WRITE == unix.NOTE_WRITE {
 			err = reader.ProcessAvailableLines()
 			if err != nil {
 				return
@@ -181,7 +181,7 @@ func processEvents(events []unix.Kevent_t, kq int, dir *os.File, fileBefore *os.
 
 	// Handle move and delete events.
 	for _, event := range events {
-		if file != nil && event.Ident == uint64(file.Fd()) && (event.Fflags & unix.NOTE_DELETE == unix.NOTE_DELETE || event.Fflags & unix.NOTE_RENAME == unix.NOTE_RENAME) {
+		if file != nil && event.Ident == uint64(file.Fd()) && (event.Fflags&unix.NOTE_DELETE == unix.NOTE_DELETE || event.Fflags&unix.NOTE_RENAME == unix.NOTE_RENAME) {
 			file.Close() // closing the fd will automatically remove event from kq.
 			file = nil
 			reader = nil
@@ -190,7 +190,7 @@ func processEvents(events []unix.Kevent_t, kq int, dir *os.File, fileBefore *os.
 
 	// Handle create events.
 	for _, event := range events {
-		if file == nil && event.Ident == uint64(dir.Fd()) && event.Fflags & unix.NOTE_WRITE == unix.NOTE_WRITE {
+		if file == nil && event.Ident == uint64(dir.Fd()) && event.Fflags&unix.NOTE_WRITE == unix.NOTE_WRITE {
 			file, err = os.Open(abspath)
 			if err == nil {
 				zeroTimeout := unix.NsecToTimespec(0) // timeout zero means non-blocking kevent() call

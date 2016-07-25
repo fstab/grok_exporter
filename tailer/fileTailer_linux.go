@@ -2,24 +2,27 @@ package tailer
 
 import (
 	"fmt"
-	"golang.org/x/exp/inotify"
 	"os"
 	"path/filepath"
+	"strings"
+	"syscall"
+	"unsafe"
 )
 
 type fileTailer struct {
 	lines  chan string
 	errors chan error
-	done   chan bool
+	done   chan struct{}
+	closed bool
 }
 
 func (f *fileTailer) Close() {
-	// TODO (1): If there was an error, this might hang forever, as the loop reading from 'done' has stopped.
-	// TODO (2): Will panic if Close() is called multiple times, because writing to closed 'done' channel.
-	f.done <- true
-	close(f.done)
-	close(f.lines)
-	close(f.errors)
+	if !f.closed {
+		f.closed = true
+		close(f.done)
+		close(f.lines)
+		close(f.errors)
+	}
 }
 
 func (f *fileTailer) Lines() chan string {
@@ -32,123 +35,42 @@ func (f *fileTailer) Errors() chan error {
 
 func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 	lines := make(chan string)
-	done := make(chan bool)
+	done := make(chan struct{})
 	errors := make(chan error)
 	go func() {
-		var (
-			file    *os.File
-			watcher *inotify.Watcher
-		)
-		abspath, err := filepath.Abs(path)
-		if err != nil {
-			closeAll(file, watcher)
-			errors <- fmt.Errorf("%v: %v", path, err.Error())
-			return
-		}
-
-		file, err = os.Open(abspath)
-		if err != nil {
-			closeAll(file, watcher)
-			errors <- fmt.Errorf("%v: %v", abspath, err.Error())
-			return
-		}
-
-		if !readall {
-			_, err := file.Seek(0, os.SEEK_END)
-			if err != nil {
-				closeAll(file, watcher)
-				errors <- fmt.Errorf("%v: Error while seeking to the end of file: %v", path, err.Error())
-				return
+		abspath, fd, _, file, reader, err := initWatcher(path, readall, lines)
+		defer func() {
+			if fd != 0 {
+				syscall.Close(fd)
 			}
-		}
-
-		reader := NewBufferedLineReader(file, lines)
-
-		watcher, err = inotify.NewWatcher()
-		if err != nil {
-			closeAll(file, watcher)
-			errors <- fmt.Errorf("Failed to create file system watcher: %v", err.Error())
-			return
-		}
-
-		err = watcher.Watch(filepath.Dir(abspath))
-		if err != nil {
-			closeAll(file, watcher)
-			errors <- fmt.Errorf("Failed to watch directory %v: %v", filepath.Dir(abspath), err.Error())
-			return
-		}
-
-		logger.Debug("Watching filesystem events in directory %v.\n", filepath.Dir(abspath))
-
-		if readall {
-			err = reader.ProcessAvailableLines()
-			if err != nil {
-				closeAll(file, watcher)
-				errors <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
-				return
+			if file != nil {
+				file.Close()
 			}
+		}()
+		if err != nil {
+			writeError(errors, done, "Failed to initialize file system watcher for %v: %v", path, err.Error())
+			return
 		}
+
+		events, eventReaderErrors, eventReaderDone := startEventReader(fd)
+		defer close(eventReaderDone)
 
 		for {
 			select {
 			case <-done:
 				return
-			case ev := <-watcher.Event:
-				logger.Debug("Received filesystem event: %v\n", ev)
-
-				// WRITE or TRUNCATE
-				if file != nil && ev.Name == abspath && ev.Mask&inotify.IN_MODIFY == inotify.IN_MODIFY {
-					truncated, err := checkTruncated(file)
-					if err != nil {
-						closeAll(file, watcher)
-						errors <- err
-						return
-					}
-					if truncated {
-						_, err := file.Seek(0, os.SEEK_SET)
-						if err != nil {
-							closeAll(file, watcher)
-							errors <- fmt.Errorf("Failed to seek to the beginning of file %v: %v", abspath, err.Error())
-							return
-						}
-					}
-					err = reader.ProcessAvailableLines()
-					if err != nil {
-						closeAll(file, watcher)
-						errors <- fmt.Errorf("%v: %v", file.Name(), err)
-						return
-					}
-				}
-
-				// MOVE or DELETE
-				if file != nil && ev.Name == abspath && (ev.Mask&inotify.IN_MOVED_FROM == inotify.IN_MOVED_FROM || ev.Mask&inotify.IN_DELETE == inotify.IN_DELETE) {
-					file.Close()
-					file = nil
-					reader = nil
-				}
-
-				// CREATE
-				if file == nil && ev.Name == abspath && ev.Mask&inotify.IN_CREATE == inotify.IN_CREATE {
-					file, err = os.Open(abspath)
-					if err != nil {
-						// Should not happen, because we just received the CREATE event for this file.
-						closeAll(file, watcher)
-						errors <- fmt.Errorf("%v: Failed to open file: %v", abspath, err.Error())
-						return
-					}
-					reader = NewBufferedLineReader(file, lines)
-					err = reader.ProcessAvailableLines()
-					if err != nil {
-						closeAll(file, watcher)
-						errors <- fmt.Errorf("%v: %v", file.Name(), err)
-						return
-					}
-				}
-
-			case err := <-watcher.Error:
-				closeAll(file, watcher)
-				errors <- fmt.Errorf("Error while watching %v: %v\n", filepath.Dir(abspath), err.Error())
+			case err = <-eventReaderErrors:
+				writeError(errors, done, "Failed to watch %v: %v", abspath, err.Error())
 				return
+			case evnts := <-events:
+
+				// TODO: linereader must return lines, and need to send it to 'lines' channel while checking 'done' channel.
+
+				file, reader, err = processEvents(evnts, file, reader, abspath, lines, logger)
+				if err != nil {
+					writeError(errors, done, "Failed to watch %v: %v", abspath, err.Error())
+					return
+				}
 			}
 		}
 	}()
@@ -156,7 +78,160 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 		lines:  lines,
 		errors: errors,
 		done:   done,
+		closed: false,
 	}
+}
+
+func writeError(errors chan error, done chan struct{}, format string, a ...interface{}) {
+	select {
+	case errors <- fmt.Errorf(format, a...):
+	case <-done:
+	}
+}
+
+func initWatcher(path string, readall bool, lines chan string) (abspath string, fd int, wd int, file *os.File, reader *bufferedLineReader, err error) {
+	abspath, err = filepath.Abs(path)
+	if err != nil {
+		return
+	}
+	file, err = os.Open(abspath)
+	if err != nil {
+		return
+	}
+	if !readall {
+		_, err = file.Seek(0, os.SEEK_END)
+		if err != nil {
+			return
+		}
+	}
+	fd, err = syscall.InotifyInit1(syscall.IN_CLOEXEC)
+	if err != nil {
+		return
+	}
+	wd, err = syscall.InotifyAddWatch(fd, filepath.Dir(abspath), syscall.IN_MODIFY|syscall.IN_MOVED_FROM|syscall.IN_DELETE|syscall.IN_CREATE)
+	if err != nil {
+		return
+	}
+	reader = NewBufferedLineReader(file, lines)
+	err = reader.ProcessAvailableLines()
+	if err != nil {
+		return
+	}
+	return
+}
+
+type eventWithName struct {
+	syscall.InotifyEvent
+	Name string
+}
+
+func startEventReader(fd int) (chan []eventWithName, chan error, chan struct{}) {
+	events := make(chan []eventWithName)
+	errors := make(chan error)
+	done := make(chan struct{})
+
+	go func() {
+		defer func() {
+			close(events)
+			close(errors)
+		}()
+
+		buf := make([]byte, (syscall.SizeofInotifyEvent+syscall.NAME_MAX+1)*10)
+
+		for {
+			n, err := syscall.Read(fd, buf)
+
+			if err == syscall.EINTR || err == syscall.EBADF { // TODO: CHECK IF THIS IS RETURNED WHEN FD IS CLOSED
+				// fd closed
+				return
+			} else if err != nil {
+				select {
+				case errors <- err:
+				case <-done:
+				}
+				return
+			} else {
+				eventList := make([]eventWithName, 0)
+				for offset := 0; offset < n; {
+					if n-offset < syscall.SizeofInotifyEvent {
+						select {
+						case errors <- fmt.Errorf("inotify: read %v bytes, but sizeof(struct inotify_event) is %v bytes.", n, syscall.SizeofInotifyEvent):
+						case <-done:
+						}
+						return
+					}
+					event := eventWithName{*(*syscall.InotifyEvent)(unsafe.Pointer(&buf[offset])), ""}
+					if event.Len > 0 {
+						bytes := (*[syscall.NAME_MAX]byte)(unsafe.Pointer(&buf[offset+syscall.SizeofInotifyEvent]))
+						event.Name = strings.TrimRight(string(bytes[0:event.Len]), "\000")
+					}
+					eventList = append(eventList, event)
+					offset += syscall.SizeofInotifyEvent + int(event.Len)
+				}
+				select {
+				case events <- eventList:
+				case <-done:
+					return
+				}
+			}
+		}
+	}()
+	return events, errors, done
+}
+
+func processEvents(events []eventWithName, fileBefore *os.File, readerBefore *bufferedLineReader, abspath string, lines chan string, logger simpleLogger) (file *os.File, reader *bufferedLineReader, err error) {
+	file = fileBefore
+	reader = readerBefore
+	filename := filepath.Base(abspath)
+	var truncated bool
+	for _, event := range events {
+		logger.Debug("File system watcher received %v.\n", event2string(event))
+	}
+
+	// WRITE or TRUNCATE
+	for _, event := range events {
+		if file != nil && event.Name == filename && event.Mask&syscall.IN_MODIFY == syscall.IN_MODIFY {
+			truncated, err = checkTruncated(file)
+			if err != nil {
+				return
+			}
+			if truncated {
+				_, err = file.Seek(0, os.SEEK_SET)
+				if err != nil {
+					return
+				}
+			}
+			err = reader.ProcessAvailableLines()
+			if err != nil {
+				return
+			}
+		}
+	}
+
+	// MOVE or DELETE
+	for _, event := range events {
+		if file != nil && event.Name == filename && (event.Mask&syscall.IN_MOVED_FROM == syscall.IN_MOVED_FROM || event.Mask&syscall.IN_DELETE == syscall.IN_DELETE) {
+			file.Close()
+			file = nil
+			reader = nil
+		}
+	}
+
+	// CREATE
+	for _, event := range events {
+		if file == nil && event.Name == filename && event.Mask&syscall.IN_CREATE == syscall.IN_CREATE {
+			file, err = os.Open(abspath)
+			if err != nil {
+				return
+			}
+			reader = NewBufferedLineReader(file, lines)
+			err = reader.ProcessAvailableLines()
+			if err != nil {
+				return
+			}
+		}
+	}
+	return
 }
 
 func checkTruncated(file *os.File) (bool, error) {
@@ -171,13 +246,62 @@ func checkTruncated(file *os.File) (bool, error) {
 	return currentPos > fileInfo.Size(), nil
 }
 
-func closeAll(file *os.File, watcher *inotify.Watcher) {
-	if watcher != nil {
-		watcher.Close()
+func event2string(event eventWithName) string {
+	result := "event"
+	if len(event.Name) > 0 {
+		result = fmt.Sprintf("%v with path %v and mask", result, event.Name)
+	} else {
+		result = fmt.Sprintf("%v with unknown path and mask", result)
 	}
-	if file != nil {
-		file.Close()
+	if event.Mask&syscall.IN_ACCESS == syscall.IN_ACCESS {
+		result = fmt.Sprintf("%v IN_ACCESS", result)
 	}
+	if event.Mask&syscall.IN_ATTRIB == syscall.IN_ATTRIB {
+		result = fmt.Sprintf("%v IN_ATTRIB", result)
+	}
+	if event.Mask&syscall.IN_CLOSE_WRITE == syscall.IN_CLOSE_WRITE {
+		result = fmt.Sprintf("%v IN_CLOSE_WRITE", result)
+	}
+	if event.Mask&syscall.IN_CLOSE_NOWRITE == syscall.IN_CLOSE_NOWRITE {
+		result = fmt.Sprintf("%v IN_CLOSE_NOWRITE", result)
+	}
+	if event.Mask&syscall.IN_CREATE == syscall.IN_CREATE {
+		result = fmt.Sprintf("%v IN_CREATE", result)
+	}
+	if event.Mask&syscall.IN_DELETE == syscall.IN_DELETE {
+		result = fmt.Sprintf("%v IN_DELETE", result)
+	}
+	if event.Mask&syscall.IN_DELETE_SELF == syscall.IN_DELETE_SELF {
+		result = fmt.Sprintf("%v IN_DELETE_SELF", result)
+	}
+	if event.Mask&syscall.IN_MODIFY == syscall.IN_MODIFY {
+		result = fmt.Sprintf("%v IN_MODIFY", result)
+	}
+	if event.Mask&syscall.IN_MOVE_SELF == syscall.IN_MOVE_SELF {
+		result = fmt.Sprintf("%v IN_MOVE_SELF", result)
+	}
+	if event.Mask&syscall.IN_MOVED_FROM == syscall.IN_MOVED_FROM {
+		result = fmt.Sprintf("%v IN_MOVED_FROM", result)
+	}
+	if event.Mask&syscall.IN_MOVED_TO == syscall.IN_MOVED_TO {
+		result = fmt.Sprintf("%v IN_MOVED_TO", result)
+	}
+	if event.Mask&syscall.IN_OPEN == syscall.IN_OPEN {
+		result = fmt.Sprintf("%v IN_OPEN", result)
+	}
+	if event.Mask&syscall.IN_IGNORED == syscall.IN_IGNORED {
+		result = fmt.Sprintf("%v IN_IGNORED", result)
+	}
+	if event.Mask&syscall.IN_ISDIR == syscall.IN_ISDIR {
+		result = fmt.Sprintf("%v IN_ISDIR", result)
+	}
+	if event.Mask&syscall.IN_Q_OVERFLOW == syscall.IN_Q_OVERFLOW {
+		result = fmt.Sprintf("%v IN_Q_OVERFLOW", result)
+	}
+	if event.Mask&syscall.IN_UNMOUNT == syscall.IN_UNMOUNT {
+		result = fmt.Sprintf("%v IN_UNMOUNT", result)
+	}
+	return result
 }
 
 type simpleLogger interface {
