@@ -7,20 +7,19 @@ import (
 	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"
-	"time"
+	"syscall"
 )
 
 type fileTailer struct {
 	lines  chan string
 	errors chan error
-	done   chan bool
+	done   chan struct{}
 	closed bool
 }
 
 func (f *fileTailer) Close() {
 	if !f.closed {
 		f.closed = true
-		f.done <- true // Blocks until the goroutine is done, so we are sure we get no writes to lines or errors after that.
 		close(f.done)
 		close(f.lines)
 		close(f.errors)
@@ -37,31 +36,30 @@ func (f *fileTailer) Errors() chan error {
 
 func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 	lines := make(chan string)
-	done := make(chan bool)
+	done := make(chan struct{})
 	errors := make(chan error)
 	go func() {
 		abspath, dir, file, reader, kq, err := initWatcher(path, readall, lines)
+		defer closeAll(dir, file, kq)
 		if err != nil {
-			errors <- fmt.Errorf("Failed to initialize file system watcher for %v: %v", path, err.Error())
-			closeAll(dir, file, kq)
-			<-done
+			writeError(errors, done, "Failed to initialize file system watcher for %v: %v", path, err.Error())
 			return
 		}
 
-		// Timeout is needed so that we check the done channel from time to time.
-		timeout := unix.NsecToTimespec((1 * time.Second).Nanoseconds())
+		events, eventReaderErrors, eventReaderDone := startEventReader(kq)
+		defer close(eventReaderDone)
 
 		for {
 			select {
 			case <-done:
-				closeAll(dir, file, kq)
 				return
-			default:
-				file, reader, err = processEvents(kq, timeout, dir, file, reader, abspath, lines, logger)
+			case err = <-eventReaderErrors:
+				writeError(errors, done, "Failed to watch %v: %v", abspath, err.Error())
+				return
+			case evnts := <-events:
+				file, reader, err = processEvents(evnts, kq, dir, file, reader, abspath, lines, logger)
 				if err != nil {
-					errors <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
-					closeAll(dir, file, kq)
-					<-done
+					writeError(errors, done, "Failed to watch %v: %v", abspath, err.Error())
 					return
 				}
 			}
@@ -73,6 +71,13 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 		errors: errors,
 		done:   done,
 		closed: false,
+	}
+}
+
+func writeError(errors chan error, done chan struct{}, format string, a ...interface{}) {
+	select {
+	case errors <- fmt.Errorf(format, a...):
+	case <-done:
 	}
 }
 
@@ -114,71 +119,93 @@ func initWatcher(path string, readall bool, lines chan string) (abspath string, 
 	return
 }
 
-func processEvents(kq int, timeout unix.Timespec, dir *os.File, fileBefore *os.File, readerBefore *bufferedLineReader, abspath string, lines chan string, logger simpleLogger) (file *os.File, reader *bufferedLineReader, err error) {
-	var n int
-	file = fileBefore
-	reader = readerBefore
-	events := make([]unix.Kevent_t, 10)
-	zeroTimeout := unix.NsecToTimespec(0) // timeout zero means non-blocking kevent() call
-	n, err = unix.Kevent(kq, nil, events, &timeout)
-	if err != nil {
-		return
-	}
-	logger.Debug("File system watcher got %v events:\n", n)
-	for i := 0; i < n; i++ {
-		logger.Debug(" * %s\n", event2string(dir, file, events[i]))
-	}
-	for i := 0; i < n; i++ {
-		// Handle truncate events.
-		if file != nil && events[i].Ident == uint64(file.Fd()) {
-			if events[i].Fflags&unix.NOTE_ATTRIB == unix.NOTE_ATTRIB {
-				_, err = file.Seek(0, os.SEEK_SET)
-				if err != nil {
+// To stop the event reader call syscall.Close(kq) and close(done).
+func startEventReader(kq int) (chan []unix.Kevent_t, chan error, chan struct{}) {
+	events := make(chan []unix.Kevent_t)
+	errors := make(chan error)
+	done := make(chan struct{})
+	go func() {
+		defer func() {
+			close(events)
+			close(errors)
+		}()
+		for {
+			eventBuf := make([]unix.Kevent_t, 10)
+			n, err := unix.Kevent(kq, nil, eventBuf, nil)
+			if err == syscall.EINTR || err == syscall.EBADF { // kq closed
+				return
+			} else if err != nil {
+				select {
+				case errors <- err:
+				case <-done:
+				}
+				return
+			} else {
+				select {
+				case events <- eventBuf[:n]: // We cannot write a single event at a time, because sometimes MOVE and WRITE change order, and we need to process WRITE before MOVE if that happens.
+				case <-done:
 					return
 				}
 			}
 		}
+	}()
+	return events, errors, done
+}
+
+func processEvents(events []unix.Kevent_t, kq int, dir *os.File, fileBefore *os.File, readerBefore *bufferedLineReader, abspath string, lines chan string, logger simpleLogger) (file *os.File, reader *bufferedLineReader, err error) {
+	file = fileBefore
+	reader = readerBefore
+	for _, event := range events {
+		logger.Debug("File system watcher received %v.\n", event2string(dir, file, event))
 	}
-	for i := 0; i < n; i++ {
-		// Handle write events.
-		if file != nil && events[i].Ident == uint64(file.Fd()) {
-			if events[i].Fflags&unix.NOTE_WRITE == unix.NOTE_WRITE {
+
+	// Handle truncate events.
+	for _, event := range events {
+		if file != nil && event.Ident == uint64(file.Fd()) && event.Fflags & unix.NOTE_ATTRIB == unix.NOTE_ATTRIB {
+			_, err = file.Seek(0, os.SEEK_SET)
+			if err != nil {
+				return
+			}
+		}
+	}
+
+	// Handle write event.
+	for _, event := range events {
+		if file != nil && event.Ident == uint64(file.Fd()) && event.Fflags & unix.NOTE_WRITE == unix.NOTE_WRITE {
+			err = reader.ProcessAvailableLines()
+			if err != nil {
+				return
+			}
+		}
+	}
+
+	// Handle move and delete events.
+	for _, event := range events {
+		if file != nil && event.Ident == uint64(file.Fd()) && (event.Fflags & unix.NOTE_DELETE == unix.NOTE_DELETE || event.Fflags & unix.NOTE_RENAME == unix.NOTE_RENAME) {
+			file.Close() // closing the fd will automatically remove event from kq.
+			file = nil
+			reader = nil
+		}
+	}
+
+	// Handle create events.
+	for _, event := range events {
+		if file == nil && event.Ident == uint64(dir.Fd()) && event.Fflags & unix.NOTE_WRITE == unix.NOTE_WRITE {
+			file, err = os.Open(abspath)
+			if err == nil {
+				zeroTimeout := unix.NsecToTimespec(0) // timeout zero means non-blocking kevent() call
+				_, err = unix.Kevent(kq, []unix.Kevent_t{makeEvent(file)}, nil, &zeroTimeout)
+				if err != nil {
+					return
+				}
+				reader = NewBufferedLineReader(file, lines)
 				err = reader.ProcessAvailableLines()
 				if err != nil {
 					return
 				}
-			}
-		}
-	}
-	for i := 0; i < n; i++ {
-		// Handle move and delete events.
-		if file != nil && events[i].Ident == uint64(file.Fd()) {
-			if events[i].Fflags&unix.NOTE_DELETE == unix.NOTE_DELETE || events[i].Fflags&unix.NOTE_RENAME == unix.NOTE_RENAME {
-				file.Close() // closing the fd will automatically remove event from kq.
-				file = nil
-				reader = nil
-			}
-		}
-	}
-	for i := 0; i < n; i++ {
-		// Handle create events.
-		if file == nil && events[i].Ident == uint64(dir.Fd()) {
-			if events[i].Fflags&unix.NOTE_WRITE == unix.NOTE_WRITE {
-				file, err = os.Open(abspath)
-				if err == nil {
-					_, err = unix.Kevent(kq, []unix.Kevent_t{makeEvent(file)}, nil, &zeroTimeout)
-					if err != nil {
-						return
-					}
-					reader = NewBufferedLineReader(file, lines)
-					err = reader.ProcessAvailableLines()
-					if err != nil {
-						return
-					}
-				} else {
-					// If file could not be opened, the CREATE event was for another file, we ignore this.
-					err = nil
-				}
+			} else {
+				// If file could not be opened, the CREATE event was for another file, we ignore this.
+				err = nil
 			}
 		}
 	}

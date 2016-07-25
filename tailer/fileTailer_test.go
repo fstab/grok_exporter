@@ -71,7 +71,7 @@ func (opt loggerOption) String() string {
 	}
 }
 
-func TestCloseLogfileAfterEachLine(t *testing.T) {
+func TestFileTailerCloseLogfileAfterEachLine(t *testing.T) {
 	testRunNumber := 0
 	for _, mvOpt := range []logrotateMoveOption{mv, cp, rm} {
 		testRunNumber++
@@ -86,7 +86,7 @@ func TestCloseLogfileAfterEachLine(t *testing.T) {
 	testLogrotate(t, NewTestRunLogger(testRunNumber), _copytruncate, cp, closeFileAfterEachLine)
 }
 
-func TestKeepLogfileOpen(t *testing.T) {
+func TestFileTailerKeepLogfileOpen(t *testing.T) {
 	// When the logger keeps the file open, only the logrotate options 'copy' and 'copytruncate' make sense.
 	testLogrotate(t, NewTestRunLogger(100), _copy, cp, keepOpen)
 	testLogrotate(t, NewTestRunLogger(101), _copytruncate, cp, keepOpen)
