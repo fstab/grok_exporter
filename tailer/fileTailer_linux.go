@@ -38,7 +38,7 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 	done := make(chan struct{})
 	errors := make(chan error)
 	go func() {
-		abspath, fd, _, file, err := initWatcher(path, readall)
+		abspath, fd, wd, file, err := initWatcher(path, readall)
 		defer func() {
 			if fd != 0 {
 				syscall.Close(fd)
@@ -65,8 +65,8 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 			}
 		}
 
-		events, eventReaderErrors, eventReaderDone := startEventReader(fd)
-		defer close(eventReaderDone)
+		events, eventReaderErrors, shutdownCallback := startEventReader(fd, wd)
+		defer shutdownCallback()
 
 		for {
 			select {
@@ -138,7 +138,7 @@ type eventWithName struct {
 	Name string
 }
 
-func startEventReader(fd int) (chan []eventWithName, chan error, chan struct{}) {
+func startEventReader(fd int, wd int) (chan []eventWithName, chan error, func()) {
 	events := make(chan []eventWithName)
 	errors := make(chan error)
 	done := make(chan struct{})
@@ -153,11 +153,7 @@ func startEventReader(fd int) (chan []eventWithName, chan error, chan struct{}) 
 
 		for {
 			n, err := syscall.Read(fd, buf)
-
-			if err == syscall.EINTR || err == syscall.EBADF { // TODO: CHECK IF THIS IS RETURNED WHEN FD IS CLOSED
-				// fd closed
-				return
-			} else if err != nil {
+			if err != nil {
 				select {
 				case errors <- err:
 				case <-done:
@@ -178,18 +174,27 @@ func startEventReader(fd int) (chan []eventWithName, chan error, chan struct{}) 
 						bytes := (*[syscall.NAME_MAX]byte)(unsafe.Pointer(&buf[offset+syscall.SizeofInotifyEvent]))
 						event.Name = strings.TrimRight(string(bytes[0:event.Len]), "\000")
 					}
+					if event.Mask&syscall.IN_IGNORED == syscall.IN_IGNORED {
+						// The shutdown callback was called.
+						return
+					}
 					eventList = append(eventList, event)
 					offset += syscall.SizeofInotifyEvent + int(event.Len)
 				}
-				select {
-				case events <- eventList:
-				case <-done:
-					return
+				if len(eventList) > 0 {
+					select {
+					case events <- eventList:
+					case <-done:
+						return
+					}
 				}
 			}
 		}
 	}()
-	return events, errors, done
+	return events, errors, func() {
+		syscall.InotifyRmWatch(fd, uint32(wd)) // generates an IN_IGNORED event, which interrupts the syscall.Read()
+		close(done)
+	}
 }
 
 func processEvents(events []eventWithName, fileBefore *os.File, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *os.File, lines []string, err error) {

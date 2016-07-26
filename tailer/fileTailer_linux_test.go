@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-func TestShutdownDuringKevent(t *testing.T) {
-	runTestShutdown(t, "shutdown while the watcher is hanging in the blocking kevent() call")
+func TestShutdownDuringSyscallRead(t *testing.T) {
+	runTestShutdown(t, "shutdown while the watcher is hanging in the blocking syscall.Read()")
 }
 
 func TestShutdownDuringSendEvent(t *testing.T) {
@@ -21,13 +21,13 @@ func runTestShutdown(t *testing.T, mode string) {
 	lines := make(chan string)
 	defer close(lines)
 
-	_, _, _, kq, err := initWatcher(logfile, false)
+	_, fd, wd, _, err := initWatcher(logfile, false)
 	if err != nil {
 		t.Error(err)
 	}
-	events, errors, shutdownCallback := startEventReader(kq)
+	events, errors, shutdownCallback := startEventReader(fd, wd)
 	switch {
-	case mode == "shutdown while the watcher is hanging in the blocking kevent() call":
+	case mode == "shutdown while the watcher is hanging in the blocking syscall.Read()":
 		time.Sleep(200 * time.Millisecond)
 		shutdownCallback()
 	case mode == "shutdown while the watcher is sending an event":
@@ -50,10 +50,3 @@ func runTestShutdown(t *testing.T, mode string) {
 		t.Error("events channel not closed")
 	}
 }
-
-//switch err := err.(type) {
-//case syscall.Errno:
-//	t.Errorf("Error of type %v with errno %v and text %v", reflect.TypeOf(err), int(err), err)
-//default:
-//	t.Errorf("Error of type %v with text %v", reflect.TypeOf(err), err)
-//}

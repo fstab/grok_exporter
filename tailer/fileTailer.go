@@ -60,8 +60,11 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 			}
 		}
 
-		events, eventReaderErrors, eventReaderDone := startEventReader(kq)
-		defer close(eventReaderDone)
+		events, eventReaderErrors, shutdownCallback := startEventReader(kq)
+		defer func() {
+			shutdownCallback()
+			kq = 0 // The shutdownCallback() will close kq already, so we don't need to close it in closeAll().
+		}()
 
 		for {
 			select {
@@ -135,8 +138,7 @@ func initWatcher(path string, readall bool) (abspath string, dir *os.File, file 
 	return
 }
 
-// To stop the event reader call syscall.Close(kq) and close(done).
-func startEventReader(kq int) (chan []unix.Kevent_t, chan error, chan struct{}) {
+func startEventReader(kq int) (chan []unix.Kevent_t, chan error, func()) {
 	events := make(chan []unix.Kevent_t)
 	errors := make(chan error)
 	done := make(chan struct{})
@@ -148,7 +150,8 @@ func startEventReader(kq int) (chan []unix.Kevent_t, chan error, chan struct{}) 
 		for {
 			eventBuf := make([]unix.Kevent_t, 10)
 			n, err := unix.Kevent(kq, nil, eventBuf, nil)
-			if err == syscall.EINTR || err == syscall.EBADF { // kq closed
+			if err == syscall.EINTR || err == syscall.EBADF {
+				// kq was closed, i.e. the shutdown callback was called.
 				return
 			} else if err != nil {
 				select {
@@ -165,7 +168,10 @@ func startEventReader(kq int) (chan []unix.Kevent_t, chan error, chan struct{}) 
 			}
 		}
 	}()
-	return events, errors, done
+	return events, errors, func() {
+		syscall.Close(kq) // interrupt the blocking kevent() system call
+		close(done)
+	}
 }
 
 func processEvents(events []unix.Kevent_t, kq int, dir *os.File, fileBefore *os.File, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *os.File, lines []string, err error) {
