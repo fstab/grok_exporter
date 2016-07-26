@@ -2,7 +2,6 @@ package tailer
 
 import (
 	"fmt"
-	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -22,17 +21,17 @@ func initWatcher(abspath string, file *os.File) (*watcher, error) {
 	if err != nil {
 		return nil, err
 	}
-	kq, err := unix.Kqueue()
+	kq, err := syscall.Kqueue()
 	if err != nil {
 		dir.Close()
 		return nil, err
 	}
-	zeroTimeout := unix.NsecToTimespec(0) // timeout zero means non-blocking kevent() call
+	zeroTimeout := syscall.NsecToTimespec(0) // timeout zero means non-blocking kevent() call
 	// Register for events on dir and file.
-	_, err = unix.Kevent(kq, []unix.Kevent_t{makeEvent(dir), makeEvent(file)}, nil, &zeroTimeout)
+	_, err = syscall.Kevent(kq, []syscall.Kevent_t{makeEvent(dir), makeEvent(file)}, nil, &zeroTimeout)
 	if err != nil {
 		dir.Close()
-		unix.Close(kq)
+		syscall.Close(kq)
 		return nil, err
 	}
 	return &watcher{
@@ -47,7 +46,7 @@ func (w *watcher) Close() error {
 		err1 = w.dir.Close()
 	}
 	if w.kq != 0 {
-		err2 = unix.Close(w.kq)
+		err2 = syscall.Close(w.kq)
 	}
 	if err1 != nil {
 		return err1
@@ -57,13 +56,13 @@ func (w *watcher) Close() error {
 
 type eventLoop struct {
 	w      *watcher
-	events chan []unix.Kevent_t
+	events chan []syscall.Kevent_t
 	errors chan error
 	done   chan struct{}
 }
 
 func startEventLoop(w *watcher) *eventLoop {
-	events := make(chan []unix.Kevent_t)
+	events := make(chan []syscall.Kevent_t)
 	errors := make(chan error)
 	done := make(chan struct{})
 	go func() {
@@ -72,8 +71,8 @@ func startEventLoop(w *watcher) *eventLoop {
 			close(errors)
 		}()
 		for {
-			eventBuf := make([]unix.Kevent_t, 10)
-			n, err := unix.Kevent(w.kq, nil, eventBuf, nil)
+			eventBuf := make([]syscall.Kevent_t, 10)
+			n, err := syscall.Kevent(w.kq, nil, eventBuf, nil)
 			if err == syscall.EINTR || err == syscall.EBADF {
 				// kq was closed, i.e. eventLoop.Close() was called.
 				return
@@ -111,11 +110,11 @@ func (l *eventLoop) Errors() chan error {
 	return l.errors
 }
 
-func (l *eventLoop) Events() chan []unix.Kevent_t {
+func (l *eventLoop) Events() chan []syscall.Kevent_t {
 	return l.events
 }
 
-func processEvents(events []unix.Kevent_t, w *watcher, fileBefore *os.File, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *os.File, lines []string, err error) {
+func processEvents(events []syscall.Kevent_t, w *watcher, fileBefore *os.File, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *os.File, lines []string, err error) {
 	file = fileBefore
 	lines = []string{}
 	for _, event := range events {
@@ -124,7 +123,7 @@ func processEvents(events []unix.Kevent_t, w *watcher, fileBefore *os.File, read
 
 	// Handle truncate events.
 	for _, event := range events {
-		if file != nil && event.Ident == uint64(file.Fd()) && event.Fflags&unix.NOTE_ATTRIB == unix.NOTE_ATTRIB {
+		if file != nil && event.Ident == uint64(file.Fd()) && event.Fflags&syscall.NOTE_ATTRIB == syscall.NOTE_ATTRIB {
 			_, err = file.Seek(0, os.SEEK_SET)
 			if err != nil {
 				return
@@ -134,7 +133,7 @@ func processEvents(events []unix.Kevent_t, w *watcher, fileBefore *os.File, read
 
 	// Handle write event.
 	for _, event := range events {
-		if file != nil && event.Ident == uint64(file.Fd()) && event.Fflags&unix.NOTE_WRITE == unix.NOTE_WRITE {
+		if file != nil && event.Ident == uint64(file.Fd()) && event.Fflags&syscall.NOTE_WRITE == syscall.NOTE_WRITE {
 			var freshLines []string
 			freshLines, err = reader.ReadAvailableLines(file)
 			if err != nil {
@@ -146,7 +145,7 @@ func processEvents(events []unix.Kevent_t, w *watcher, fileBefore *os.File, read
 
 	// Handle move and delete events.
 	for _, event := range events {
-		if file != nil && event.Ident == uint64(file.Fd()) && (event.Fflags&unix.NOTE_DELETE == unix.NOTE_DELETE || event.Fflags&unix.NOTE_RENAME == unix.NOTE_RENAME) {
+		if file != nil && event.Ident == uint64(file.Fd()) && (event.Fflags&syscall.NOTE_DELETE == syscall.NOTE_DELETE || event.Fflags&syscall.NOTE_RENAME == syscall.NOTE_RENAME) {
 			file.Close() // closing the fd will automatically remove event from kq.
 			file = nil
 			reader.Clear()
@@ -155,11 +154,11 @@ func processEvents(events []unix.Kevent_t, w *watcher, fileBefore *os.File, read
 
 	// Handle create events.
 	for _, event := range events {
-		if file == nil && event.Ident == uint64(w.dir.Fd()) && event.Fflags&unix.NOTE_WRITE == unix.NOTE_WRITE {
+		if file == nil && event.Ident == uint64(w.dir.Fd()) && event.Fflags&syscall.NOTE_WRITE == syscall.NOTE_WRITE {
 			file, err = os.Open(abspath)
 			if err == nil {
-				zeroTimeout := unix.NsecToTimespec(0) // timeout zero means non-blocking kevent() call
-				_, err = unix.Kevent(w.kq, []unix.Kevent_t{makeEvent(file)}, nil, &zeroTimeout)
+				zeroTimeout := syscall.NsecToTimespec(0) // timeout zero means non-blocking kevent() call
+				_, err = syscall.Kevent(w.kq, []syscall.Kevent_t{makeEvent(file)}, nil, &zeroTimeout)
 				if err != nil {
 					return
 				}
@@ -179,7 +178,7 @@ func processEvents(events []unix.Kevent_t, w *watcher, fileBefore *os.File, read
 	return
 }
 
-func makeEvent(file *os.File) unix.Kevent_t {
+func makeEvent(file *os.File) syscall.Kevent_t {
 
 	// Note about the EV_CLEAR flag:
 	//
@@ -197,17 +196,17 @@ func makeEvent(file *os.File) unix.Kevent_t {
 	//
 	// See also http://benno.id.au/blog/2008/05/15/simplefilemon
 
-	return unix.Kevent_t{
+	return syscall.Kevent_t{
 		Ident:  uint64(file.Fd()),
-		Filter: unix.EVFILT_VNODE,           // File modification and deletion events
-		Flags:  unix.EV_ADD | unix.EV_CLEAR, // Add a new event, automatically enabled unless EV_DISABLE is specified
-		Fflags: unix.NOTE_DELETE | unix.NOTE_WRITE | unix.NOTE_EXTEND | unix.NOTE_ATTRIB | unix.NOTE_LINK | unix.NOTE_RENAME | unix.NOTE_REVOKE,
+		Filter: syscall.EVFILT_VNODE,              // File modification and deletion events
+		Flags:  syscall.EV_ADD | syscall.EV_CLEAR, // Add a new event, automatically enabled unless EV_DISABLE is specified
+		Fflags: syscall.NOTE_DELETE | syscall.NOTE_WRITE | syscall.NOTE_EXTEND | syscall.NOTE_ATTRIB | syscall.NOTE_LINK | syscall.NOTE_RENAME | syscall.NOTE_REVOKE,
 		Data:   0,
 		Udata:  nil,
 	}
 }
 
-func event2string(dir *os.File, file *os.File, event unix.Kevent_t) string {
+func event2string(dir *os.File, file *os.File, event syscall.Kevent_t) string {
 	result := "event"
 	if dir != nil && event.Ident == uint64(dir.Fd()) {
 		result = fmt.Sprintf("%v for logdir with fflags", result)
@@ -217,25 +216,25 @@ func event2string(dir *os.File, file *os.File, event unix.Kevent_t) string {
 		result = fmt.Sprintf("%s for unknown fd=%v with fflags", result, event.Ident)
 	}
 
-	if event.Fflags&unix.NOTE_DELETE == unix.NOTE_DELETE {
+	if event.Fflags&syscall.NOTE_DELETE == syscall.NOTE_DELETE {
 		result = fmt.Sprintf("%v NOTE_DELETE", result)
 	}
-	if event.Fflags&unix.NOTE_WRITE == unix.NOTE_WRITE {
+	if event.Fflags&syscall.NOTE_WRITE == syscall.NOTE_WRITE {
 		result = fmt.Sprintf("%v NOTE_WRITE", result)
 	}
-	if event.Fflags&unix.NOTE_EXTEND == unix.NOTE_EXTEND {
+	if event.Fflags&syscall.NOTE_EXTEND == syscall.NOTE_EXTEND {
 		result = fmt.Sprintf("%v NOTE_EXTEND", result)
 	}
-	if event.Fflags&unix.NOTE_ATTRIB == unix.NOTE_ATTRIB {
+	if event.Fflags&syscall.NOTE_ATTRIB == syscall.NOTE_ATTRIB {
 		result = fmt.Sprintf("%v NOTE_ATTRIB", result)
 	}
-	if event.Fflags&unix.NOTE_LINK == unix.NOTE_LINK {
+	if event.Fflags&syscall.NOTE_LINK == syscall.NOTE_LINK {
 		result = fmt.Sprintf("%v NOTE_LINK", result)
 	}
-	if event.Fflags&unix.NOTE_RENAME == unix.NOTE_RENAME {
+	if event.Fflags&syscall.NOTE_RENAME == syscall.NOTE_RENAME {
 		result = fmt.Sprintf("%v NOTE_RENAME", result)
 	}
-	if event.Fflags&unix.NOTE_REVOKE == unix.NOTE_REVOKE {
+	if event.Fflags&syscall.NOTE_REVOKE == syscall.NOTE_REVOKE {
 		result = fmt.Sprintf("%v NOTE_REVOKE", result)
 	}
 	return result
