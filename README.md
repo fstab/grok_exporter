@@ -15,6 +15,22 @@ It is easy to extend Grok with custom patterns.
 The `grok_exporter` aims at porting Grok from the [ELK stack] to [Prometheus] monitoring.
 The goal is to use Grok patterns for extracting Prometheus metrics from arbitrary log files.
 
+How to run the example
+----------------------
+
+Download `grok_exporter-$ARCH.zip` for your operating system from the [releases] page, extract the archive, `cd grok_exporter-$ARCH`, then run
+
+```bash
+grok_exporter -config ./example/config.yml
+```
+
+The example directory contains `exim-rejected-RCPT-examples.log`, which is an example log file with sample log messages from the [Exim] mail server.
+The configuration in `config.yml` counts the total number of rejected recipients, partitioned by error message.
+
+The exporter provides the metrics on [http://localhost:9144/metrics]:
+
+![screenshot.png]
+
 Status
 ------
 
@@ -34,21 +50,10 @@ Prometheus support:
 
 * As of now, we implemented only `counter` as an example of a Prometheus metric. We will implement support for more metric types, as well as metrics to monitor `grok_exporter` itself.
 
-How to run the example
-----------------------
+How to Configure Your Own Patterns and Metrics
+----------------------------------------------
 
-An example log file and configuration can be found in the `example` directory. The file `exim-rejected-RCPT-examples.log` contains sample log messages from the [Exim] mail server.
-The configuration in `config.yml` counts the total number of rejected recipients, partitioned by error message.
-
-In order to run the example, download `grok_exporter-$ARCH.zip` for your operating system from the [releases] page, extract the archive, `cd grok_exporter-$ARCH`, then run
-
-```bash
-grok_exporter -config ./example/config.yml
-```
-
-The exporter provides the metrics on [http://localhost:9144/metrics]:
-
-![screenshot.png]
+[CONFIG.md] describes the `grok_exporter` configuration file and shows how to define Grok patterns, Prometheus metrics, and labels.
 
 How to build from source
 -----------------------
@@ -75,32 +80,18 @@ cd $GOPATH/src/github.com/fstab/grok_exporter
 git submodule update --init --recursive
 ```
 
-How to Configure Your Own Patterns and Metrics
-----------------------------------------------
+More Documentation
+------------------
 
-[CONFIG.md] describes the `grok_exporter` configuration file and shows how to define Grok patterns, Prometheus metrics, and labels.
+Implementation notes are available on the [Wiki pages]:
+
+* [tailer (tail -f)](https://github.com/fstab/grok_exporter/wiki/tailer-(tail-%E2%80%90f))
+* [About the Regular Expression Library](https://github.com/fstab/grok_exporter/wiki/About-the-Regular-Expression-Library)
 
 Related Projects
 ----------------
 
-Google's [mtail] goes in a similar direction. It uses [RE2] regular expressions, which is a stripped-down regular expression language. It will not be possible to re-use existing Grok definitions with `mtail`. However, `mtail` is probably more CPU efficient than `grok_exporter`. We will provide some benchmarks soon.
-
-About the Regular Expression Library
-------------------------------------
-
-[Grok] heavily uses regular expressions in its pattern definitions. Go's built-in [regexp] package implements Google's [RE2] syntax, which is a stripped-down regular expression language.
-
-While RE2 provides some performance guarantees, like a single scan over the input and O(n) execution time with respect to the length of the input, it does only support features that can be modelled as finite state machines (FSM).
-
-In particular, RE2 does not support backtracking and lookahead asseartions, as these cannot be implemented within RE2's performance restrictions.
-
-Grok uses these features a lot, so implementing Grok on top of Go's default [regexp] package is not possible. However, there are a few 3rd party regular expression libraries for Go that do not have these limitations:
-
-* [regexp2] is a port of dotNET's regular expression engine. It is written in pure Go.
-* [pcre] is a Go wrapper around the Perl Compatible Regular Expression (PCRE) library (libpcre) (needs `brew install pcre` or `sudo apt-get install libpcre++-dev`)
-* [rubex] is a Go wrapper around the [Oniguruma] regular expression library (needs `brew install oniguruma` or `sudo apt-get install libonig-dev`).
-
-As Grok is originally written in Ruby, and Ruby uses Oniguruma as its regular expression library, we decided to use rubex for best compatibility.
+Google's [mtail] goes in a similar direction. It uses its own pattern definition language, so it will not work out-of-the-box with existing Grok patterns. However, `mtail`'s [RE2] regular expressions are probably [more CPU efficient] than Grok's [Oniguruma] patterns. `mtail`'s file tailer seems to have its [focus on Linux].
 
 License
 -------
@@ -128,3 +119,6 @@ You may obtain a copy of the License at [http://www.apache.org/licenses/LICENSE-
 [libpcre]: http://www.pcre.org
 [rubex]: https://github.com/moovweb/rubex
 [http://www.apache.org/licenses/LICENSE-2.0]: http://www.apache.org/licenses/LICENSE-2.0
+[more CPU efficient]: https://github.com/fstab/grok_exporter/wiki/About-the-Regular-Expression-Library
+[focus on Linux]: https://github.com/fstab/grok_exporter/wiki/tailer-(tail-%E2%80%90f)
+[Wiki pages]: https://github.com/fstab/grok_exporter/wiki
