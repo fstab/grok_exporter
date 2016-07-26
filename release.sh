@@ -7,7 +7,7 @@ set -e
 # The Darwin release is built natively, Linux and Windows are built in a Docker container
 #========================================================================================
 
-export VERSION=0.0.3-SNAPSHOT
+export VERSION=0.0.3
 
 cd $GOPATH/src/github.com/fstab/grok_exporter
 rm -rf dist
