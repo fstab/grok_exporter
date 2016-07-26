@@ -1,6 +1,6 @@
 package main
 
 const (
-	VERSION    = "0.0.3"
+	VERSION    = "0.0.4-SNAPSHOT"
 	BUILD_DATE = "2016-07-26"
 )
