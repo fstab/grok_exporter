@@ -38,7 +38,7 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 	done := make(chan struct{})
 	errors := make(chan error)
 	go func() {
-		abspath, fd, _, file, reader, err := initWatcher(path, readall, lines)
+		abspath, fd, _, file, err := initWatcher(path, readall)
 		defer func() {
 			if fd != 0 {
 				syscall.Close(fd)
@@ -50,6 +50,19 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 		if err != nil {
 			writeError(errors, done, "Failed to initialize file system watcher for %v: %v", path, err.Error())
 			return
+		}
+		reader := NewBufferedLineReader()
+		freshLines, err := reader.ReadAvailableLines(file)
+		if err != nil {
+			writeError(errors, done, "Failed to initialize file system watcher for %v: %v", path, err.Error())
+			return
+		}
+		for _, line := range freshLines {
+			select {
+			case <-done:
+				return
+			case lines <- line:
+			}
 		}
 
 		events, eventReaderErrors, eventReaderDone := startEventReader(fd)
@@ -63,13 +76,18 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 				writeError(errors, done, "Failed to watch %v: %v", abspath, err.Error())
 				return
 			case evnts := <-events:
-
-				// TODO: linereader must return lines, and need to send it to 'lines' channel while checking 'done' channel.
-
-				file, reader, err = processEvents(evnts, file, reader, abspath, lines, logger)
+				var freshLines []string
+				file, freshLines, err = processEvents(evnts, file, reader, abspath, logger)
 				if err != nil {
 					writeError(errors, done, "Failed to watch %v: %v", abspath, err.Error())
 					return
+				}
+				for _, line := range freshLines {
+					select {
+					case <-done:
+						return
+					case lines <- line:
+					}
 				}
 			}
 		}
@@ -89,7 +107,7 @@ func writeError(errors chan error, done chan struct{}, format string, a ...inter
 	}
 }
 
-func initWatcher(path string, readall bool, lines chan string) (abspath string, fd int, wd int, file *os.File, reader *bufferedLineReader, err error) {
+func initWatcher(path string, readall bool) (abspath string, fd int, wd int, file *os.File, err error) {
 	abspath, err = filepath.Abs(path)
 	if err != nil {
 		return
@@ -109,11 +127,6 @@ func initWatcher(path string, readall bool, lines chan string) (abspath string, 
 		return
 	}
 	wd, err = syscall.InotifyAddWatch(fd, filepath.Dir(abspath), syscall.IN_MODIFY|syscall.IN_MOVED_FROM|syscall.IN_DELETE|syscall.IN_CREATE)
-	if err != nil {
-		return
-	}
-	reader = NewBufferedLineReader(file, lines)
-	err = reader.ProcessAvailableLines()
 	if err != nil {
 		return
 	}
@@ -179,9 +192,9 @@ func startEventReader(fd int) (chan []eventWithName, chan error, chan struct{}) 
 	return events, errors, done
 }
 
-func processEvents(events []eventWithName, fileBefore *os.File, readerBefore *bufferedLineReader, abspath string, lines chan string, logger simpleLogger) (file *os.File, reader *bufferedLineReader, err error) {
+func processEvents(events []eventWithName, fileBefore *os.File, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *os.File, lines []string, err error) {
 	file = fileBefore
-	reader = readerBefore
+	lines = []string{}
 	filename := filepath.Base(abspath)
 	var truncated bool
 	for _, event := range events {
@@ -201,10 +214,12 @@ func processEvents(events []eventWithName, fileBefore *os.File, readerBefore *bu
 					return
 				}
 			}
-			err = reader.ProcessAvailableLines()
+			var freshLines []string
+			freshLines, err = reader.ReadAvailableLines(file)
 			if err != nil {
 				return
 			}
+			lines = append(lines, freshLines...)
 		}
 	}
 
@@ -213,7 +228,7 @@ func processEvents(events []eventWithName, fileBefore *os.File, readerBefore *bu
 		if file != nil && event.Name == filename && (event.Mask&syscall.IN_MOVED_FROM == syscall.IN_MOVED_FROM || event.Mask&syscall.IN_DELETE == syscall.IN_DELETE) {
 			file.Close()
 			file = nil
-			reader = nil
+			reader.Clear()
 		}
 	}
 
@@ -224,11 +239,13 @@ func processEvents(events []eventWithName, fileBefore *os.File, readerBefore *bu
 			if err != nil {
 				return
 			}
-			reader = NewBufferedLineReader(file, lines)
-			err = reader.ProcessAvailableLines()
+			reader.Clear()
+			var freshLines []string
+			freshLines, err = reader.ReadAvailableLines(file)
 			if err != nil {
 				return
 			}
+			lines = append(lines, freshLines...)
 		}
 	}
 	return

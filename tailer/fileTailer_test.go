@@ -92,6 +92,13 @@ func TestFileTailerKeepLogfileOpen(t *testing.T) {
 	testLogrotate(t, NewTestRunLogger(101), _copytruncate, cp, keepOpen)
 }
 
+//func TestStress(t *testing.T) {
+//	for i := 0; i < 250; i++ {
+//		TestFileTailerCloseLogfileAfterEachLine(t)
+//		TestFileTailerKeepLogfileOpen(t)
+//	}
+//}
+
 func testLogrotate(t *testing.T, testRunLogger simpleLogger, logrotateOpt logrotateOption, logrotateMoveOpt logrotateMoveOption, loggerOpt loggerOption) {
 	testRunLogger.Debug("Running test with logrotate option '%v', move option '%v', and logger option '%v'.\n", logrotateOpt, logrotateMoveOpt, loggerOpt)
 	tmpDir := mkTmpDirOrFail(t)

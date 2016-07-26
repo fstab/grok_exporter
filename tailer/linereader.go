@@ -8,29 +8,26 @@ import (
 
 type bufferedLineReader struct {
 	remainingBytesFromLastRead []byte
-	out                        chan string
-	in                         io.Reader
 }
 
-func NewBufferedLineReader(file io.Reader, out chan string) *bufferedLineReader {
+func NewBufferedLineReader() *bufferedLineReader {
 	return &bufferedLineReader{
-		remainingBytesFromLastRead: make([]byte, 0),
-		out: out,
-		in:  file,
+		remainingBytesFromLastRead: []byte{},
 	}
 }
 
-func (r *bufferedLineReader) ProcessAvailableLines() error {
-	newBytes, err := read2EOF(r.in)
+func (r *bufferedLineReader) ReadAvailableLines(file io.Reader) ([]string, error) {
+	var lines []string
+	newBytes, err := read2EOF(file)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	lines, remainingBytes := splitLines(append(r.remainingBytesFromLastRead, newBytes...))
-	for _, line := range lines {
-		r.out <- line
-	}
-	r.remainingBytesFromLastRead = remainingBytes
-	return nil
+	lines, r.remainingBytesFromLastRead = splitLines(append(r.remainingBytesFromLastRead, newBytes...))
+	return lines, nil
+}
+
+func (r *bufferedLineReader) Clear() {
+	r.remainingBytesFromLastRead = []byte{}
 }
 
 func read2EOF(file io.Reader) ([]byte, error) {

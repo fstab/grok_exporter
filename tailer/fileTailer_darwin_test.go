@@ -26,7 +26,7 @@ func runTestKevent(t *testing.T, mode string) {
 	lines := make(chan string)
 	defer close(lines)
 
-	_, _, _, _, kq, err := initWatcher(logfile, false, lines)
+	_, _, _, kq, err := initWatcher(logfile, false)
 	if err != nil {
 		t.Error(err)
 	}

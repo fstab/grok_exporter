@@ -39,11 +39,25 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 	done := make(chan struct{})
 	errors := make(chan error)
 	go func() {
-		abspath, dir, file, reader, kq, err := initWatcher(path, readall, lines)
+		abspath, dir, file, kq, err := initWatcher(path, readall)
 		defer closeAll(dir, file, kq)
 		if err != nil {
 			writeError(errors, done, "Failed to initialize file system watcher for %v: %v", path, err.Error())
 			return
+		}
+
+		reader := NewBufferedLineReader()
+		freshLines, err := reader.ReadAvailableLines(file)
+		if err != nil {
+			writeError(errors, done, "Failed to initialize file system watcher for %v: %v", path, err.Error())
+			return
+		}
+		for _, line := range freshLines {
+			select {
+			case <-done:
+				return
+			case lines <- line:
+			}
 		}
 
 		events, eventReaderErrors, eventReaderDone := startEventReader(kq)
@@ -57,13 +71,20 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 				writeError(errors, done, "Failed to watch %v: %v", abspath, err.Error())
 				return
 			case evnts := <-events:
-				file, reader, err = processEvents(evnts, kq, dir, file, reader, abspath, lines, logger)
+				var freshLines []string
+				file, freshLines, err = processEvents(evnts, kq, dir, file, reader, abspath, logger)
 				if err != nil {
 					writeError(errors, done, "Failed to watch %v: %v", abspath, err.Error())
 					return
 				}
+				for _, line := range freshLines {
+					select {
+					case <-done:
+						return
+					case lines <- line:
+					}
+				}
 			}
-
 		}
 	}()
 	return &fileTailer{
@@ -81,7 +102,7 @@ func writeError(errors chan error, done chan struct{}, format string, a ...inter
 	}
 }
 
-func initWatcher(path string, readall bool, lines chan string) (abspath string, dir *os.File, file *os.File, reader *bufferedLineReader, kq int, err error) {
+func initWatcher(path string, readall bool) (abspath string, dir *os.File, file *os.File, kq int, err error) {
 	abspath, err = filepath.Abs(path)
 	if err != nil {
 		return
@@ -108,11 +129,6 @@ func initWatcher(path string, readall bool, lines chan string) (abspath string, 
 
 	// Register for events on dir and file.
 	_, err = unix.Kevent(kq, []unix.Kevent_t{makeEvent(dir), makeEvent(file)}, nil, &zeroTimeout)
-	if err != nil {
-		return
-	}
-	reader = NewBufferedLineReader(file, lines)
-	err = reader.ProcessAvailableLines()
 	if err != nil {
 		return
 	}
@@ -152,9 +168,9 @@ func startEventReader(kq int) (chan []unix.Kevent_t, chan error, chan struct{}) 
 	return events, errors, done
 }
 
-func processEvents(events []unix.Kevent_t, kq int, dir *os.File, fileBefore *os.File, readerBefore *bufferedLineReader, abspath string, lines chan string, logger simpleLogger) (file *os.File, reader *bufferedLineReader, err error) {
+func processEvents(events []unix.Kevent_t, kq int, dir *os.File, fileBefore *os.File, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *os.File, lines []string, err error) {
 	file = fileBefore
-	reader = readerBefore
+	lines = []string{}
 	for _, event := range events {
 		logger.Debug("File system watcher received %v.\n", event2string(dir, file, event))
 	}
@@ -172,10 +188,12 @@ func processEvents(events []unix.Kevent_t, kq int, dir *os.File, fileBefore *os.
 	// Handle write event.
 	for _, event := range events {
 		if file != nil && event.Ident == uint64(file.Fd()) && event.Fflags&unix.NOTE_WRITE == unix.NOTE_WRITE {
-			err = reader.ProcessAvailableLines()
+			var freshLines []string
+			freshLines, err = reader.ReadAvailableLines(file)
 			if err != nil {
 				return
 			}
+			lines = append(lines, freshLines...)
 		}
 	}
 
@@ -184,7 +202,7 @@ func processEvents(events []unix.Kevent_t, kq int, dir *os.File, fileBefore *os.
 		if file != nil && event.Ident == uint64(file.Fd()) && (event.Fflags&unix.NOTE_DELETE == unix.NOTE_DELETE || event.Fflags&unix.NOTE_RENAME == unix.NOTE_RENAME) {
 			file.Close() // closing the fd will automatically remove event from kq.
 			file = nil
-			reader = nil
+			reader.Clear()
 		}
 	}
 
@@ -198,11 +216,13 @@ func processEvents(events []unix.Kevent_t, kq int, dir *os.File, fileBefore *os.
 				if err != nil {
 					return
 				}
-				reader = NewBufferedLineReader(file, lines)
-				err = reader.ProcessAvailableLines()
+				reader.Clear()
+				var freshLines []string
+				freshLines, err = reader.ReadAvailableLines(file)
 				if err != nil {
 					return
 				}
+				lines = append(lines, freshLines...)
 			} else {
 				// If file could not be opened, the CREATE event was for another file, we ignore this.
 				err = nil

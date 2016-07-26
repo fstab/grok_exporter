@@ -11,16 +11,17 @@ import (
 type fileTailer struct {
 	lines  chan string
 	errors chan error
-	done   chan bool
+	done   chan struct{}
+	closed bool
 }
 
 func (f *fileTailer) Close() {
-	// TODO (1): If there was an error, this might hang forever, as the loop reading from 'done' has stopped.
-	// TODO (2): Will panic if Close() is called multiple times, because writing to closed 'done' channel.
-	f.done <- true
-	close(f.done)
-	close(f.lines)
-	close(f.errors)
+	if !f.closed {
+		f.closed = true
+		close(f.done)
+		close(f.lines)
+		close(f.errors)
+	}
 }
 
 func (f *fileTailer) Lines() chan string {
@@ -33,114 +34,53 @@ func (f *fileTailer) Errors() chan error {
 
 func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 	lines := make(chan string)
-	done := make(chan bool)
+	done := make(chan struct{})
 	errors := make(chan error)
 	go func() {
-		abspath, err := filepath.Abs(path)
-		if err != nil {
-			errors <- fmt.Errorf("%v: %v", path, err.Error())
-			return
-		}
-
-		file, err := Open(abspath)
-		if err != nil {
-			errors <- fmt.Errorf("%v: %v", abspath, err.Error())
-			return
-		}
-
-		if !readall {
-			_, err := file.Seek(0, os.SEEK_END)
-			if err != nil {
-				errors <- fmt.Errorf("%v: Error while seeking to the end of file: %v", path, err.Error())
-				return
-			}
-		}
-
-		reader := NewBufferedLineReader(file, lines)
-
-		watcher, err := winfsnotify.NewWatcher()
-		if err != nil {
-			errors <- fmt.Errorf("Failed to create file system watcher: %v", err.Error())
-			return
-		}
-
-		err = watcher.Watch(filepath.Dir(abspath))
-		if err != nil {
+		abspath, watcher, file, err := initWatcher(path, readall)
+		defer func() {
 			watcher.Close()
-			errors <- fmt.Errorf("Failed to watch directory %v: %v", filepath.Dir(abspath), err.Error())
+		}()
+		if err != nil {
+			writeError(errors, done, "Failed to initialize file system watcher for %v: %v", path, err.Error())
 			return
 		}
 
-		logger.Debug("Watching filesystem events in directory %v.\n", filepath.Dir(abspath))
-
-		if readall {
-			err = reader.ProcessAvailableLines()
-			if err != nil {
-				watcher.Close()
-				errors <- fmt.Errorf("Failed to watch %v: %v", abspath, err.Error())
+		reader := NewBufferedLineReader()
+		freshLines, err := reader.ReadAvailableLines(file)
+		if err != nil {
+			writeError(errors, done, "Failed to initialize file system watcher for %v: %v", path, err.Error())
+			return
+		}
+		for _, line := range freshLines {
+			select {
+			case <-done:
 				return
+			case lines <- line:
 			}
 		}
 
 		for {
 			select {
 			case <-done:
-				watcher.Close()
 				return
-			case ev := <-watcher.Event:
-				logger.Debug("Received filesystem event: %v\n", ev)
-
-				// WRITE or TRUNCATE
-				if file != nil && norm(ev.Name) == norm(abspath) && ev.Mask&winfsnotify.FS_MODIFY == winfsnotify.FS_MODIFY {
-					truncated, err := checkTruncated(file)
-					if err != nil {
-						watcher.Close()
-						errors <- err
-						return
-					}
-					if truncated {
-						_, err := file.Seek(0, os.SEEK_SET)
-						if err != nil {
-							watcher.Close()
-							errors <- fmt.Errorf("Failed to seek to the beginning of file %v: %v", abspath, err.Error())
-							return
-						}
-					}
-					err = reader.ProcessAvailableLines()
-					if err != nil {
-						watcher.Close()
-						errors <- fmt.Errorf("%v: %v", file.Name(), err)
-						return
-					}
-				}
-
-				// MOVE or DELETE
-				if file != nil && norm(ev.Name) == norm(abspath) && (ev.Mask&winfsnotify.FS_MOVED_FROM == winfsnotify.FS_MOVED_FROM || ev.Mask&winfsnotify.FS_DELETE == winfsnotify.FS_DELETE) {
-					file = nil
-					reader = nil
-				}
-
-				// CREATE
-				if file == nil && norm(ev.Name) == norm(abspath) && ev.Mask&winfsnotify.FS_CREATE == winfsnotify.FS_CREATE {
-					file, err = Open(abspath)
-					if err != nil {
-						// Should not happen, because we just received the CREATE event for this file.
-						watcher.Close()
-						errors <- fmt.Errorf("%v: Failed to open file: %v", abspath, err.Error())
-						return
-					}
-					reader = NewBufferedLineReader(file, lines)
-					err = reader.ProcessAvailableLines()
-					if err != nil {
-						watcher.Close()
-						errors <- fmt.Errorf("%v: %v", file.Name(), err)
-						return
-					}
-				}
-			case err := <-watcher.Error:
-				watcher.Close()
-				errors <- fmt.Errorf("Error while watching %v: %v\n", filepath.Dir(abspath), err.Error())
+			case err = <-watcher.Error:
+				writeError(errors, done, "Failed to watch %v: %v", abspath, err.Error())
 				return
+			case event := <-watcher.Event:
+				var freshLines []string
+				file, freshLines, err = processEvent(event, file, reader, abspath, logger)
+				if err != nil {
+					writeError(errors, done, "Failed to watch %v: %v", abspath, err.Error())
+					return
+				}
+				for _, line := range freshLines {
+					select {
+					case <-done:
+						return
+					case lines <- line:
+					}
+				}
 			}
 		}
 	}()
@@ -148,7 +88,90 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 		lines:  lines,
 		errors: errors,
 		done:   done,
+		closed: false,
 	}
+}
+
+func writeError(errors chan error, done chan struct{}, format string, a ...interface{}) {
+	select {
+	case errors <- fmt.Errorf(format, a...):
+	case <-done:
+	}
+}
+
+func initWatcher(path string, readall bool) (abspath string, watcher *winfsnotify.Watcher, file *autoClosingFile, err error) {
+	abspath, err = filepath.Abs(path)
+	if err != nil {
+		return
+	}
+	file, err = Open(abspath)
+	if err != nil {
+		return
+	}
+	if !readall {
+		_, err = file.Seek(0, os.SEEK_END)
+		if err != nil {
+			return
+		}
+	}
+	watcher, err = winfsnotify.NewWatcher()
+	if err != nil {
+		return
+	}
+	err = watcher.Watch(filepath.Dir(abspath))
+	if err != nil {
+		return
+	}
+	return
+}
+
+func processEvent(event *winfsnotify.Event, fileBefore *autoClosingFile, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *autoClosingFile, lines []string, err error) {
+	file = fileBefore
+	lines = []string{}
+	var truncated bool
+	logger.Debug("File system watcher received %v.\n", event.String())
+
+	// WRITE or TRUNCATE
+	if file != nil && norm(event.Name) == norm(abspath) && event.Mask&winfsnotify.FS_MODIFY == winfsnotify.FS_MODIFY {
+		truncated, err = checkTruncated(file)
+		if err != nil {
+			return
+		}
+		if truncated {
+			_, err = file.Seek(0, os.SEEK_SET)
+			if err != nil {
+				return
+			}
+		}
+		var freshLines []string
+		freshLines, err = reader.ReadAvailableLines(file)
+		if err != nil {
+			return
+		}
+		lines = append(lines, freshLines...)
+	}
+
+	// MOVE or DELETE
+	if file != nil && norm(event.Name) == norm(abspath) && (event.Mask&winfsnotify.FS_MOVED_FROM == winfsnotify.FS_MOVED_FROM || event.Mask&winfsnotify.FS_DELETE == winfsnotify.FS_DELETE) {
+		file = nil
+		reader.Clear()
+	}
+
+	// CREATE
+	if file == nil && norm(event.Name) == norm(abspath) && event.Mask&winfsnotify.FS_CREATE == winfsnotify.FS_CREATE {
+		file, err = Open(abspath)
+		if err != nil {
+			return
+		}
+		reader.Clear()
+		var freshLines []string
+		freshLines, err = reader.ReadAvailableLines(file)
+		if err != nil {
+			return
+		}
+		lines = append(lines, freshLines...)
+	}
+	return
 }
 
 // winfsnotify uses "/" instead of "\" when constructing the path in the event name.
