@@ -8,124 +8,43 @@ import (
 	"strings"
 )
 
-type fileTailer struct {
-	lines  chan string
-	errors chan error
-	done   chan struct{}
-	closed bool
-}
-
-func (f *fileTailer) Close() {
-	if !f.closed {
-		f.closed = true
-		close(f.done)
-		close(f.lines)
-		close(f.errors)
-	}
-}
-
-func (f *fileTailer) Lines() chan string {
-	return f.lines
-}
-
-func (f *fileTailer) Errors() chan error {
-	return f.errors
-}
-
-func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
-	lines := make(chan string)
-	done := make(chan struct{})
-	errors := make(chan error)
-	go func() {
-		abspath, watcher, file, err := initWatcher(path, readall)
-		defer func() {
-			watcher.Close()
-		}()
-		if err != nil {
-			writeError(errors, done, "Failed to initialize file system watcher for %v: %v", path, err.Error())
-			return
-		}
-
-		reader := NewBufferedLineReader()
-		freshLines, err := reader.ReadAvailableLines(file)
-		if err != nil {
-			writeError(errors, done, "Failed to initialize file system watcher for %v: %v", path, err.Error())
-			return
-		}
-		for _, line := range freshLines {
-			select {
-			case <-done:
-				return
-			case lines <- line:
-			}
-		}
-
-		for {
-			select {
-			case <-done:
-				return
-			case err = <-watcher.Error:
-				writeError(errors, done, "Failed to watch %v: %v", abspath, err.Error())
-				return
-			case event := <-watcher.Event:
-				var freshLines []string
-				file, freshLines, err = processEvent(event, file, reader, abspath, logger)
-				if err != nil {
-					writeError(errors, done, "Failed to watch %v: %v", abspath, err.Error())
-					return
-				}
-				for _, line := range freshLines {
-					select {
-					case <-done:
-						return
-					case lines <- line:
-					}
-				}
-			}
-		}
-	}()
-	return &fileTailer{
-		lines:  lines,
-		errors: errors,
-		done:   done,
-		closed: false,
-	}
-}
-
-func writeError(errors chan error, done chan struct{}, format string, a ...interface{}) {
-	select {
-	case errors <- fmt.Errorf(format, a...):
-	case <-done:
-	}
-}
-
-func initWatcher(path string, readall bool) (abspath string, watcher *winfsnotify.Watcher, file *autoClosingFile, err error) {
-	abspath, err = filepath.Abs(path)
+func initWatcher(abspath string, _ *autoClosingFile) (*winfsnotify.Watcher, error) {
+	watcher, err := winfsnotify.NewWatcher()
 	if err != nil {
-		return
-	}
-	file, err = Open(abspath)
-	if err != nil {
-		return
-	}
-	if !readall {
-		_, err = file.Seek(0, os.SEEK_END)
-		if err != nil {
-			return
-		}
-	}
-	watcher, err = winfsnotify.NewWatcher()
-	if err != nil {
-		return
+		return nil, err
 	}
 	err = watcher.Watch(filepath.Dir(abspath))
 	if err != nil {
-		return
+		watcher.Close()
+		return nil, err
 	}
-	return
+	return watcher, nil
 }
 
-func processEvent(event *winfsnotify.Event, fileBefore *autoClosingFile, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *autoClosingFile, lines []string, err error) {
+type eventLoop struct {
+	watcher *winfsnotify.Watcher
+}
+
+func startEventLoop(watcher *winfsnotify.Watcher) *eventLoop {
+	return &eventLoop{
+		watcher: watcher,
+	}
+}
+
+func (l *eventLoop) Close() error {
+	// watcher.Close() may be called twice, once for the eventLoop and once for the watcher. This should be fine.
+	return l.watcher.Close()
+}
+
+func (l *eventLoop) Errors() chan error {
+	return l.watcher.Error
+}
+
+func (l *eventLoop) Events() chan *winfsnotify.Event {
+	return l.watcher.Event
+}
+
+func processEvents(event *winfsnotify.Event, _ *winfsnotify.Watcher, fileBefore *autoClosingFile, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *autoClosingFile, lines []string, err error) {
 	file = fileBefore
 	lines = []string{}
 	var truncated bool
@@ -159,7 +78,7 @@ func processEvent(event *winfsnotify.Event, fileBefore *autoClosingFile, reader 
 
 	// CREATE
 	if file == nil && norm(event.Name) == norm(abspath) && event.Mask&winfsnotify.FS_CREATE == winfsnotify.FS_CREATE {
-		file, err = Open(abspath)
+		file, err = open(abspath)
 		if err != nil {
 			return
 		}
@@ -188,7 +107,7 @@ type autoClosingFile struct {
 	currentPos int64
 }
 
-func Open(path string) (*autoClosingFile, error) {
+func open(path string) (*autoClosingFile, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -236,6 +155,11 @@ func (f *autoClosingFile) Name() string {
 	return f.path
 }
 
+func (f *autoClosingFile) Close() error {
+	// nothing to do
+	return nil
+}
+
 func checkTruncated(f *autoClosingFile) (bool, error) {
 	file, err := os.Open(f.path)
 	if err != nil {
@@ -247,8 +171,4 @@ func checkTruncated(f *autoClosingFile) (bool, error) {
 		return false, fmt.Errorf("%v: Stat() failed: %v", file.Name(), err.Error())
 	}
 	return f.currentPos > fileInfo.Size(), nil
-}
-
-type simpleLogger interface {
-	Debug(format string, a ...interface{})
 }

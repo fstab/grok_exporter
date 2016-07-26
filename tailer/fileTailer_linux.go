@@ -9,128 +9,43 @@ import (
 	"unsafe"
 )
 
-type fileTailer struct {
-	lines  chan string
+func open(abspath string) (*os.File, error) {
+	return os.Open(abspath)
+}
+
+type watcher struct {
+	fd int // file descriptor for reading inotify events
+	wd int // watch descriptor for the log directory
+}
+
+func initWatcher(abspath string, _ *os.File) (*watcher, error) {
+	fd, err := syscall.InotifyInit1(syscall.IN_CLOEXEC)
+	if err != nil {
+		return nil, err
+	}
+	wd, err := syscall.InotifyAddWatch(fd, filepath.Dir(abspath), syscall.IN_MODIFY|syscall.IN_MOVED_FROM|syscall.IN_DELETE|syscall.IN_CREATE)
+	if err != nil {
+		return nil, err
+	}
+	return &watcher{
+		fd: fd,
+		wd: wd,
+	}, nil
+}
+
+func (w *watcher) Close() error {
+	var err error
+	if w.fd != 0 {
+		err = syscall.Close(w.fd)
+	}
+	return err
+}
+
+type eventLoop struct {
+	w      *watcher
+	events chan []eventWithName
 	errors chan error
 	done   chan struct{}
-	closed bool
-}
-
-func (f *fileTailer) Close() {
-	if !f.closed {
-		f.closed = true
-		close(f.done)
-		close(f.lines)
-		close(f.errors)
-	}
-}
-
-func (f *fileTailer) Lines() chan string {
-	return f.lines
-}
-
-func (f *fileTailer) Errors() chan error {
-	return f.errors
-}
-
-func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
-	lines := make(chan string)
-	done := make(chan struct{})
-	errors := make(chan error)
-	go func() {
-		abspath, fd, wd, file, err := initWatcher(path, readall)
-		defer func() {
-			if fd != 0 {
-				syscall.Close(fd)
-			}
-			if file != nil {
-				file.Close()
-			}
-		}()
-		if err != nil {
-			writeError(errors, done, "Failed to initialize file system watcher for %v: %v", path, err.Error())
-			return
-		}
-		reader := NewBufferedLineReader()
-		freshLines, err := reader.ReadAvailableLines(file)
-		if err != nil {
-			writeError(errors, done, "Failed to initialize file system watcher for %v: %v", path, err.Error())
-			return
-		}
-		for _, line := range freshLines {
-			select {
-			case <-done:
-				return
-			case lines <- line:
-			}
-		}
-
-		events, eventReaderErrors, shutdownCallback := startEventReader(fd, wd)
-		defer shutdownCallback()
-
-		for {
-			select {
-			case <-done:
-				return
-			case err = <-eventReaderErrors:
-				writeError(errors, done, "Failed to watch %v: %v", abspath, err.Error())
-				return
-			case evnts := <-events:
-				var freshLines []string
-				file, freshLines, err = processEvents(evnts, file, reader, abspath, logger)
-				if err != nil {
-					writeError(errors, done, "Failed to watch %v: %v", abspath, err.Error())
-					return
-				}
-				for _, line := range freshLines {
-					select {
-					case <-done:
-						return
-					case lines <- line:
-					}
-				}
-			}
-		}
-	}()
-	return &fileTailer{
-		lines:  lines,
-		errors: errors,
-		done:   done,
-		closed: false,
-	}
-}
-
-func writeError(errors chan error, done chan struct{}, format string, a ...interface{}) {
-	select {
-	case errors <- fmt.Errorf(format, a...):
-	case <-done:
-	}
-}
-
-func initWatcher(path string, readall bool) (abspath string, fd int, wd int, file *os.File, err error) {
-	abspath, err = filepath.Abs(path)
-	if err != nil {
-		return
-	}
-	file, err = os.Open(abspath)
-	if err != nil {
-		return
-	}
-	if !readall {
-		_, err = file.Seek(0, os.SEEK_END)
-		if err != nil {
-			return
-		}
-	}
-	fd, err = syscall.InotifyInit1(syscall.IN_CLOEXEC)
-	if err != nil {
-		return
-	}
-	wd, err = syscall.InotifyAddWatch(fd, filepath.Dir(abspath), syscall.IN_MODIFY|syscall.IN_MOVED_FROM|syscall.IN_DELETE|syscall.IN_CREATE)
-	if err != nil {
-		return
-	}
-	return
 }
 
 type eventWithName struct {
@@ -138,7 +53,7 @@ type eventWithName struct {
 	Name string
 }
 
-func startEventReader(fd int, wd int) (chan []eventWithName, chan error, func()) {
+func startEventLoop(w *watcher) *eventLoop {
 	events := make(chan []eventWithName)
 	errors := make(chan error)
 	done := make(chan struct{})
@@ -152,7 +67,7 @@ func startEventReader(fd int, wd int) (chan []eventWithName, chan error, func())
 		buf := make([]byte, (syscall.SizeofInotifyEvent+syscall.NAME_MAX+1)*10)
 
 		for {
-			n, err := syscall.Read(fd, buf)
+			n, err := syscall.Read(w.fd, buf)
 			if err != nil {
 				select {
 				case errors <- err:
@@ -175,7 +90,7 @@ func startEventReader(fd int, wd int) (chan []eventWithName, chan error, func())
 						event.Name = strings.TrimRight(string(bytes[0:event.Len]), "\000")
 					}
 					if event.Mask&syscall.IN_IGNORED == syscall.IN_IGNORED {
-						// The shutdown callback was called.
+						// eventLoop.Close() was called.
 						return
 					}
 					eventList = append(eventList, event)
@@ -191,13 +106,29 @@ func startEventReader(fd int, wd int) (chan []eventWithName, chan error, func())
 			}
 		}
 	}()
-	return events, errors, func() {
-		syscall.InotifyRmWatch(fd, uint32(wd)) // generates an IN_IGNORED event, which interrupts the syscall.Read()
-		close(done)
+	return &eventLoop{
+		w:      w,
+		events: events,
+		errors: errors,
+		done:   done,
 	}
 }
 
-func processEvents(events []eventWithName, fileBefore *os.File, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *os.File, lines []string, err error) {
+func (l *eventLoop) Close() error {
+	_, err := syscall.InotifyRmWatch(l.w.fd, uint32(l.w.wd)) // generates an IN_IGNORED event, which interrupts the syscall.Read()
+	close(l.done)
+	return err
+}
+
+func (l *eventLoop) Errors() chan error {
+	return l.errors
+}
+
+func (l *eventLoop) Events() chan []eventWithName {
+	return l.events
+}
+
+func processEvents(events []eventWithName, _ *watcher, fileBefore *os.File, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *os.File, lines []string, err error) {
 	file = fileBefore
 	lines = []string{}
 	filename := filepath.Base(abspath)
@@ -324,8 +255,4 @@ func event2string(event eventWithName) string {
 		result = fmt.Sprintf("%v IN_UNMOUNT", result)
 	}
 	return result
-}
-
-type simpleLogger interface {
-	Debug(format string, a ...interface{})
 }
