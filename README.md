@@ -24,7 +24,7 @@ Operating system support:
 
 * Linux 64 Bit: Supported [![Build Status](https://travis-ci.org/fstab/grok_exporter.svg?branch=master)](https://travis-ci.org/fstab/grok_exporter)
 * Windows 64 Bit: Supported [![Build status](https://ci.appveyor.com/api/projects/status/d8aq0pa3yfoapd69?svg=true)](https://ci.appveyor.com/project/fstab/grok-exporter)
-* Mac OS 64 Bit: Supported
+* mac OS 64 Bit: Supported [![Build Status](https://travis-ci.org/fstab/grok_exporter.svg?branch=master)](https://travis-ci.org/fstab/grok_exporter)
 
 Grok pattern support:
 
