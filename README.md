@@ -58,7 +58,7 @@ How to Configure Your Own Patterns and Metrics
 How to build from source
 -----------------------
 
-In order to compile `grok_exporter` from source, you need [Go] installed and `$GOPATH` set, and you need the source files of the [Oniguruma] regular expression library:
+In order to compile `grok_exporter` from source, you need [Go] installed and `$GOPATH` set, and you need the header files for the [Oniguruma] regular expression library:
 
 On OS X:
 
