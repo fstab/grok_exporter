@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// implements tailer.Tailer
 type bufferedTailerWithMetrics struct {
 	out  chan string
 	orig tailer.Tailer
@@ -26,6 +27,11 @@ func (b *bufferedTailerWithMetrics) Close() {
 	b.orig.Close()
 }
 
+// Wrapper around a tailer that consumes the lines channel quickly.
+// The idea is that the original tailer can continue reading lines from the logfile,
+// and does not need to wait until the lines are processed.
+// The number of buffered lines are exposed as a Prometheus metric, if lines are constantly
+// produced faster than they are consumed, we will eventually run out of memory.
 func BufferedTailerWithMetrics(orig tailer.Tailer) tailer.Tailer {
 	buffer := list.New()
 	bufferSync := sync.NewCond(&sync.Mutex{}) // coordinate producer and consumer
@@ -57,7 +63,6 @@ func BufferedTailerWithMetrics(orig tailer.Tailer) tailer.Tailer {
 					bufferSync.Signal()
 					bufferSync.L.Unlock()
 					prometheus.Unregister(bufferLoad)
-					close(out)
 					tick.Stop()
 					return
 				}
@@ -77,6 +82,7 @@ func BufferedTailerWithMetrics(orig tailer.Tailer) tailer.Tailer {
 			}
 			if buffer == nil {
 				bufferSync.L.Unlock()
+				close(out)
 				return
 			}
 			first := buffer.Front()

@@ -73,7 +73,7 @@ func (opt loggerOption) String() string {
 }
 
 func TestFileTailerCloseLogfileAfterEachLine(t *testing.T) {
-	testRunNumber := 0
+	testRunNumber := 0 // Helps to figure out which debug message belongs to which test run.
 	for _, mvOpt := range []logrotateMoveOption{mv, cp, rm} {
 		testRunNumber++
 		testLogrotate(t, NewTestRunLogger(testRunNumber), _create, mvOpt, closeFileAfterEachLine)
@@ -108,18 +108,18 @@ func TestShutdownDuringSendEvent(t *testing.T) {
 //	}
 //}
 
-func testLogrotate(t *testing.T, testRunLogger simpleLogger, logrotateOpt logrotateOption, logrotateMoveOpt logrotateMoveOption, loggerOpt loggerOption) {
-	testRunLogger.Debug("Running test with logrotate option '%v', move option '%v', and logger option '%v'.\n", logrotateOpt, logrotateMoveOpt, loggerOpt)
+func testLogrotate(t *testing.T, log simpleLogger, logrotateOpt logrotateOption, logrotateMoveOpt logrotateMoveOption, loggerOpt loggerOption) {
+	log.Debug("Running test with logrotate option '%v', move option '%v', and logger option '%v'.\n", logrotateOpt, logrotateMoveOpt, loggerOpt)
 	tmpDir := mkTmpDirOrFail(t)
 	defer cleanUp(t, tmpDir)
 	logfile := mkTmpFileOrFail(t, tmpDir)
-	logger := newLogger(t, logfile, loggerOpt)
-	defer logger.close(t)
+	logFileWriter := newLogFileWriter(t, logfile, loggerOpt)
+	defer logFileWriter.close(t)
 
-	logger.debug(t, testRunLogger, "test line 1")
-	logger.debug(t, testRunLogger, "test line 2")
+	logFileWriter.writeLine(t, log, "test line 1")
+	logFileWriter.writeLine(t, log, "test line 2")
 
-	tail := RunFileTailer(logfile, true, testRunLogger)
+	tail := RunFileTailer(logfile, true, log)
 	defer tail.Close()
 
 	// We don't expect errors. However, start a go-routine listening on
@@ -132,55 +132,55 @@ func testLogrotate(t *testing.T, testRunLogger simpleLogger, logrotateOpt logrot
 
 	// The first two lines are received without any fsnotify event,
 	// because they were written before the watcher was started.
-	expect(t, testRunLogger, tail.Lines(), "test line 1", 1*time.Second)
-	expect(t, testRunLogger, tail.Lines(), "test line 2", 1*time.Second)
+	expect(t, log, tail.Lines(), "test line 1", 1*time.Second)
+	expect(t, log, tail.Lines(), "test line 2", 1*time.Second)
 
 	// Append a line and see if the event is processed.
-	logger.debug(t, testRunLogger, "test line 3")
-	expect(t, testRunLogger, tail.Lines(), "test line 3", 1*time.Second)
+	logFileWriter.writeLine(t, log, "test line 3")
+	expect(t, log, tail.Lines(), "test line 3", 1*time.Second)
 
-	rotate(t, testRunLogger, logfile, logrotateOpt, logrotateMoveOpt)
+	rotate(t, log, logfile, logrotateOpt, logrotateMoveOpt)
 
 	// Log two more lines and see if they are received.
-	logger.debug(t, testRunLogger, "line 4")
-	expect(t, testRunLogger, tail.Lines(), "line 4", 10*time.Second) // few seconds longer to get filesystem notifications for rotate()
-	logger.debug(t, testRunLogger, "line 5")
-	expect(t, testRunLogger, tail.Lines(), "line 5", 1*time.Second)
+	logFileWriter.writeLine(t, log, "line 4")
+	expect(t, log, tail.Lines(), "line 4", 10*time.Second) // few seconds longer to get filesystem notifications for rotate()
+	logFileWriter.writeLine(t, log, "line 5")
+	expect(t, log, tail.Lines(), "line 5", 1*time.Second)
 }
 
-func newLogger(t *testing.T, logfile string, opt loggerOption) logger {
+func newLogFileWriter(t *testing.T, logfile string, opt loggerOption) logFileWriter {
 	switch {
 	case opt == closeFileAfterEachLine:
-		return newCloseFileAfterEachLineLogger(t, logfile)
+		return newCloseFileAfterEachLineLogFileWriter(t, logfile)
 	case opt == keepOpen:
-		return newKeepOpenLogger(t, logfile)
+		return newKeepOpenLogFileWriter(t, logfile)
 	default:
 		t.Fatalf("%v: Unsupported logger option.", opt)
 		return nil
 	}
 }
 
-type logger interface {
-	debug(t *testing.T, testRunLogger simpleLogger, msg string)
+type logFileWriter interface {
+	writeLine(t *testing.T, log simpleLogger, line string)
 	close(t *testing.T)
 }
 
-type closeFileAfterEachLineLogger struct {
+type closeFileAfterEachLineLogFileWriter struct {
 	path string
 }
 
-func newCloseFileAfterEachLineLogger(t *testing.T, logfile string) logger {
-	return &closeFileAfterEachLineLogger{
+func newCloseFileAfterEachLineLogFileWriter(t *testing.T, logfile string) logFileWriter {
+	return &closeFileAfterEachLineLogFileWriter{
 		path: logfile,
 	}
 }
 
-func (l *closeFileAfterEachLineLogger) debug(t *testing.T, testRunLogger simpleLogger, msg string) {
+func (l *closeFileAfterEachLineLogFileWriter) writeLine(t *testing.T, log simpleLogger, line string) {
 	f, err := os.OpenFile(l.path, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
 		t.Fatalf("%v: Failed to open file for writing: %v", l.path, err.Error())
 	}
-	_, err = f.WriteString(fmt.Sprintf("%v\n", msg))
+	_, err = f.WriteString(fmt.Sprintf("%v\n", line))
 	if err != nil {
 		t.Fatalf("%v: Failed to write to file: %v", l.path, err.Error())
 	}
@@ -192,29 +192,29 @@ func (l *closeFileAfterEachLineLogger) debug(t *testing.T, testRunLogger simpleL
 	if err != nil {
 		t.Fatalf("%v: Failed to close file: %v", l.path, err.Error())
 	}
-	testRunLogger.Debug("Wrote log line '%v' with closeFileAfterEachLineLogger.\n", msg)
+	log.Debug("Wrote log line '%v' with closeFileAfterEachLineLogger.\n", line)
 }
 
-func (l *closeFileAfterEachLineLogger) close(t *testing.T) {
+func (l *closeFileAfterEachLineLogFileWriter) close(t *testing.T) {
 	// nothing to do
 }
 
-type keepOpenLogger struct {
+type keepOpenLogFileWriter struct {
 	file *os.File
 }
 
-func newKeepOpenLogger(t *testing.T, logfile string) logger {
+func newKeepOpenLogFileWriter(t *testing.T, logfile string) logFileWriter {
 	f, err := os.OpenFile(logfile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
 		t.Fatalf("%v: Failed to open file for writing: %v", logfile, err.Error())
 	}
-	return &keepOpenLogger{
+	return &keepOpenLogFileWriter{
 		file: f,
 	}
 }
 
-func (l *keepOpenLogger) debug(t *testing.T, testRunLogger simpleLogger, msg string) {
-	_, err := l.file.WriteString(fmt.Sprintf("%v\n", msg))
+func (l *keepOpenLogFileWriter) writeLine(t *testing.T, log simpleLogger, line string) {
+	_, err := l.file.WriteString(fmt.Sprintf("%v\n", line))
 	if err != nil {
 		t.Fatalf("%v: Failed to write to file: %v", l.file.Name(), err.Error())
 	}
@@ -222,10 +222,10 @@ func (l *keepOpenLogger) debug(t *testing.T, testRunLogger simpleLogger, msg str
 	if err != nil {
 		t.Fatalf("%v: Failed to flush the file: %v", l.file.Name(), err.Error())
 	}
-	testRunLogger.Debug("Wrote log line '%v' with keepOpenLogger.\n", msg)
+	log.Debug("Wrote log line '%v' with keepOpenLogger.\n", line)
 }
 
-func (l *keepOpenLogger) close(t *testing.T) {
+func (l *keepOpenLogFileWriter) close(t *testing.T) {
 	err := l.file.Close()
 	if err != nil {
 		t.Fatalf("%v: Failed to close logfile: %v", l.file.Name(), err.Error())
@@ -282,7 +282,7 @@ func ls(t *testing.T, path string) []os.FileInfo {
 	return result
 }
 
-func rotate(t *testing.T, testRunLogger simpleLogger, logfile string, opt logrotateOption, mvOpt logrotateMoveOption) {
+func rotate(t *testing.T, log simpleLogger, logfile string, opt logrotateOption, mvOpt logrotateMoveOption) {
 	dir := filepath.Dir(logfile)
 	filename := filepath.Base(logfile)
 	filesBefore := ls(t, dir)
@@ -309,7 +309,7 @@ func rotate(t *testing.T, testRunLogger simpleLogger, logfile string, opt logrot
 	default:
 		t.Fatalf("Unknown logrotate option.")
 	}
-	testRunLogger.Debug("Simulated logrotate with option %v and mvOption %v\n", opt, mvOpt)
+	log.Debug("Simulated logrotate with option %v and mvOption %v\n", opt, mvOpt)
 }
 
 func moveOrFail(t *testing.T, mvOpt logrotateMoveOption, logfile string) {
@@ -383,7 +383,7 @@ func truncateOrFail(t *testing.T, logfile string) {
 	}
 }
 
-func expect(t *testing.T, testRunLogger simpleLogger, c chan string, line string, timeout time.Duration) {
+func expect(t *testing.T, log simpleLogger, c chan string, line string, timeout time.Duration) {
 	timeoutChan := make(chan bool, 1)
 	go func() {
 		time.Sleep(timeout)
@@ -395,28 +395,28 @@ func expect(t *testing.T, testRunLogger simpleLogger, c chan string, line string
 		if result != line {
 			t.Errorf("Expected '%v', but got '%v'.", line, result)
 		} else {
-			testRunLogger.Debug("Read expected line '%v'\n", line)
+			log.Debug("Read expected line '%v'\n", line)
 		}
 	case <-timeoutChan:
-		testRunLogger.Debug("Timeout while waiting for line '%v'\n", line)
+		log.Debug("Timeout while waiting for line '%v'\n", line)
 		t.Errorf("Timeout while waiting for line '%v'", line)
 	}
 }
 
 type testRunLogger struct {
-	stdoutLogger  simpleLogger
+	logger        simpleLogger
 	testRunNumber int
 }
 
 func NewTestRunLogger(testRunNumber int) *testRunLogger {
 	return &testRunLogger{
-		stdoutLogger:  debugLogger.New(true),
+		logger:        debugLogger.New(true),
 		testRunNumber: testRunNumber,
 	}
 }
 
 func (l *testRunLogger) Debug(format string, a ...interface{}) {
-	l.stdoutLogger.Debug("[%v] %v", l.testRunNumber, fmt.Sprintf(format, a...))
+	l.logger.Debug("[%v] %v", l.testRunNumber, fmt.Sprintf(format, a...))
 }
 
 func runTestShutdown(t *testing.T, mode string) {

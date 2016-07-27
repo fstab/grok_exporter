@@ -47,7 +47,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(-1)
 	}
-	//defer tail.Close() // TODO
 	serverErrorChannel := startServer(cfg, "/metrics", prometheus.Handler())
 	fmt.Printf("Starting server on %v://localhost:%v/metrics\n", cfg.Server.Protocol, cfg.Server.Port)
 	err = processLogLines(tail, metrics, serverErrorChannel)
@@ -66,18 +65,16 @@ func loadConfig() (*config.Config, error) {
 
 func initPatterns(cfg *config.Config) (*Patterns, error) {
 	patterns := InitPatterns()
-	if len(cfg.Grok.Patterns) > 0 {
+	if len(cfg.Grok.PatternsDir) > 0 {
 		err := patterns.AddDir(cfg.Grok.PatternsDir)
 		if err != nil {
 			return nil, err
 		}
 	}
-	if len(cfg.Grok.Patterns) > 0 {
-		for _, pattern := range cfg.Grok.Patterns {
-			err := patterns.AddPattern(pattern)
-			if err != nil {
-				return nil, err
-			}
+	for _, pattern := range cfg.Grok.Patterns {
+		err := patterns.AddPattern(pattern)
+		if err != nil {
+			return nil, err
 		}
 	}
 	return patterns, nil
