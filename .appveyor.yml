@@ -53,6 +53,7 @@ install:
 build_script:
     - cd c:\go\src\github.com\fstab\grok_exporter
     - go version
+    - dir c:\go\src\github.com\fstab\grok_exporter\logstash-patterns-core
     - go test github.com/fstab/grok_exporter
     - go test github.com/fstab/grok_exporter/exporter
     - go test github.com/fstab/grok_exporter/logger
