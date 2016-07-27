@@ -3,10 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/fstab/grok_exporter/config"
+	"github.com/fstab/grok_exporter/exporter"
 	"github.com/fstab/grok_exporter/logger"
-	"github.com/fstab/grok_exporter/metrics"
-	"github.com/fstab/grok_exporter/server"
 	"github.com/fstab/grok_exporter/tailer"
 	"github.com/prometheus/client_golang/prometheus"
 	"net/http"
@@ -21,7 +19,7 @@ var (
 func main() {
 	flag.Parse()
 	if *showVersion {
-		fmt.Printf("grok_exporter version %v build date %v.\n", VERSION, BUILD_DATE)
+		fmt.Printf("grok_exporter version %v build date %v.\n", exporter.VERSION, exporter.BUILD_DATE)
 		return
 	}
 	cfg, err := loadConfig()
@@ -56,15 +54,15 @@ func main() {
 	}
 }
 
-func loadConfig() (*config.Config, error) {
+func loadConfig() (*exporter.Config, error) {
 	if *configPath == "" {
 		return nil, fmt.Errorf("Usage: grok_exporter -config <path>")
 	}
-	return config.LoadConfigFile(*configPath)
+	return exporter.LoadConfigFile(*configPath)
 }
 
-func initPatterns(cfg *config.Config) (*Patterns, error) {
-	patterns := InitPatterns()
+func initPatterns(cfg *exporter.Config) (*exporter.Patterns, error) {
+	patterns := exporter.InitPatterns()
 	if len(cfg.Grok.PatternsDir) > 0 {
 		err := patterns.AddDir(cfg.Grok.PatternsDir)
 		if err != nil {
@@ -80,16 +78,16 @@ func initPatterns(cfg *config.Config) (*Patterns, error) {
 	return patterns, nil
 }
 
-func createMetrics(cfg *config.Config, patterns *Patterns) ([]metrics.Metric, error) {
-	result := make([]metrics.Metric, 0, len(*cfg.Metrics))
+func createMetrics(cfg *exporter.Config, patterns *exporter.Patterns) ([]exporter.Metric, error) {
+	result := make([]exporter.Metric, 0, len(*cfg.Metrics))
 	for _, m := range *cfg.Metrics {
-		regex, err := Compile(m.Match, patterns)
+		regex, err := exporter.Compile(m.Match, patterns)
 		if err != nil {
 			return nil, err
 		}
 		switch {
 		case m.Type == "counter":
-			result = append(result, metrics.CreateGenericCounterVecMetric(m, regex))
+			result = append(result, exporter.CreateGenericCounterVecMetric(m, regex))
 		default:
 			return nil, fmt.Errorf("Failed to initialize metrics: Metric type %v is not supported.\n", m.Type)
 		}
@@ -97,17 +95,17 @@ func createMetrics(cfg *config.Config, patterns *Patterns) ([]metrics.Metric, er
 	return result, nil
 }
 
-func startServer(cfg *config.Config, path string, handler http.Handler) chan error {
+func startServer(cfg *exporter.Config, path string, handler http.Handler) chan error {
 	result := make(chan error)
 	go func() {
 		switch {
 		case cfg.Server.Protocol == "http":
-			result <- server.RunHttp(cfg.Server.Port, path, handler)
+			result <- exporter.RunHttpServer(cfg.Server.Port, path, handler)
 		case cfg.Server.Protocol == "https":
 			if cfg.Server.Cert != "" && cfg.Server.Key != "" {
-				result <- server.RunHttps(cfg.Server.Port, cfg.Server.Cert, cfg.Server.Key, path, handler)
+				result <- exporter.RunHttpsServer(cfg.Server.Port, cfg.Server.Cert, cfg.Server.Key, path, handler)
 			} else {
-				result <- server.RunHttpsWithDefaultKeys(cfg.Server.Port, path, handler)
+				result <- exporter.RunHttpsServerWithDefaultKeys(cfg.Server.Port, path, handler)
 			}
 		default:
 			// This is a bug, because cfg.validate() should make sure that protocol is either http or https.
@@ -117,7 +115,7 @@ func startServer(cfg *config.Config, path string, handler http.Handler) chan err
 	return result
 }
 
-func startTailer(cfg *config.Config) (tailer.Tailer, error) {
+func startTailer(cfg *exporter.Config) (tailer.Tailer, error) {
 	var tail tailer.Tailer
 	switch {
 	case cfg.Input.Type == "file":
@@ -127,10 +125,10 @@ func startTailer(cfg *config.Config) (tailer.Tailer, error) {
 	default:
 		return nil, fmt.Errorf("Config error: Input type '%v' unknown.", cfg.Input.Type)
 	}
-	return BufferedTailerWithMetrics(tail), nil
+	return exporter.BufferedTailerWithMetrics(tail), nil
 }
 
-func processLogLines(tail tailer.Tailer, metrics []metrics.Metric, serverErrorChannel chan error) error {
+func processLogLines(tail tailer.Tailer, metrics []exporter.Metric, serverErrorChannel chan error) error {
 	for {
 		select {
 		case err := <-serverErrorChannel:
@@ -143,7 +141,7 @@ func processLogLines(tail tailer.Tailer, metrics []metrics.Metric, serverErrorCh
 	}
 }
 
-func process(line string, metrics []metrics.Metric) {
+func process(line string, metrics []exporter.Metric) {
 	for _, metric := range metrics {
 		if metric.Matches(line) {
 			metric.Process(line)

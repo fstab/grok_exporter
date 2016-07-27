@@ -1,20 +1,26 @@
-package metrics
+package exporter
 
 import (
 	"fmt"
-	"github.com/fstab/grok_exporter/config"
 	"github.com/moovweb/rubex"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+type Metric interface {
+	Name() string
+	Collector() prometheus.Collector
+	Matches(ling string) bool
+	Process(line string)
+}
+
 type genericCounterVecMetric struct {
 	name    string
-	labels  []config.Label
+	labels  []Label
 	regex   *rubex.Regexp
 	counter *prometheus.CounterVec
 }
 
-func CreateGenericCounterVecMetric(cfg *config.MetricConfig, regex *rubex.Regexp) Metric {
+func CreateGenericCounterVecMetric(cfg *MetricConfig, regex *rubex.Regexp) Metric {
 	prometheusLabels := make([]string, 0, len(cfg.Labels))
 	for _, label := range cfg.Labels {
 		prometheusLabels = append(prometheusLabels, label.PrometheusLabel)

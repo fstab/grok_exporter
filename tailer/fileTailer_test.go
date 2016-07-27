@@ -2,7 +2,7 @@ package tailer
 
 import (
 	"fmt"
-	debugLogger "github.com/fstab/grok_exporter/logger"
+	"github.com/fstab/grok_exporter/logger"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -410,7 +410,7 @@ type testRunLogger struct {
 
 func NewTestRunLogger(testRunNumber int) *testRunLogger {
 	return &testRunLogger{
-		logger:        debugLogger.New(true),
+		logger:        logger.New(true),
 		testRunNumber: testRunNumber,
 	}
 }

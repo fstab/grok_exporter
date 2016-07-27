@@ -16,15 +16,15 @@ rm -rf dist
 # update the version file
 #--------------------------------------------------------------
 
-cat > version.go <<EOF
-package main
+cat > exporter/version.go <<EOF
+package exporter
 
 const (
 	VERSION = "$VERSION"
 	BUILD_DATE = "`date +%Y-%m-%d`"
 )
 EOF
-go fmt version.go > /dev/null
+go fmt exporter/version.go > /dev/null
 
 #--------------------------------------------------------------
 # Make sure all tests run.

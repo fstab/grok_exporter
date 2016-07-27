@@ -1,4 +1,4 @@
-package main
+package exporter
 
 const (
 	VERSION    = "0.0.4-SNAPSHOT"

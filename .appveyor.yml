@@ -9,14 +9,13 @@ environment:
  GOPATH: c:\go
  NOTIFY_TIMEOUT: 5s
 
+# TODO: github.com/fstab/grok_exporter/exporter needs the Oniguruma C library,
+# and the gcc toolchain for building it. Skip this for now and only test the
+# packaged that are independent of Oniguruma.
+
 build_script:
  - go version
- - go test -v github.com/fstab/grok_exporter/config
- - go test -v github.com/fstab/grok_exporter/dummy_glog
- - go test -v github.com/fstab/grok_exporter/logger
- - go test -v github.com/fstab/grok_exporter/server
- - go test -v github.com/fstab/grok_exporter/tailer
-# - go test -v github.com/fstab/grok_exporter/metrics
+ - go test -v github.com/fstab/grok_exporter/logger github.com/fstab/grok_exporter/tailer
 
 test: off
 
