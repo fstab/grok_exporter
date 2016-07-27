@@ -3,13 +3,13 @@ package exporter
 import (
 	"fmt"
 	"os"
-	"path"
+	"path/filepath"
 	"testing"
 )
 
 func loadPatterns(t *testing.T) *Patterns {
 	patterns := InitPatterns()
-	err := patterns.AddDir(path.Join(os.Getenv("GOPATH"), "src", "github.com", "fstab", "grok_exporter", "logstash-patterns-core", "patterns"))
+	err := patterns.AddDir(filepath.Join(os.Getenv("GOPATH"), "src", "github.com", "fstab", "grok_exporter", "logstash-patterns-core", "patterns"))
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err.Error())
 	}
