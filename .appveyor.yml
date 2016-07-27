@@ -52,6 +52,7 @@ install:
 
 build_script:
     - cd c:\go\src\github.com\fstab\grok_exporter
+    - git submodule update --init --recursive
     - go version
     - dir c:\go\src\github.com\fstab\grok_exporter\logstash-patterns-core
     - go test github.com/fstab/grok_exporter
