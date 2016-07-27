@@ -54,17 +54,18 @@ build_script:
     - cd c:\go\src\github.com\fstab\grok_exporter
     - git submodule update --init --recursive
     - go version
-    - dir c:\go\src\github.com\fstab\grok_exporter\logstash-patterns-core
     - go test github.com/fstab/grok_exporter
     - go test github.com/fstab/grok_exporter/exporter
     - go test github.com/fstab/grok_exporter/logger
     - go test github.com/fstab/grok_exporter/tailer
     - go install github.com/fstab/grok_exporter
-    - grok_exporter -version
 
     # Print the linked DLLs, so we can check that grok_exporter does not have
     # a runtime dependency on Oniguruma.
     - C:\cygwin\bin\bash -c "PATH='/usr/sbin:/usr/bin:/sbin:/bin' x86_64-w64-mingw32-objdump -p /cygdrive/c/go/bin/grok_exporter.exe | grep 'DLL Name:'"
+
+    # Success.
+    - grok_exporter -version
 
 test:
     off
