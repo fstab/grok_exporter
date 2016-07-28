@@ -56,7 +56,6 @@ build_script:
     - go version
     - go test github.com/fstab/grok_exporter
     - go test github.com/fstab/grok_exporter/exporter
-    - go test github.com/fstab/grok_exporter/logger
     - go test github.com/fstab/grok_exporter/tailer
     - go install github.com/fstab/grok_exporter
 
