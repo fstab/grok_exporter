@@ -121,7 +121,7 @@ Implementation notes for developers are available on the [GitHub Wiki pages]:
 Related Projects
 ----------------
 
-Google's [mtail] goes in a similar direction. It uses its own pattern definition language, so it will not work out-of-the-box with existing Grok patterns. However, `mtail`'s [RE2] regular expressions are probably [more CPU efficient] than Grok's [Oniguruma] patterns. `mtail`'s file tailer seems to have its [focus on Linux].
+Google's [mtail] goes in a similar direction. It uses its own pattern definition language, so it will not work out-of-the-box with existing Grok patterns. However, `mtail`'s [RE2] regular expressions are probably [more CPU efficient] than Grok's [Oniguruma] patterns. `mtail` reads logfiles using the [fsnotify] library, which [might be an obstacle] on operating systems other than Linux.
 
 License
 -------
@@ -150,6 +150,7 @@ You may obtain a copy of the License at [http://www.apache.org/licenses/LICENSE-
 [rubex]: https://github.com/moovweb/rubex
 [http://www.apache.org/licenses/LICENSE-2.0]: http://www.apache.org/licenses/LICENSE-2.0
 [more CPU efficient]: https://github.com/fstab/grok_exporter/wiki/About-the-Regular-Expression-Library
-[focus on Linux]: https://github.com/fstab/grok_exporter/wiki/tailer-(tail-%E2%80%90f)
+[fsnotify]: https://github.com/fsnotify/fsnotify
+[might be an obstacle]: https://github.com/fstab/grok_exporter/wiki/tailer-(tail-%E2%80%90f)
 [GitHub Wiki pages]: https://github.com/fstab/grok_exporter/wiki
 [GitHub repository]: https://github.com/fstab/grok_exporter
