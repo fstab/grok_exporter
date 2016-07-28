@@ -36,6 +36,8 @@ The exporter provides the metrics on [http://localhost:9144/metrics]:
 Configuration
 -------------
 
+Example configuration for _rejected RCPT_ messages in the [Exim] mail server log:
+
 ```yaml
 input:
     type: file
