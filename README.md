@@ -45,7 +45,7 @@ input:
     readall: true
 grok:
     patterns_dir: ./logstash-patterns-core/patterns
-    patterns:
+    additional_patterns:
     - 'EXIM_MESSAGE [a-zA-Z ]*'
 metrics:
     - type: counter
