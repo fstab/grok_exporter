@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/fstab/grok_exporter.svg?branch=master)](https://travis-ci.org/fstab/grok_exporter) [![Build status](https://ci.appveyor.com/api/projects/status/d8aq0pa3yfoapd69?svg=true)](https://ci.appveyor.com/project/fstab/grok-exporter) [![Coverage Status](https://coveralls.io/repos/github/fstab/grok_exporter/badge.svg?branch=master)](https://coveralls.io/github/fstab/grok_exporter?branch=master)
+
 grok_exporter
 =============
 
@@ -31,6 +33,32 @@ The exporter provides the metrics on [http://localhost:9144/metrics]:
 
 ![screenshot.png]
 
+Configuration
+-------------
+
+```yaml
+input:
+    type: file
+    path: ./example/exim-rejected-RCPT-examples.log
+    readall: true
+grok:
+    patterns_dir: ./logstash-patterns-core/patterns
+    patterns:
+    - 'EXIM_MESSAGE [a-zA-Z ]*'
+metrics:
+    - type: counter
+      name: exim_rejected_rcpt_total
+      help: Total number of rejected recipients, partitioned by error message.
+      match: '%{EXIM_DATE} %{EXIM_REMOTE_HOST} F=<%{EMAILADDRESS}> rejected RCPT <%{EMAILADDRESS}>: %{EXIM_MESSAGE:message}'
+      labels:
+          - grok_field_name: message
+            prometheus_label: error_message
+server:
+    port: 9144
+```
+
+[CONFIG.md] describes the `grok_exporter` configuration file and shows how to define Grok patterns, Prometheus metrics, and labels.
+
 Status
 ------
 
@@ -38,9 +66,9 @@ Status
 
 Operating system support:
 
-* Linux 64 Bit: Supported [![Build Status](https://travis-ci.org/fstab/grok_exporter.svg?branch=master)](https://travis-ci.org/fstab/grok_exporter)
-* Windows 64 Bit: Supported [![Build status](https://ci.appveyor.com/api/projects/status/d8aq0pa3yfoapd69?svg=true)](https://ci.appveyor.com/project/fstab/grok-exporter)
-* mac OS 64 Bit: Supported [![Build Status](https://travis-ci.org/fstab/grok_exporter.svg?branch=master)](https://travis-ci.org/fstab/grok_exporter)
+* Linux 64 Bit: [Supported](https://travis-ci.org/fstab/grok_exporter)
+* Windows 64 Bit: [Supported](https://ci.appveyor.com/project/fstab/grok-exporter)
+* mac OS 64 Bit: [Supported](https://travis-ci.org/fstab/grok_exporter)
 
 Grok pattern support:
 
@@ -50,10 +78,6 @@ Prometheus support:
 
 * As of now, we implemented only `counter` as an example of a Prometheus metric. We will implement support for more metric types, as well as metrics to monitor `grok_exporter` itself.
 
-How to Configure Your Own Patterns and Metrics
-----------------------------------------------
-
-[CONFIG.md] describes the `grok_exporter` configuration file and shows how to define Grok patterns, Prometheus metrics, and labels.
 
 How to build from source
 -----------------------
