@@ -42,7 +42,9 @@ func main() {
 		case err := <-tail.Errors():
 			exitOnError(fmt.Errorf("Error reading log lines: %v", err.Error()))
 		case line := <-tail.Lines():
-			processLine(line, metrics)
+			for _, metric := range metrics {
+				metric.Process(line)
+			}
 		}
 	}
 }
@@ -87,7 +89,7 @@ func createMetrics(cfg *exporter.Config, patterns *exporter.Patterns) ([]exporte
 		}
 		switch {
 		case m.Type == "counter":
-			result = append(result, exporter.CreateGenericCounterVecMetric(m, regex))
+			result = append(result, exporter.NewCounterMetric(m, regex))
 		default:
 			return nil, fmt.Errorf("Failed to initialize metrics: Metric type %v is not supported.\n", m.Type)
 		}
@@ -126,12 +128,4 @@ func startTailer(cfg *exporter.Config) (tailer.Tailer, error) {
 		return nil, fmt.Errorf("Config error: Input type '%v' unknown.", cfg.Input.Type)
 	}
 	return exporter.BufferedTailerWithMetrics(tail), nil
-}
-
-func processLine(line string, metrics []exporter.Metric) {
-	for _, metric := range metrics {
-		if metric.Matches(line) {
-			metric.Process(line)
-		}
-	}
 }

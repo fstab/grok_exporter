@@ -5,8 +5,7 @@ import (
 )
 
 func TestAllRegexpsCompile(t *testing.T) {
-	patterns := InitPatterns()
-	loadPatternDir(t, patterns)
+	patterns := loadPatternDir(t)
 	for pattern := range *patterns {
 		_, err := Compile("%{"+pattern+"}", patterns)
 		if err != nil {

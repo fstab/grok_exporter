@@ -145,11 +145,11 @@ func (c *InputConfig) validate() error {
 	switch {
 	case c.Type == "stdin":
 		if c.Path != "" {
-			return fmt.Errorf("Cannot use 'input.path' when 'input.type' is stdin.")
+			return fmt.Errorf("Invalid input configuration: cannot use 'input.path' when 'input.type' is stdin.")
 		}
 	case c.Type == "file":
 		if c.Path == "" {
-			return fmt.Errorf("'input.path' is required for input type \"file\".")
+			return fmt.Errorf("Invalid input configuration: 'input.path' is required for input type \"file\".")
 		}
 	default:
 		return fmt.Errorf("Unsupported 'input.type': %v", c.Type)
@@ -159,49 +159,49 @@ func (c *InputConfig) validate() error {
 
 func (c *GrokConfig) validate() error {
 	if c.PatternsDir == "" && len(c.Patterns) == 0 {
-		return fmt.Errorf("No patterns defined: One of 'grok.patterns_dir' and 'grok.patterns' must be configured.")
+		return fmt.Errorf("Invalid grok configuration: no patterns defined: one of 'grok.patterns_dir' and 'grok.patterns' must be configured.")
 	}
 	return nil
 }
 
 func (c *MetricsConfig) validate() error {
 	if len(*c) == 0 {
-		return fmt.Errorf("'metrics' must not be empty.")
+		return fmt.Errorf("Invalid metrics configuration: 'metrics' must not be empty.")
 	}
 	metricNames := make(map[string]bool)
 	for _, metric := range *c {
-		_, exists := metricNames[metric.Name]
-		if exists {
-			return fmt.Errorf("%v defined twice.", metric.Name)
-		}
-		metricNames[metric.Name] = true
 		err := metric.validate()
 		if err != nil {
 			return err
 		}
+		_, exists := metricNames[metric.Name]
+		if exists {
+			return fmt.Errorf("Invalid metric configuration: metric '%v' defined twice.", metric.Name)
+		}
+		metricNames[metric.Name] = true
 	}
 	return nil
 }
 
 func (c *MetricConfig) validate() error {
 	switch {
-	case c.Type != "counter":
-		return fmt.Errorf("Invalid 'metrics.type': '%v'. We currently only support 'counter'.", c.Type)
 	case c.Name == "":
-		return fmt.Errorf("'metrics.name' must not be empty.")
+		return fmt.Errorf("Invalid metric configuration: 'metrics.name' must not be empty.")
 	case c.Help == "":
-		return fmt.Errorf("'metrics.help' must not be empty.")
+		return fmt.Errorf("Invalid metric configuration: 'metrics.help' must not be empty.")
 	case c.Match == "":
-		return fmt.Errorf("'metrics.match' must not be empty.")
+		return fmt.Errorf("Invalid metric configuration: 'metrics.match' must not be empty.")
 	}
-	if c.Labels == nil {
-		return fmt.Errorf("Cannot find 'metrics.label' configuration.")
-	}
-	for _, label := range c.Labels {
-		err := label.validate()
-		if err != nil {
-			return err
+	switch c.Type {
+	case "counter":
+		for _, label := range c.Labels {
+			err := label.validate()
+			if err != nil {
+				return err
+			}
 		}
+	default:
+		return fmt.Errorf("Invalid 'metrics.type': '%v'. We currently only support 'counter'.", c.Type)
 	}
 	return nil
 }
@@ -209,9 +209,9 @@ func (c *MetricConfig) validate() error {
 func (l *Label) validate() error {
 	switch {
 	case l.GrokFieldName == "":
-		return fmt.Errorf("'metrics.label.grok_field_name' must not be empty.")
+		return fmt.Errorf("Invalid metrics configuration: 'metrics.label.grok_field_name' must not be empty.")
 	case l.PrometheusLabel == "":
-		return fmt.Errorf("'metrics.label.prometheus_label' must not be empty.")
+		return fmt.Errorf("Invalid metrics configuration: 'metrics.label.prometheus_label' must not be empty.")
 	default:
 		return nil
 	}
@@ -225,14 +225,14 @@ func (c *ServerConfig) validate() error {
 		return fmt.Errorf("Invalid 'server.port': '%v'.", c.Port)
 	case c.Protocol == "https":
 		if c.Cert != "" && c.Key == "" {
-			return fmt.Errorf("'server.cert' must not be specified without 'server.key'")
+			return fmt.Errorf("Invalid server configuration: 'server.cert' must not be specified without 'server.key'")
 		}
 		if c.Cert == "" && c.Key != "" {
-			return fmt.Errorf("'server.key' must not be specified without 'server.cert'")
+			return fmt.Errorf("Invalid server configuration: 'server.key' must not be specified without 'server.cert'")
 		}
 	case c.Protocol == "http":
 		if c.Cert != "" || c.Key != "" {
-			return fmt.Errorf("'server.cert' and 'server.key' can only be configured for protocol 'https'.")
+			return fmt.Errorf("Invalid server configuration: 'server.cert' and 'server.key' can only be configured for protocol 'https'.")
 		}
 	}
 	return nil

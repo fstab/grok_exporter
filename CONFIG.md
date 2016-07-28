@@ -126,8 +126,8 @@ We describe the general metric configuration here, and provide additional info o
 * `name` is the name of the metric. Metric names are described in the [Prometheus data model documentation].
 * `help` will be included as a comment when the metric is exposed via HTTP(S).
 * `match` is the Grok expression. See the [Grok documentation] for more info.
-* `labels` define how to map Grok fields to Prometheus labels.
-  The `labels` config contains a list of `grok_field_name`/`prometheus_label` pairs.
+* `labels` is optional and can be used to partition the metric by Grok fields.
+  `labels` contains a list of `grok_field_name`/`prometheus_label` pairs.
   The `grok_field_name` must be a field name that is used in the `match`.
   For example, if `match` is `%{NUMBER:duration} %{IP:client}`, the names `duration` and `client` may be used as Grok field names.
   The `prometheus_label` defines how the Prometheus label will be called.
