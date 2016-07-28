@@ -16,8 +16,8 @@ script:
   - go test -v $(go list ./... | grep -v /vendor/)
 
 after_success:
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then go get golang.org/x/tools/cmd/cover && go get github.com/mattn/goveralls && github.com/modocache/gover ; fi
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then go list ./... | grep -v /vendor/ | while read package ; do go test -v -covermode count -coverprofile=$(basename $package).coverprofile $package ; done ; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then go get golang.org/x/tools/cmd/cover github.com/mattn/goveralls github.com/modocache/gover ; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then go list ./... | grep -v /vendor/ | while read package ; do go test -covermode count -coverprofile=$(basename $package).coverprofile $package ; done ; fi
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then gover && goveralls -coverprofile=gover.coverprofile -service=travis-ci ; fi
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then rm *.coverprofile ; fi
 
