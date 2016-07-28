@@ -4,7 +4,7 @@ input:
     readall: true # Read from the beginning of the file? False means we start at the end of the file and read only new lines.
 grok:
     patterns_dir: ./logstash-patterns-core/patterns
-    patterns:
+    additional_patterns:
     - 'EXIM_MESSAGE [a-zA-Z ]*'
 metrics:
     - type: counter

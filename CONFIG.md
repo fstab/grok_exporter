@@ -79,7 +79,7 @@ The `grok` section configures the available Grok patterns. An example configurat
 ```yaml
 grok:
     patterns_dir: ./logstash-patterns-core/patterns
-    patterns:
+    additional_patterns:
     - 'EXIM_MESSAGE [a-zA-Z ]*'
     - 'EXIM_SENDER_ADDRESS F=<%{EMAILADDRESS}>'
 ```
@@ -93,13 +93,13 @@ In most cases, we will have a directory containing all our pattern files.
 This directory can be configured with `patterns_dir`. All files in this directory must be valid pattern definition files.
 Examples of these files can be found in Grok's [pre-defined patterns].
 
-The `patterns` configuration defines a list of additional Grok patterns.
+The `additional_patterns` configuration defines a list of additional Grok patterns.
 This is convenient to quickly add some patterns without the need to create new files in `patterns_dir`.
 The lines defined in the `patterns` list have the same format as the lines in the files in `patterns_dir`.
 
-`patterns_dir` and `patterns` are both optional:
-If `patterns_dir` is missing all patterns must be defined directly in the `patterns` config.
-If `patterns` is missing all patterns must be defined in the `patterns_dir`.
+`patterns_dir` and `additional_patterns` are both optional:
+If `patterns_dir` is missing all patterns must be defined directly in the `additional_patterns` config.
+If `additional_patterns` is missing all patterns must be defined in the `patterns_dir`.
 
 Metrics Section
 ---------------

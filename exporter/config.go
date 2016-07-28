@@ -49,8 +49,8 @@ type InputConfig struct {
 }
 
 type GrokConfig struct {
-	PatternsDir string   `yaml:"patterns_dir,omitempty"`
-	Patterns    []string `yaml:",omitempty"`
+	PatternsDir        string   `yaml:"patterns_dir,omitempty"`
+	AdditionalPatterns []string `yaml:"additional_patterns,omitempty"`
 }
 
 type Label struct {
@@ -158,8 +158,8 @@ func (c *InputConfig) validate() error {
 }
 
 func (c *GrokConfig) validate() error {
-	if c.PatternsDir == "" && len(c.Patterns) == 0 {
-		return fmt.Errorf("Invalid grok configuration: no patterns defined: one of 'grok.patterns_dir' and 'grok.patterns' must be configured.")
+	if c.PatternsDir == "" && len(c.AdditionalPatterns) == 0 {
+		return fmt.Errorf("Invalid grok configuration: no patterns defined: one of 'grok.patterns_dir' and 'grok.additional_patterns' must be configured.")
 	}
 	return nil
 }

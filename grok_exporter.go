@@ -71,7 +71,7 @@ func initPatterns(cfg *exporter.Config) (*exporter.Patterns, error) {
 			return nil, err
 		}
 	}
-	for _, pattern := range cfg.Grok.Patterns {
+	for _, pattern := range cfg.Grok.AdditionalPatterns {
 		err := patterns.AddPattern(pattern)
 		if err != nil {
 			return nil, err
