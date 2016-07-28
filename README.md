@@ -83,7 +83,11 @@ git submodule update --init --recursive
 More Documentation
 ------------------
 
-Implementation notes are available on the [Wiki pages]:
+Documentation for users is included as Markdown files in the [GitHub repository]:
+
+* [CONFIG.md]: Specification of the config file.
+
+Implementation notes for developers are available on the [GitHub Wiki pages]:
 
 * [tailer (tail -f)](https://github.com/fstab/grok_exporter/wiki/tailer-(tail-%E2%80%90f))
 * [About the Regular Expression Library](https://github.com/fstab/grok_exporter/wiki/About-the-Regular-Expression-Library)
@@ -121,4 +125,5 @@ You may obtain a copy of the License at [http://www.apache.org/licenses/LICENSE-
 [http://www.apache.org/licenses/LICENSE-2.0]: http://www.apache.org/licenses/LICENSE-2.0
 [more CPU efficient]: https://github.com/fstab/grok_exporter/wiki/About-the-Regular-Expression-Library
 [focus on Linux]: https://github.com/fstab/grok_exporter/wiki/tailer-(tail-%E2%80%90f)
-[Wiki pages]: https://github.com/fstab/grok_exporter/wiki
+[GitHub Wiki pages]: https://github.com/fstab/grok_exporter/wiki
+[GitHub repository]: https://github.com/fstab/grok_exporter
