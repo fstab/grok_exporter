@@ -59,11 +59,14 @@ type Label struct {
 }
 
 type MetricConfig struct {
-	Type   string  `yaml:",omitempty"`
-	Name   string  `yaml:",omitempty"`
-	Help   string  `yaml:",omitempty"`
-	Match  string  `yaml:",omitempty"`
-	Labels []Label `yaml:",omitempty"`
+	Type      string              `yaml:",omitempty"`
+	Name      string              `yaml:",omitempty"`
+	Help      string              `yaml:",omitempty"`
+	Match     string              `yaml:",omitempty"`
+	Value     string              `yaml:",omitempty"`
+	Buckets   []float64           `yaml:",flow,omitempty"`
+	Quantiles map[float64]float64 `yaml:",flow,omitempty"`
+	Labels    []Label             `yaml:",omitempty"`
 }
 
 type MetricsConfig []*MetricConfig
@@ -185,6 +188,8 @@ func (c *MetricsConfig) validate() error {
 
 func (c *MetricConfig) validate() error {
 	switch {
+	case c.Type == "":
+		return fmt.Errorf("Invalid metric configuration: 'metrics.type' must not be empty.")
 	case c.Name == "":
 		return fmt.Errorf("Invalid metric configuration: 'metrics.name' must not be empty.")
 	case c.Help == "":
@@ -192,16 +197,35 @@ func (c *MetricConfig) validate() error {
 	case c.Match == "":
 		return fmt.Errorf("Invalid metric configuration: 'metrics.match' must not be empty.")
 	}
+	var hasValue, bucketsAllowed, quantilesAllowed bool
 	switch c.Type {
 	case "counter":
-		for _, label := range c.Labels {
-			err := label.validate()
-			if err != nil {
-				return err
-			}
-		}
+		hasValue, bucketsAllowed, quantilesAllowed = false, false, false
+	case "gauge":
+		hasValue, bucketsAllowed, quantilesAllowed = true, false, false
+	case "histogram":
+		hasValue, bucketsAllowed, quantilesAllowed = true, true, false
+	case "summary":
+		hasValue, bucketsAllowed, quantilesAllowed = true, false, true
 	default:
-		return fmt.Errorf("Invalid 'metrics.type': '%v'. We currently only support 'counter'.", c.Type)
+		return fmt.Errorf("Invalid 'metrics.type': '%v'. We currently only support 'counter' and 'gauge'.", c.Type)
+	}
+	switch {
+	case hasValue && len(c.Value) == 0:
+		return fmt.Errorf("Invalid metric configuration: 'metrics.value' must not be empty for %v metrics.", c.Type)
+	case !hasValue && len(c.Value) > 0:
+		return fmt.Errorf("Invalid metric configuration: 'metrics.value' cannot be used for %v metrics.", c.Type)
+	case !bucketsAllowed && len(c.Buckets) > 0:
+		return fmt.Errorf("Invalid metric configuration: 'metrics.buckets' cannot be used for %v metrics.", c.Type)
+	case !quantilesAllowed && len(c.Quantiles) > 0:
+		return fmt.Errorf("Invalid metric configuration: 'metrics.buckets' cannot be used for %v metrics.", c.Type)
+	}
+	// Labels are optionally supported for all metric types.
+	for _, label := range c.Labels {
+		err := label.validate()
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

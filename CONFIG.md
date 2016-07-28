@@ -104,44 +104,162 @@ If `additional_patterns` is missing all patterns must be defined in the `pattern
 Metrics Section
 ---------------
 
-The metrics section contains a list of metrics.
-These metrics define how Grok fields are mapped to Prometheus metrics:
+The metrics section contains a list of metrics. These metrics define how Grok fields are mapped to Prometheus metrics.
+
+To exemplify the different metrics configurations, we use the following example log lines:
+
+```
+30.07.2016 14:37:03 alice 1.5
+30.07.2016 14:37:33 alice 2.5
+30.07.2016 14:43:02 bob 2.5
+30.07.2016 14:45:59 alice 2.5
+```
+
+Each line consists of a date, time, user, and a number. Using [Grok's default patterns], we can create a simple Grok expression matching these lines:
+
+```grok
+%{DATE} %{TIME} %{USER:user} %{NUMBER:val}
+```
+
+The following sections show how to configure the [Prometheus metric types] for parsing these lines with `grok_exporter`.
+
+### Counter Metric Type
+
+The counter metric counts the number of matching log lines.
 
 ```yaml
 metrics:
     - type: counter
-      name: exim_rejected_rcpt_total
-      help: Total number of rejected recipients, partitioned by error message.
-      match: '%{EXIM_DATE} %{EXIM_REMOTE_HOST} F=<%{EMAILADDRESS}> rejected RCPT <%{EMAILADDRESS}>: %{EXIM_MESSAGE:message}'
+      name: grok_example_lines_total_by_user
+      help: Counter metric with labels.
+      match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
       labels:
-          - grok_field_name: message
-            prometheus_label: error_message
+          - grok_field_name: user
+            prometheus_label: user
 ```
 
-Each metric has a `type`, `name`, `help`, `match`, and `labels`.
-Apart from that, there can be additional parameters depending on the metric type.
-We describe the general metric configuration here, and provide additional info on specific metric types in the sections below.
-
-* `type` corresponds to the [Prometheus metric type]. As of now, we only support `counter`.
+The configuration is as follows:
+* `type` is `counter`.
 * `name` is the name of the metric. Metric names are described in the [Prometheus data model documentation].
-* `help` will be included as a comment when the metric is exposed via HTTP(S).
+* `help` is a comment describing the metric.
 * `match` is the Grok expression. See the [Grok documentation] for more info.
-* `labels` is optional and can be used to partition the metric by Grok fields.
-  `labels` contains a list of `grok_field_name`/`prometheus_label` pairs.
-  The `grok_field_name` must be a field name that is used in the `match`.
-  For example, if `match` is `%{NUMBER:duration} %{IP:client}`, the names `duration` and `client` may be used as Grok field names.
-  The `prometheus_label` defines how the Prometheus label will be called.
-  It is common to use different names for the Grok field and the Prometheus label,
-  because Prometheus has other naming conventions than Grok.
-  The [Prometheus data model documentation] has more info on Prometheus label names.
+* `labels` is optional and can be used to partition the metric by Grok fields. `labels` contains a list of `grok_field_name`/`prometheus_label` pairs. The `grok_field_name` must be a field name that is used in the `match`. For example, if `match` is `%{NUMBER:duration} %{IP:client}`, the names `duration` and `client` may be used as Grok field names. The `prometheus_label` defines how the Prometheus label will be called. It is common to use different names for the Grok field and the Prometheus label,  because Prometheus has other naming conventions than Grok. The [Prometheus data model documentation] has more info on Prometheus label names.
 
-### Counter Metric Type
+Example output:
 
-The counter metric is incremented whenever a log line matches. There are no additional configuration parameters for counter metrics.
+```
+# HELP grok_example_lines_total_by_user Counter metric with labels.
+# TYPE grok_example_lines_total_by_user counter
+grok_example_lines_total_by_user{user="alice"} 3
+grok_example_lines_total_by_user{user="bob"} 1
+```
 
 ### Gauge Metric Type
 
-_Not implemented yet._
+The gauge metric is used to monitor values that are logged with each matching log line.
+
+```yaml
+metrics:
+    - type: gauge
+      name: grok_example_values_total_by_user
+      help: Gauge metric with labels.
+      match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
+      value: val
+      labels:
+          - grok_field_name: user
+            prometheus_label: user
+```
+
+The configuration is as follows:
+* `type` is `gauge`.
+* `name`, `help`, `match`, and `labels` have the same meaning as for `counter` metrics.
+* `value` is the Grok field name to be monitored. In the example, the name `val` is taken from the `%{NUMBER:val}` expression. You must make sure that the expression always matches a valid number.
+
+Example output:
+
+```
+# HELP grok_example_values_total_by_user Gauge metric with labels.
+# TYPE grok_example_values_total_by_user gauge
+grok_example_values_total_by_user{user="alice"} 6.5
+grok_example_values_total_by_user{user="bob"} 2.5
+```
+
+### Histogram Metric Type
+
+Like `gauge` metrics, `histogram` metrics monitor values that are logged with each matching log line. However, instead of just summing up the values, histograms count the observed values in configurable buckets.
+
+```yaml
+    - type: histogram
+      name: grok_example_histogram_total_by_user
+      help: Histogram metric with labels.
+      match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
+      value: val
+      buckets: [1, 2, 3]
+      labels:
+          - grok_field_name: user
+            prometheus_label: user
+```
+
+The configuration is as follows:
+* `type` is `histogram`.
+* `name`, `help`, `match`, `labels`, and `value` have the same meaning as for `gauge` metrics.
+* `buckets` configure the categories to be observed. In the example, we have 4 buckets: One for values < 1, one for values < 2, one for values < 3, and one for all values (i.e. < infinity). Buckets are optional. The default buckets are `[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]`, which is useful for HTTP response times in seconds.
+
+Example output:
+```
+# HELP grok_example_histogram_total_by_user Histogram metric with labels.
+# TYPE grok_example_histogram_total_by_user histogram
+grok_example_histogram_total_by_user_bucket{user="alice",le="1"} 0
+grok_example_histogram_total_by_user_bucket{user="alice",le="2"} 1
+grok_example_histogram_total_by_user_bucket{user="alice",le="3"} 3
+grok_example_histogram_total_by_user_bucket{user="alice",le="+Inf"} 3
+grok_example_histogram_total_by_user_sum{user="alice"} 6.5
+grok_example_histogram_total_by_user_count{user="alice"} 3
+grok_example_histogram_total_by_user_bucket{user="bob",le="1"} 0
+grok_example_histogram_total_by_user_bucket{user="bob",le="2"} 0
+grok_example_histogram_total_by_user_bucket{user="bob",le="3"} 1
+grok_example_histogram_total_by_user_bucket{user="bob",le="+Inf"} 1
+grok_example_histogram_total_by_user_sum{user="bob"} 2.5
+grok_example_histogram_total_by_user_count{user="bob"} 1
+```
+
+### Summary Metric Type
+
+Like `gauge` and `histogram` metrics, `summary` metrics monitor values that are logged with each matching log line. Summaries measure configurable φ quantiles, like the median (φ=0.5) or the 95% quantile (φ=0.95). See [histograms and summaries] for more info.
+
+```yaml
+metrics:
+   - type: summary
+      name: grok_test_example_summary_total_by_user
+      help: Summary metric with labels.
+      match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
+      value: val
+      quantiles: {0.5: 0.05, 0.9: 0.01, 0.99: 0.001}
+      labels:
+          - grok_field_name: user
+            prometheus_label: user
+```
+
+The configuration is as follows:
+* `type` is `summary`.
+* `name`, `help`, `match`, `labels`, and `value` have the same meaning as for `gauge` metrics.
+* `quantiles` is a list of quantiles to be observed. `grok_exporter` does not provide exact values for the quantiles, but only estimations. For each quantile, you also specify an uncertainty that is tolerated for the estimation. In the example, we measure the median (0.5 quantile) with uncertainty 5%, the 90% quantile with uncertainty 1%, and the 99% quantile with uncertainty 0.1%. `quantiles` is optional, the default value is `{0.5: 0.05, 0.9: 0.01, 0.99: 0.001}`.
+
+Example output:
+```
+# HELP grok_example_summary_total_by_user Summary metric with labels.
+# TYPE grok_example_summary_total_by_user summary
+grok_example_summary_total_by_user{user="alice",quantile="0.5"} 2.5
+grok_example_summary_total_by_user{user="alice",quantile="0.9"} 2.5
+grok_example_summary_total_by_user{user="alice",quantile="0.99"} 2.5
+grok_example_summary_total_by_user_sum{user="alice"} 6.5
+grok_example_summary_total_by_user_count{user="alice"} 3
+grok_example_summary_total_by_user{user="bob",quantile="0.5"} 2.5
+grok_example_summary_total_by_user{user="bob",quantile="0.9"} 2.5
+grok_example_summary_total_by_user{user="bob",quantile="0.99"} 2.5
+grok_example_summary_total_by_user_sum{user="bob"} 2.5
+grok_example_summary_total_by_user_count{user="bob"} 1
+```
 
 Server Section
 --------------
@@ -167,6 +285,8 @@ server:
 [Grok documentation]: https://www.elastic.co/guide/en/logstash/current/plugins-filters-grok.html
 [http://grokdebug.herokuapp.com]: http://grokdebug.herokuapp.com
 [http://grokconstructor.appspot.com]: http://grokconstructor.appspot.com
-[Prometheus metric type]: https://prometheus.io/docs/concepts/metric_types
+[Grok's default patterns]: https://github.com/logstash-plugins/logstash-patterns-core/blob/master/patterns/grok-patterns 
+[Prometheus metric types]: https://prometheus.io/docs/concepts/metric_types
 [Prometheus data model documentation]: https://prometheus.io/docs/concepts/data_model
 [Grok documentation]: https://www.elastic.co/guide/en/logstash/current/plugins-filters-grok.html
+[histograms and summaries]: https://prometheus.io/docs/practices/histograms/

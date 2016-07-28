@@ -43,7 +43,11 @@ func main() {
 			exitOnError(fmt.Errorf("Error reading log lines: %v", err.Error()))
 		case line := <-tail.Lines():
 			for _, metric := range metrics {
-				metric.Process(line)
+				err := metric.Process(line)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "WARNING: Skipping log line: %v\n", err.Error())
+					fmt.Fprintf(os.Stderr, "%v\n", line)
+				}
 			}
 		}
 	}
@@ -85,13 +89,19 @@ func createMetrics(cfg *exporter.Config, patterns *exporter.Patterns) ([]exporte
 	for _, m := range *cfg.Metrics {
 		regex, err := exporter.Compile(m.Match, patterns)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
 		}
-		switch {
-		case m.Type == "counter":
+		switch m.Type {
+		case "counter":
 			result = append(result, exporter.NewCounterMetric(m, regex))
+		case "gauge":
+			result = append(result, exporter.NewGaugeMetric(m, regex))
+		case "histogram":
+			result = append(result, exporter.NewHistogramMetric(m, regex))
+		case "summary":
+			result = append(result, exporter.NewSummaryMetric(m, regex))
 		default:
-			return nil, fmt.Errorf("Failed to initialize metrics: Metric type %v is not supported.\n", m.Type)
+			return nil, fmt.Errorf("Failed to initialize metrics: Metric type %v is not supported.", m.Type)
 		}
 	}
 	return result, nil

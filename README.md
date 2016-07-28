@@ -78,8 +78,10 @@ Grok pattern support:
 
 Prometheus support:
 
-* As of now, we implemented only `counter` as an example of a Prometheus metric. We will implement support for more metric types, as well as metrics to monitor `grok_exporter` itself.
-
+* [Counter] metrics: [Supported](CONFIG.md)
+* [Gauge] metrics: [Supported](CONFIG.md)
+* [Histogram] metrics: [Supported](CONFIG.md)
+* [Summary] metrics: [Supported](CONFIG.md)
 
 How to build from source
 -----------------------
@@ -154,3 +156,7 @@ You may obtain a copy of the License at [http://www.apache.org/licenses/LICENSE-
 [might be an obstacle]: https://github.com/fstab/grok_exporter/wiki/tailer-(tail-%E2%80%90f)
 [GitHub Wiki pages]: https://github.com/fstab/grok_exporter/wiki
 [GitHub repository]: https://github.com/fstab/grok_exporter
+[Counter]: https://prometheus.io/docs/concepts/metric_types/#counter
+[Gauge]: https://prometheus.io/docs/concepts/metric_types/#gauge
+[Histogram]: https://prometheus.io/docs/concepts/metric_types/#histogram
+[Summary]: https://prometheus.io/docs/concepts/metric_types/#summary

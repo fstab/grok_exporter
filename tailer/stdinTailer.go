@@ -3,6 +3,7 @@ package tailer
 import (
 	"bufio"
 	"os"
+	"strings"
 )
 
 type stdinTailer struct {
@@ -33,6 +34,7 @@ func RunStdinTailer() Tailer {
 				errorChan <- err
 				return
 			}
+			line = strings.TrimRight(line, "\r\n")
 			lineChan <- line
 		}
 	}()

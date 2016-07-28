@@ -85,6 +85,7 @@ git clone https://github.com/beorn7/perks.git
 cd perks
 git checkout 3ac7bf7a47d159a033b107610db8a1b6575507a4
 rm -rf .git .gitignore histogram topk README.md
+patch -p1 < $VENDOR/perks.patch
 
 # Dependency: github.com/golang/protobuf/proto
 

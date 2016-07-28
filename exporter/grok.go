@@ -14,7 +14,7 @@ func Compile(pattern string, patterns *Patterns) (*rubex.Regexp, error) {
 	}
 	result, err := rubex.CompileWithOption(regex, rubex.ONIG_OPTION_DEFAULT)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to compile pattern %v: Error with regular expression %v: %v", pattern, regex, err.Error())
+		return nil, fmt.Errorf("failed to compile pattern %v: error in regular expression %v: %v", pattern, regex, err.Error())
 	}
 	return result, nil
 }
