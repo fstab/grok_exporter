@@ -25,7 +25,7 @@ func (tail *sourceTailer) Close() {
 }
 
 // First produce 10,000 lines, then consume 10,000 lines.
-func TestSequential(t *testing.T) {
+func TestLineBufferSequential(t *testing.T) {
 	src := &sourceTailer{lines: make(chan string)}
 	buffered := BufferedTailerWithMetrics(src)
 	for i := 0; i < 10000; i++ {
@@ -49,7 +49,7 @@ func TestSequential(t *testing.T) {
 }
 
 // Produce and consume in parallel.
-func TestParallel(t *testing.T) {
+func TestLineBufferParallel(t *testing.T) {
 	src := &sourceTailer{lines: make(chan string)}
 	buffered := BufferedTailerWithMetrics(src)
 	var wg sync.WaitGroup

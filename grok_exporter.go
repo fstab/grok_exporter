@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/fstab/grok_exporter/exporter"
-	"github.com/fstab/grok_exporter/logger"
 	"github.com/fstab/grok_exporter/tailer"
 	"github.com/prometheus/client_golang/prometheus"
 	"net/http"
@@ -12,42 +11,43 @@ import (
 )
 
 var (
-	showVersion = flag.Bool("version", false, "Show the grok_exporter version.")
-	configPath  = flag.String("config", "", "Path to the config file. Try '-config ./example/config.yml' to get started.")
+	printVersion = flag.Bool("version", false, "Print the grok_exporter version.")
+	configPath   = flag.String("config", "", "Path to the config file. Try '-config ./example/config.yml' to get started.")
 )
 
 func main() {
 	flag.Parse()
-	if *showVersion {
+	if *printVersion {
 		fmt.Printf("grok_exporter version %v build date %v.\n", exporter.VERSION, exporter.BUILD_DATE)
 		return
 	}
 	cfg, err := loadConfig()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(-1)
-	}
+	exitOnError(err)
 	patterns, err := initPatterns(cfg)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(-1)
-	}
+	exitOnError(err)
 	metrics, err := createMetrics(cfg, patterns)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(-1)
-	}
+	exitOnError(err)
 	for _, m := range metrics {
 		prometheus.MustRegister(m.Collector())
 	}
 	tail, err := startTailer(cfg)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(-1)
-	}
-	serverErrorChannel := startServer(cfg, "/metrics", prometheus.Handler())
+	exitOnError(err)
 	fmt.Printf("Starting server on %v://localhost:%v/metrics\n", cfg.Server.Protocol, cfg.Server.Port)
-	err = processLogLines(tail, metrics, serverErrorChannel)
+	serverErrors := startServer(cfg, "/metrics", prometheus.Handler())
+
+	for {
+		select {
+		case err := <-serverErrors:
+			exitOnError(fmt.Errorf("Server error: %v", err.Error()))
+		case err := <-tail.Errors():
+			exitOnError(fmt.Errorf("Error reading log lines: %v", err.Error()))
+		case line := <-tail.Lines():
+			processLine(line, metrics)
+		}
+	}
+}
+
+func exitOnError(err error) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err.Error())
 		os.Exit(-1)
@@ -96,30 +96,30 @@ func createMetrics(cfg *exporter.Config, patterns *exporter.Patterns) ([]exporte
 }
 
 func startServer(cfg *exporter.Config, path string, handler http.Handler) chan error {
-	result := make(chan error)
+	serverErrors := make(chan error)
 	go func() {
 		switch {
 		case cfg.Server.Protocol == "http":
-			result <- exporter.RunHttpServer(cfg.Server.Port, path, handler)
+			serverErrors <- exporter.RunHttpServer(cfg.Server.Port, path, handler)
 		case cfg.Server.Protocol == "https":
 			if cfg.Server.Cert != "" && cfg.Server.Key != "" {
-				result <- exporter.RunHttpsServer(cfg.Server.Port, cfg.Server.Cert, cfg.Server.Key, path, handler)
+				serverErrors <- exporter.RunHttpsServer(cfg.Server.Port, cfg.Server.Cert, cfg.Server.Key, path, handler)
 			} else {
-				result <- exporter.RunHttpsServerWithDefaultKeys(cfg.Server.Port, path, handler)
+				serverErrors <- exporter.RunHttpsServerWithDefaultKeys(cfg.Server.Port, path, handler)
 			}
 		default:
-			// This is a bug, because cfg.validate() should make sure that protocol is either http or https.
-			result <- fmt.Errorf("Configuration error: Invalid 'server.protocol': '%v'. Expecting 'http' or 'https'.", cfg.Server.Protocol)
+			// This cannot happen, because cfg.validate() makes sure that protocol is either http or https.
+			serverErrors <- fmt.Errorf("Configuration error: Invalid 'server.protocol': '%v'. Expecting 'http' or 'https'.", cfg.Server.Protocol)
 		}
 	}()
-	return result
+	return serverErrors
 }
 
 func startTailer(cfg *exporter.Config) (tailer.Tailer, error) {
 	var tail tailer.Tailer
 	switch {
 	case cfg.Input.Type == "file":
-		tail = tailer.RunFileTailer(cfg.Input.Path, cfg.Input.Readall, logger.New(false))
+		tail = tailer.RunFileTailer(cfg.Input.Path, cfg.Input.Readall, nil)
 	case cfg.Input.Type == "stdin":
 		tail = tailer.RunStdinTailer()
 	default:
@@ -128,20 +128,7 @@ func startTailer(cfg *exporter.Config) (tailer.Tailer, error) {
 	return exporter.BufferedTailerWithMetrics(tail), nil
 }
 
-func processLogLines(tail tailer.Tailer, metrics []exporter.Metric, serverErrorChannel chan error) error {
-	for {
-		select {
-		case err := <-serverErrorChannel:
-			return fmt.Errorf("Server error: %v", err.Error())
-		case err := <-tail.Errors():
-			return fmt.Errorf("Error reading log lines: %v", err.Error())
-		case line := <-tail.Lines():
-			process(line, metrics)
-		}
-	}
-}
-
-func process(line string, metrics []exporter.Metric) {
+func processLine(line string, metrics []exporter.Metric) {
 	for _, metric := range metrics {
 		if metric.Matches(line) {
 			metric.Process(line)

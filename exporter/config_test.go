@@ -43,7 +43,7 @@ func equalsIgnoreIndentation(a string, b string) bool {
 	if len(aLines) != len(bLines) {
 		return false
 	}
-	for i, _ := range aLines {
+	for i := range aLines {
 		if strings.TrimSpace(aLines[i]) != strings.TrimSpace(bLines[i]) {
 			return false
 		}

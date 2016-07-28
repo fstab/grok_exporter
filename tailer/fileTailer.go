@@ -30,6 +30,9 @@ func (f *fileTailer) Errors() chan error {
 }
 
 func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
+	if logger == nil {
+		logger = &nilLogger{}
+	}
 	lines := make(chan string)
 	done := make(chan struct{})
 	errors := make(chan error)
@@ -131,3 +134,7 @@ func writeError(errors chan error, done chan struct{}, format string, a ...inter
 type simpleLogger interface {
 	Debug(format string, a ...interface{})
 }
+
+type nilLogger struct{}
+
+func (_ *nilLogger) Debug(_ string, _ ...interface{}) {}

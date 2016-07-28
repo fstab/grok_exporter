@@ -2,7 +2,6 @@ package tailer
 
 import (
 	"fmt"
-	"github.com/fstab/grok_exporter/logger"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -404,19 +403,17 @@ func expect(t *testing.T, log simpleLogger, c chan string, line string, timeout 
 }
 
 type testRunLogger struct {
-	logger        simpleLogger
 	testRunNumber int
 }
 
 func NewTestRunLogger(testRunNumber int) *testRunLogger {
 	return &testRunLogger{
-		logger:        logger.New(true),
 		testRunNumber: testRunNumber,
 	}
 }
 
 func (l *testRunLogger) Debug(format string, a ...interface{}) {
-	l.logger.Debug("[%v] %v", l.testRunNumber, fmt.Sprintf(format, a...))
+	fmt.Printf("%v [%v] %v", time.Now().Format("2006-01-02 15:04:05.0000"), l.testRunNumber, fmt.Sprintf(format, a...))
 }
 
 func runTestShutdown(t *testing.T, mode string) {
