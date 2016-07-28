@@ -33,7 +33,7 @@ mkdir -p github.com/prometheus
 cd github.com/prometheus
 git clone https://github.com/prometheus/client_golang.git
 cd client_golang
-git checkout d38f1ef46f0d78136db3e585f7ebe1bcc3476f73
+git checkout 28be15864ef9ba05d74fa6fd13b928fd250e8f01
 rm -rf .git
 
 # Dependency: github.com/prometheus/client_model/go
@@ -63,7 +63,7 @@ mkdir -p github.com/prometheus
 cd github.com/prometheus
 git clone https://github.com/prometheus/common.git
 cd common
-git checkout a6ab08426bb262e2d190097751f5cfd1cfdfd17d
+git checkout bc0a4460d0fc2693fcdebafafbf07c6d18913b97
 ls -A | grep -v expfmt | grep -v internal | grep -v model | xargs rm -rf
 
 # Dependency: github.com/matttproud/golang_protobuf_extensions/pbutil
@@ -93,7 +93,7 @@ mkdir -p github.com/golang
 cd github.com/golang
 git clone https://github.com/golang/protobuf.git
 cd protobuf
-git checkout 9e6977f30c91c78396e719e164e57f9287fff42c
+git checkout c3cefd437628a0b7d31b34fe44b3a7a540e98527
 rm -rf .git .gitignore Make* jsonpb protoc-gen-go ptypes
 
 ###########################################################################
