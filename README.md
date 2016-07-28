@@ -109,11 +109,11 @@ git submodule update --init --recursive
 More Documentation
 ------------------
 
-Documentation for users is included as Markdown files in the [GitHub repository]:
+User documentation is included in the [GitHub repository]:
 
 * [CONFIG.md]: Specification of the config file.
 
-Implementation notes for developers are available on the [GitHub Wiki pages]:
+Developer notes are available on the [GitHub Wiki pages]:
 
 * [tailer (tail -f)](https://github.com/fstab/grok_exporter/wiki/tailer-(tail-%E2%80%90f))
 * [About the Regular Expression Library](https://github.com/fstab/grok_exporter/wiki/About-the-Regular-Expression-Library)
