@@ -141,6 +141,11 @@ echo "Simulating logrotate..."
 rm $log_file
 echo '30.07.2016 14:45:59 alice 2.5' >> $log_file
 
+# Temporary: Trying to figure out why this fails on Travis CI mac OS, but works on my local mac OS. Trying to find out if there is a timing problem.
+curl -s http://localhost:9144/metrics | grep "grok_test_example_lines_total " | grep -v '#'
+sleep 0.1
+curl -s http://localhost:9144/metrics | grep "grok_test_example_lines_total " | grep -v '#'
+
 echo "Checking metrics..."
 
 checkMetric 'grok_test_example_lines_total' 4
