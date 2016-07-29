@@ -8,14 +8,11 @@ Export [Prometheus] metrics from arbitrary unstructured log data.
 About Grok
 ----------
 
-[Grok] is tool to parse crappy unstructured log data into something structured and queryable.
-Grok is heavily used in [Logstash] to provide log data as input for [ElasticSearch].
+[Grok] is tool to parse crappy unstructured log data into something structured and queryable. Grok is heavily used in [Logstash] to provide log data as input for [ElasticSearch].
 
-Grok ships with about 120 predefined patterns for syslog logs, apache and other webserver logs, mysql logs, etc.
-It is easy to extend Grok with custom patterns.
+Grok ships with about 120 predefined patterns for syslog logs, apache and other webserver logs, mysql logs, etc. It is easy to extend Grok with custom patterns.
 
-The `grok_exporter` aims at porting Grok from the [ELK stack] to [Prometheus] monitoring.
-The goal is to use Grok patterns for extracting Prometheus metrics from arbitrary log files.
+The `grok_exporter` aims at porting Grok from the [ELK stack] to [Prometheus] monitoring. The goal is to use Grok patterns for extracting Prometheus metrics from arbitrary log files.
 
 How to run the example
 ----------------------
@@ -26,8 +23,7 @@ Download `grok_exporter-$ARCH.zip` for your operating system from the [releases]
 ./grok_exporter -config ./example/config.yml
 ```
 
-The example log file `exim-rejected-RCPT-examples.log` contains log messages from the [Exim] mail server.
-The configuration in `config.yml` counts the total number of rejected recipients, partitioned by error message.
+The example log file `exim-rejected-RCPT-examples.log` contains log messages from the [Exim] mail server. The configuration in `config.yml` counts the total number of rejected recipients, partitioned by error message.
 
 The exporter provides the metrics on [http://localhost:9144/metrics]:
 
@@ -36,7 +32,7 @@ The exporter provides the metrics on [http://localhost:9144/metrics]:
 Configuration
 -------------
 
-Example configuration for counting _rejected RCPT_ messages in the [Exim] mail server log:
+Example configuration:
 
 ```yaml
 input:
@@ -49,12 +45,12 @@ grok:
     - 'EXIM_MESSAGE [a-zA-Z ]*'
 metrics:
     - type: counter
-      name: exim_rejected_rcpt_total
-      help: Total number of rejected recipients, partitioned by error message.
-      match: '%{EXIM_DATE} %{EXIM_REMOTE_HOST} F=<%{EMAILADDRESS}> rejected RCPT <%{EMAILADDRESS}>: %{EXIM_MESSAGE:message}'
+      name: grok_example_lines_total_by_user
+      help: Counter metric with labels.
+      match: '%{DATE} %{TIME} %{USER:user} %{NUMBER}'
       labels:
-          - grok_field_name: message
-            prometheus_label: error_message
+          - grok_field_name: user
+            prometheus_label: user
 server:
     port: 9144
 ```
