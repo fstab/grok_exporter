@@ -78,10 +78,10 @@ Grok pattern support:
 
 Prometheus support:
 
-* [Counter] metrics: [Supported](CONFIG.md)
-* [Gauge] metrics: [Supported](CONFIG.md)
-* [Histogram] metrics: [Supported](CONFIG.md)
-* [Summary] metrics: [Supported](CONFIG.md)
+* [Counter] metrics: [Supported](CONFIG.md#metrics-section)
+* [Gauge] metrics: [Supported](CONFIG.md#metrics-section)
+* [Histogram] metrics: [Supported](CONFIG.md#metrics-section)
+* [Summary] metrics: [Supported](CONFIG.md#metrics-section)
 
 How to build from source
 -----------------------

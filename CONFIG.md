@@ -145,7 +145,7 @@ The configuration is as follows:
 * `match` is the Grok expression. See the [Grok documentation] for more info.
 * `labels` is optional and can be used to partition the metric by Grok fields. `labels` contains a list of `grok_field_name`/`prometheus_label` pairs. The `grok_field_name` must be a field name that is used in the `match`. For example, if `match` is `%{NUMBER:duration} %{IP:client}`, the names `duration` and `client` may be used as Grok field names. The `prometheus_label` defines how the Prometheus label will be called. It is common to use different names for the Grok field and the Prometheus label,  because Prometheus has other naming conventions than Grok. The [Prometheus data model documentation] has more info on Prometheus label names.
 
-Example output:
+Output for the example log lines above:
 
 ```
 # HELP grok_example_lines_total_by_user Counter metric with labels.
@@ -175,7 +175,7 @@ The configuration is as follows:
 * `name`, `help`, `match`, and `labels` have the same meaning as for `counter` metrics.
 * `value` is the Grok field name to be monitored. In the example, the name `val` is taken from the `%{NUMBER:val}` expression. You must make sure that the expression always matches a valid number.
 
-Example output:
+Output for the example log lines above::
 
 ```
 # HELP grok_example_values_total_by_user Gauge metric with labels.
@@ -205,7 +205,7 @@ The configuration is as follows:
 * `name`, `help`, `match`, `labels`, and `value` have the same meaning as for `gauge` metrics.
 * `buckets` configure the categories to be observed. In the example, we have 4 buckets: One for values < 1, one for values < 2, one for values < 3, and one for all values (i.e. < infinity). Buckets are optional. The default buckets are `[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]`, which is useful for HTTP response times in seconds.
 
-Example output:
+Output for the example log lines above::
 ```
 # HELP grok_example_histogram_total_by_user Histogram metric with labels.
 # TYPE grok_example_histogram_total_by_user histogram
@@ -245,7 +245,7 @@ The configuration is as follows:
 * `name`, `help`, `match`, `labels`, and `value` have the same meaning as for `gauge` metrics.
 * `quantiles` is a list of quantiles to be observed. `grok_exporter` does not provide exact values for the quantiles, but only estimations. For each quantile, you also specify an uncertainty that is tolerated for the estimation. In the example, we measure the median (0.5 quantile) with uncertainty 5%, the 90% quantile with uncertainty 1%, and the 99% quantile with uncertainty 0.1%. `quantiles` is optional, the default value is `{0.5: 0.05, 0.9: 0.01, 0.99: 0.001}`.
 
-Example output:
+Output for the example log lines above::
 ```
 # HELP grok_example_summary_total_by_user Summary metric with labels.
 # TYPE grok_example_summary_total_by_user summary
