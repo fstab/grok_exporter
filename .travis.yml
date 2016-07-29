@@ -14,6 +14,8 @@ install:
 script:
   - go version
   - go test -v $(go list ./... | grep -v /vendor/)
+  - go install .
+  - ./integration-test.sh
 
 after_success:
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then go get golang.org/x/tools/cmd/cover github.com/mattn/goveralls github.com/modocache/gover ; fi
