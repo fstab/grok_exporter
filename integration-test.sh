@@ -6,6 +6,13 @@ set -e
 # Test the grok_exporter executable in $GOPATH/bin
 #####################################################################################
 
+# Mock cygpath on Linux and OS X, so we can run the same script on all operating systems.
+if [[ $(uname -s | tr '[a-z]' '[A-Z]') != *"CYGWIN"* ]] ; then
+    function cygpath() {
+        echo $2
+    }
+fi
+
 config_file=$(mktemp /tmp/grok_exporter-test-config.XXXXXX)
 log_file=$(mktemp /tmp/grok_exporter-test-log.XXXXXX)
 
@@ -21,10 +28,10 @@ trap cleanup_temp_files EXIT
 cat <<EOF > $config_file
 input:
     type: file
-    path: $log_file
+    path: $(cygpath -w $log_file)
     readall: true
 grok:
-    patterns_dir: $GOPATH/src/github.com/fstab/grok_exporter/logstash-patterns-core/patterns
+    patterns_dir: $(cygpath -w $GOPATH/src/github.com/fstab/grok_exporter/logstash-patterns-core/patterns)
     additional_patterns:
     - 'EXIM_MESSAGE [a-zA-Z ]*'
 metrics:
@@ -88,7 +95,7 @@ EOF
 
 touch $log_file
 
-$GOPATH/bin/grok_exporter -config $config_file &
+$GOPATH/bin/grok_exporter -config $(cygpath -w $config_file) &
 pid=$!
 disown
 trap "kill $pid && cleanup_temp_files" EXIT
