@@ -3,6 +3,8 @@
 set -e
 set -x
 
+uname -s
+
 # Temporary workaround to debug the integration-test.sh script on AppVeyor CI.
 # will be merged with integration-test.sh when it works.
 
