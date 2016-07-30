@@ -108,6 +108,7 @@ More Documentation
 User documentation is included in the [GitHub repository]:
 
 * [CONFIG.md]: Specification of the config file.
+* [BUILTIN.md]: Definition of metrics provided out-of-the-box.
 
 Developer notes are available on the [GitHub Wiki pages]:
 
@@ -137,6 +138,7 @@ You may obtain a copy of the License at [http://www.apache.org/licenses/LICENSE-
 [releases]: https://github.com/fstab/grok_exporter/releases
 [http://localhost:9144/metrics]: http://localhost:9144/metrics
 [CONFIG.md]: CONFIG.md
+[BUILTIN.md]: BUILTIN.md
 [regexp]: https://golang.org/pkg/regexp
 [RE2]: https://github.com/google/re2/wiki/Syntax
 [mtail]: https://github.com/google/mtail

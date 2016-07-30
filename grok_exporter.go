@@ -36,7 +36,7 @@ func main() {
 	for _, m := range metrics {
 		prometheus.MustRegister(m.Collector())
 	}
-	nLinesTotal, nMatchesByMetric, nErrorsByMetric, procTimeNanosByMetric := initSelfMonitoring(metrics)
+	nLinesTotal, nMatchesByMetric, procTimeMicrosecondsByMetric, nErrorsByMetric := initSelfMonitoring(metrics)
 
 	tail, err := startTailer(cfg)
 	exitOnError(err)
@@ -61,7 +61,7 @@ func main() {
 				}
 				if ok {
 					nMatchesByMetric.WithLabelValues(metric.Name()).Inc()
-					procTimeNanosByMetric.WithLabelValues(metric.Name()).Add(float64(time.Since(start).Nanoseconds()))
+					procTimeMicrosecondsByMetric.WithLabelValues(metric.Name()).Add(float64(time.Since(start).Nanoseconds() / int64(1000)))
 					matched = true
 				}
 			}
@@ -134,32 +134,32 @@ func initSelfMonitoring(metrics []exporter.Metric) (*prometheus.CounterVec, *pro
 		Help: "Total number of log lines processed by grok_exporter.",
 	}, []string{"status"})
 	nMatchesByMetric := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "grok_exporter_matches_total",
+		Name: "grok_exporter_lines_matching_total",
 		Help: "Number of lines matched for each metric. Note that one line can be matched by multiple metrics.",
 	}, []string{"metric"})
-	nErrorsByMetric := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "grok_expoerter_errors_total",
-		Help: "Number of errors for each metric. If this is > 0 there is an error in the configuration file. Check grok_exporter's console output.",
+	procTimeMicrosecondsByMetric := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "grok_exporter_lines_processing_time_microseconds_total",
+		Help: "Processing time in microseconds for each metric. Divide by grok_exporter_lines_matching_total to get the averge processing time for one log line.",
 	}, []string{"metric"})
-	procTimeNanosByMetric := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "grok_exporter_processing_time_nanoseconds_total",
-		Help: "Processing time in nanoseconds for each metric. Divide by grok_exporter_matches_total to get the averge processing time for one log line.",
+	nErrorsByMetric := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "grok_exporter_line_processing_errors_total",
+		Help: "Number of errors for each metric. If this is > 0 there is an error in the configuration file. Check grok_exporter's console output.",
 	}, []string{"metric"})
 
 	prometheus.MustRegister(nLinesTotal)
 	prometheus.MustRegister(nMatchesByMetric)
+	prometheus.MustRegister(procTimeMicrosecondsByMetric)
 	prometheus.MustRegister(nErrorsByMetric)
-	prometheus.MustRegister(procTimeNanosByMetric)
 
 	// Initializing a value with zero makes the label appear. Otherwise the label is not shown until the first value is observed.
-	for _, metric := range metrics {
-		nMatchesByMetric.WithLabelValues(metric.Name()).Add(0)
-		nErrorsByMetric.WithLabelValues(metric.Name()).Add(0)
-		procTimeNanosByMetric.WithLabelValues(metric.Name()).Add(0)
-	}
 	nLinesTotal.WithLabelValues(number_of_lines_matched_label).Add(0)
 	nLinesTotal.WithLabelValues(number_of_lines_ignored_label).Add(0)
-	return nLinesTotal, nMatchesByMetric, nErrorsByMetric, procTimeNanosByMetric
+	for _, metric := range metrics {
+		nMatchesByMetric.WithLabelValues(metric.Name()).Add(0)
+		procTimeMicrosecondsByMetric.WithLabelValues(metric.Name()).Add(0)
+		nErrorsByMetric.WithLabelValues(metric.Name()).Add(0)
+	}
+	return nLinesTotal, nMatchesByMetric, procTimeMicrosecondsByMetric, nErrorsByMetric
 }
 
 func startServer(cfg *exporter.Config, path string, handler http.Handler) chan error {
