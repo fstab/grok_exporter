@@ -58,8 +58,6 @@ server:
 Status
 ------
 
-`grok_exporter` is still in alpha phase. We plan to release the first beta before the [PromCon 2016](https://promcon.io).
-
 Operating system support:
 
 * Linux 64 Bit: [Supported](https://travis-ci.org/fstab/grok_exporter)
