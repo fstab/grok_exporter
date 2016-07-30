@@ -1,12 +1,12 @@
 diff -Naur perks_orig/quantile/stream.go perks_patched/quantile/stream.go
---- perks_orig/quantile/stream.go	2016-07-29 17:41:51.000000000 +0200
-+++ perks_patched/quantile/stream.go	2016-07-29 16:46:57.000000000 +0200
+--- perks_orig/quantile/stream.go	2016-07-30 13:01:29.000000000 +0200
++++ perks_patched/quantile/stream.go	2016-07-30 09:51:43.000000000 +0200
 @@ -133,7 +133,7 @@
  		if l == 0 {
  			return 0
  		}
 -		i := int(float64(l) * q)
-+		i := int(float64(l) * q + 0.5) // Add 0.5 because casting float to int always rounds down.
++		i := int(math.Ceil(float64(l) * q))
  		if i > 0 {
  			i -= 1
  		}
