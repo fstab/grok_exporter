@@ -10,73 +10,28 @@ import (
 type Metric interface {
 	Name() string
 	Collector() prometheus.Collector
-	Process(line string) error
+
+	// Returns true if the line matched, and false if the line didn't match.
+	Process(line string) (error, bool)
 }
 
+// Metric for the number of matching log lines.
 type counterMetric struct {
-	name    string
-	regex   *rubex.Regexp
-	counter prometheus.Counter
-}
-
-type counterVecMetric struct {
-	name       string
-	regex      *rubex.Regexp
-	labels     []Label
-	counterVec *prometheus.CounterVec
-}
-
-type gaugeMetric struct {
-	name  string
-	regex *rubex.Regexp
-	value string
-	gauge prometheus.Gauge
-}
-
-type gaugeVecMetric struct {
-	name     string
-	regex    *rubex.Regexp
-	labels   []Label
-	value    string
-	gaugeVec *prometheus.GaugeVec
-}
-
-type histogramMetric struct {
 	name      string
 	regex     *rubex.Regexp
-	value     string
-	histogram prometheus.Histogram
+	labels    []Label
+	collector prometheus.Collector
+	incFunc   func(line string)
 }
 
-type histogramVecMetric struct {
-	name         string
-	regex        *rubex.Regexp
-	labels       []Label
-	value        string
-	histogramVec *prometheus.HistogramVec
-}
-
-type summaryMetric struct {
-	name    string
-	regex   *rubex.Regexp
-	value   string
-	summary prometheus.Summary
-}
-
-type summaryVecMetric struct {
-	name       string
-	regex      *rubex.Regexp
-	labels     []Label
-	value      string
-	summaryVec *prometheus.SummaryVec
-}
-
-func prometheusLabels(labels []Label) []string {
-	promLabels := make([]string, 0, len(labels))
-	for _, label := range labels {
-		promLabels = append(promLabels, label.PrometheusLabel)
-	}
-	return promLabels
+// Metric for a value that is parsed from the matching log lines.
+type valueMetric struct {
+	name        string
+	regex       *rubex.Regexp
+	value       string
+	labels      []Label
+	collector   prometheus.Collector
+	observeFunc func(line string, val float64)
 }
 
 func NewCounterMetric(cfg *MetricConfig, regex *rubex.Regexp) Metric {
@@ -85,17 +40,25 @@ func NewCounterMetric(cfg *MetricConfig, regex *rubex.Regexp) Metric {
 		Help: cfg.Help,
 	}
 	if len(cfg.Labels) == 0 { // regular counter
+		counter := prometheus.NewCounter(counterOpts)
 		return &counterMetric{
-			name:    cfg.Name,
-			regex:   regex,
-			counter: prometheus.NewCounter(counterOpts),
+			name:      cfg.Name,
+			regex:     regex,
+			collector: counter,
+			incFunc: func(_ string) {
+				counter.Inc()
+			},
 		}
 	} else { // counterVec
-		return &counterVecMetric{
-			name:       cfg.Name,
-			regex:      regex,
-			labels:     cfg.Labels,
-			counterVec: prometheus.NewCounterVec(counterOpts, prometheusLabels(cfg.Labels)),
+		counterVec := prometheus.NewCounterVec(counterOpts, prometheusLabels(cfg.Labels))
+		return &counterMetric{
+			name:      cfg.Name,
+			regex:     regex,
+			labels:    cfg.Labels,
+			collector: counterVec,
+			incFunc: func(line string) {
+				counterVec.WithLabelValues(labelValues(line, regex, cfg.Labels)...).Inc()
+			},
 		}
 	}
 }
@@ -106,19 +69,27 @@ func NewGaugeMetric(cfg *MetricConfig, regex *rubex.Regexp) Metric {
 		Help: cfg.Help,
 	}
 	if len(cfg.Labels) == 0 { // regular gauge
-		return &gaugeMetric{
-			name:  cfg.Name,
-			regex: regex,
-			value: cfg.Value,
-			gauge: prometheus.NewGauge(gaugeOpts),
+		gauge := prometheus.NewGauge(gaugeOpts)
+		return &valueMetric{
+			name:      cfg.Name,
+			regex:     regex,
+			value:     cfg.Value,
+			collector: gauge,
+			observeFunc: func(_ string, val float64) {
+				gauge.Add(val)
+			},
 		}
 	} else { // gaugeVec
-		return &gaugeVecMetric{
-			name:     cfg.Name,
-			regex:    regex,
-			labels:   cfg.Labels,
-			value:    cfg.Value,
-			gaugeVec: prometheus.NewGaugeVec(gaugeOpts, prometheusLabels(cfg.Labels)),
+		gaugeVec := prometheus.NewGaugeVec(gaugeOpts, prometheusLabels(cfg.Labels))
+		return &valueMetric{
+			name:      cfg.Name,
+			regex:     regex,
+			value:     cfg.Value,
+			collector: gaugeVec,
+			labels:    cfg.Labels,
+			observeFunc: func(line string, val float64) {
+				gaugeVec.WithLabelValues(labelValues(line, regex, cfg.Labels)...).Add(val)
+			},
 		}
 	}
 }
@@ -132,19 +103,27 @@ func NewHistogramMetric(cfg *MetricConfig, regex *rubex.Regexp) Metric {
 		histogramOpts.Buckets = cfg.Buckets
 	}
 	if len(cfg.Labels) == 0 { // regular histogram
-		return &histogramMetric{
+		histogram := prometheus.NewHistogram(histogramOpts)
+		return &valueMetric{
 			name:      cfg.Name,
 			regex:     regex,
 			value:     cfg.Value,
-			histogram: prometheus.NewHistogram(histogramOpts),
+			collector: histogram,
+			observeFunc: func(_ string, val float64) {
+				histogram.Observe(val)
+			},
 		}
 	} else { // histogramVec
-		return &histogramVecMetric{
-			name:         cfg.Name,
-			regex:        regex,
-			labels:       cfg.Labels,
-			value:        cfg.Value,
-			histogramVec: prometheus.NewHistogramVec(histogramOpts, prometheusLabels(cfg.Labels)),
+		histogramVec := prometheus.NewHistogramVec(histogramOpts, prometheusLabels(cfg.Labels))
+		return &valueMetric{
+			name:      cfg.Name,
+			regex:     regex,
+			value:     cfg.Value,
+			collector: histogramVec,
+			labels:    cfg.Labels,
+			observeFunc: func(line string, val float64) {
+				histogramVec.WithLabelValues(labelValues(line, regex, cfg.Labels)...).Observe(val)
+			},
 		}
 	}
 }
@@ -158,20 +137,51 @@ func NewSummaryMetric(cfg *MetricConfig, regex *rubex.Regexp) Metric {
 		summaryOpts.Objectives = cfg.Quantiles
 	}
 	if len(cfg.Labels) == 0 { // regular summary
-		return &summaryMetric{
-			name:    cfg.Name,
-			regex:   regex,
-			value:   cfg.Value,
-			summary: prometheus.NewSummary(summaryOpts),
+		summary := prometheus.NewSummary(summaryOpts)
+		return &valueMetric{
+			name:      cfg.Name,
+			regex:     regex,
+			value:     cfg.Value,
+			collector: summary,
+			observeFunc: func(_ string, val float64) {
+				summary.Observe(val)
+			},
 		}
 	} else { // summaryVec
-		return &summaryVecMetric{
-			name:       cfg.Name,
-			regex:      regex,
-			labels:     cfg.Labels,
-			value:      cfg.Value,
-			summaryVec: prometheus.NewSummaryVec(summaryOpts, prometheusLabels(cfg.Labels)),
+		summaryVec := prometheus.NewSummaryVec(summaryOpts, prometheusLabels(cfg.Labels))
+		return &valueMetric{
+			name:      cfg.Name,
+			regex:     regex,
+			value:     cfg.Value,
+			collector: summaryVec,
+			labels:    cfg.Labels,
+			observeFunc: func(line string, val float64) {
+				summaryVec.WithLabelValues(labelValues(line, regex, cfg.Labels)...).Observe(val)
+			},
 		}
+	}
+}
+
+func (m *counterMetric) Process(line string) (error, bool) {
+	if m.regex.MatchString(line) {
+		m.incFunc(line)
+		return nil, true
+	} else {
+		return nil, false
+	}
+}
+
+func (m *valueMetric) Process(line string) (error, bool) {
+	if m.regex.MatchString(line) {
+		stringVal := m.regex.Gsub(line, fmt.Sprintf("\\k<%v>", m.value))
+		floatVal, err := strconv.ParseFloat(stringVal, 64)
+		if err != nil {
+			return fmt.Errorf("error processing log line with metric %v: value '%v' matches '%v', which is not a valid number.", m.name, m.value, stringVal), true
+		}
+		m.observeFunc(line, floatVal)
+		return nil, true
+	} else {
+		return nil, false
 	}
 }
 
@@ -179,123 +189,16 @@ func (m *counterMetric) Name() string {
 	return m.name
 }
 
-func (m *counterVecMetric) Name() string {
-	return m.name
-}
-
-func (m *gaugeMetric) Name() string {
-	return m.name
-}
-
-func (m *gaugeVecMetric) Name() string {
-	return m.name
-}
-
-func (m *histogramMetric) Name() string {
-	return m.name
-}
-
-func (m *histogramVecMetric) Name() string {
-	return m.name
-}
-
-func (m *summaryMetric) Name() string {
-	return m.name
-}
-
-func (m *summaryVecMetric) Name() string {
+func (m *valueMetric) Name() string {
 	return m.name
 }
 
 func (m *counterMetric) Collector() prometheus.Collector {
-	return m.counter
+	return m.collector
 }
 
-func (m *counterVecMetric) Collector() prometheus.Collector {
-	return m.counterVec
-}
-
-func (m *gaugeMetric) Collector() prometheus.Collector {
-	return m.gauge
-}
-
-func (m *gaugeVecMetric) Collector() prometheus.Collector {
-	return m.gaugeVec
-}
-
-func (m *histogramMetric) Collector() prometheus.Collector {
-	return m.histogram
-}
-
-func (m *histogramVecMetric) Collector() prometheus.Collector {
-	return m.histogramVec
-}
-
-func (m *summaryMetric) Collector() prometheus.Collector {
-	return m.summary
-}
-
-func (m *summaryVecMetric) Collector() prometheus.Collector {
-	return m.summaryVec
-}
-
-func (m *counterMetric) Process(line string) error {
-	if m.regex.MatchString(line) {
-		m.counter.Inc()
-	}
-	return nil
-}
-
-func (m *counterVecMetric) Process(line string) error {
-	if m.regex.MatchString(line) {
-		m.counterVec.WithLabelValues(labelValues(line, m.regex, m.labels)...).Inc()
-	}
-	return nil
-}
-
-func (m *gaugeMetric) Process(line string) error {
-	return process(line, m.name, m.value, m.regex, m.gauge.Add)
-}
-
-func (m *gaugeVecMetric) Process(line string) error {
-	observeFunc := func(val float64) {
-		m.gaugeVec.WithLabelValues(labelValues(line, m.regex, m.labels)...).Add(val)
-	}
-	return process(line, m.name, m.value, m.regex, observeFunc)
-}
-
-func (m *histogramMetric) Process(line string) error {
-	return process(line, m.name, m.value, m.regex, m.histogram.Observe)
-}
-
-func (m *histogramVecMetric) Process(line string) error {
-	observeFunc := func(val float64) {
-		m.histogramVec.WithLabelValues(labelValues(line, m.regex, m.labels)...).Observe(val)
-	}
-	return process(line, m.name, m.value, m.regex, observeFunc)
-}
-
-func (m *summaryMetric) Process(line string) error {
-	return process(line, m.name, m.value, m.regex, m.summary.Observe)
-}
-
-func (m *summaryVecMetric) Process(line string) error {
-	observeFunc := func(val float64) {
-		m.summaryVec.WithLabelValues(labelValues(line, m.regex, m.labels)...).Observe(val)
-	}
-	return process(line, m.name, m.value, m.regex, observeFunc)
-}
-
-func process(line, name, value string, regex *rubex.Regexp, observeFunc func(float64)) error {
-	if regex.MatchString(line) {
-		stringVal := regex.Gsub(line, fmt.Sprintf("\\k<%v>", value))
-		floatVal, err := strconv.ParseFloat(stringVal, 64)
-		if err != nil {
-			return fmt.Errorf("error processing log line with metric %v: value '%v' matches '%v', which is not a valid number.", name, value, stringVal)
-		}
-		observeFunc(floatVal)
-	}
-	return nil
+func (m *valueMetric) Collector() prometheus.Collector {
+	return m.collector
 }
 
 func labelValues(line string, regex *rubex.Regexp, labels []Label) []string {
@@ -305,4 +208,12 @@ func labelValues(line string, regex *rubex.Regexp, labels []Label) []string {
 		values = append(values, value)
 	}
 	return values
+}
+
+func prometheusLabels(labels []Label) []string {
+	promLabels := make([]string, 0, len(labels))
+	for _, label := range labels {
+		promLabels = append(promLabels, label.PrometheusLabel)
+	}
+	return promLabels
 }

@@ -8,11 +8,17 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"net/http"
 	"os"
+	"time"
 )
 
 var (
 	printVersion = flag.Bool("version", false, "Print the grok_exporter version.")
 	configPath   = flag.String("config", "", "Path to the config file. Try '-config ./example/config.yml' to get started.")
+)
+
+const (
+	number_of_lines_matched_label = "matched"
+	number_of_lines_ignored_label = "ignored"
 )
 
 func main() {
@@ -30,6 +36,8 @@ func main() {
 	for _, m := range metrics {
 		prometheus.MustRegister(m.Collector())
 	}
+	nLinesTotal, nMatchesByMetric, nErrorsByMetric, procTimeNanosByMetric := initSelfMonitoring(metrics)
+
 	tail, err := startTailer(cfg)
 	exitOnError(err)
 	fmt.Printf("Starting server on %v://localhost:%v/metrics\n", cfg.Server.Protocol, cfg.Server.Port)
@@ -42,12 +50,25 @@ func main() {
 		case err := <-tail.Errors():
 			exitOnError(fmt.Errorf("Error reading log lines: %v", err.Error()))
 		case line := <-tail.Lines():
+			matched := false
 			for _, metric := range metrics {
-				err := metric.Process(line)
+				start := time.Now()
+				err, ok := metric.Process(line)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "WARNING: Skipping log line: %v\n", err.Error())
 					fmt.Fprintf(os.Stderr, "%v\n", line)
+					nErrorsByMetric.WithLabelValues(metric.Name()).Inc()
 				}
+				if ok {
+					nMatchesByMetric.WithLabelValues(metric.Name()).Inc()
+					procTimeNanosByMetric.WithLabelValues(metric.Name()).Add(float64(time.Since(start).Nanoseconds()))
+					matched = true
+				}
+			}
+			if matched {
+				nLinesTotal.WithLabelValues(number_of_lines_matched_label).Inc()
+			} else {
+				nLinesTotal.WithLabelValues(number_of_lines_ignored_label).Inc()
 			}
 		}
 	}
@@ -105,6 +126,40 @@ func createMetrics(cfg *exporter.Config, patterns *exporter.Patterns) ([]exporte
 		}
 	}
 	return result, nil
+}
+
+func initSelfMonitoring(metrics []exporter.Metric) (*prometheus.CounterVec, *prometheus.CounterVec, *prometheus.CounterVec, *prometheus.CounterVec) {
+	nLinesTotal := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "grok_exporter_lines_total",
+		Help: "Total number of log lines processed by grok_exporter.",
+	}, []string{"status"})
+	nMatchesByMetric := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "grok_exporter_matches_total",
+		Help: "Number of lines matched for each metric. Note that one line can be matched by multiple metrics.",
+	}, []string{"metric"})
+	nErrorsByMetric := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "grok_expoerter_errors_total",
+		Help: "Number of errors for each metric. If this is > 0 there is an error in the configuration file. Check grok_exporter's console output.",
+	}, []string{"metric"})
+	procTimeNanosByMetric := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "grok_exporter_processing_time_nanoseconds_total",
+		Help: "Processing time in nanoseconds for each metric. Divide by grok_exporter_matches_total to get the averge processing time for one log line.",
+	}, []string{"metric"})
+
+	prometheus.MustRegister(nLinesTotal)
+	prometheus.MustRegister(nMatchesByMetric)
+	prometheus.MustRegister(nErrorsByMetric)
+	prometheus.MustRegister(procTimeNanosByMetric)
+
+	// Initializing a value with zero makes the label appear. Otherwise the label is not shown until the first value is observed.
+	for _, metric := range metrics {
+		nMatchesByMetric.WithLabelValues(metric.Name()).Add(0)
+		nErrorsByMetric.WithLabelValues(metric.Name()).Add(0)
+		procTimeNanosByMetric.WithLabelValues(metric.Name()).Add(0)
+	}
+	nLinesTotal.WithLabelValues(number_of_lines_matched_label).Add(0)
+	nLinesTotal.WithLabelValues(number_of_lines_ignored_label).Add(0)
+	return nLinesTotal, nMatchesByMetric, nErrorsByMetric, procTimeNanosByMetric
 }
 
 func startServer(cfg *exporter.Config, path string, handler http.Handler) chan error {
