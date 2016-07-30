@@ -3,6 +3,7 @@ package exporter
 import (
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"os"
 )
@@ -77,13 +78,33 @@ func RunHttpsServerWithDefaultKeys(port int, path string, handler http.Handler) 
 }
 
 func RunHttpsServer(port int, cert, key, path string, handler http.Handler) error {
+	err := tryOpenPort(port)
+	if err != nil {
+		return fmt.Errorf("Cannot open port %v: %v", port, err)
+	}
 	http.Handle(path, handler)
 	return http.ListenAndServeTLS(fmt.Sprintf(":%v", port), cert, key, nil)
 }
 
 func RunHttpServer(port int, path string, handler http.Handler) error {
+	err := tryOpenPort(port)
+	if err != nil {
+		return fmt.Errorf("Cannot open port %v: %v", port, err)
+	}
 	http.Handle(path, handler)
 	return http.ListenAndServe(fmt.Sprintf(":%v", port), nil)
+}
+
+// Golang's http.ListenAndServe() has an unexpected behaviour when the port is in use:
+// Instead of returning an error, it tries to open an IPv6-only listener.
+// If this works (because the other application on that port is IPv4-only), no error is returned.
+// This is confusing for the user, we want an error if the IPv4 port is in use.
+func tryOpenPort(port int) error {
+	ln, err := net.Listen("tcp4", fmt.Sprintf(":%v", port))
+	if err != nil {
+		return err
+	}
+	return ln.Close()
 }
 
 func createTempFile(prefix string, data []byte) (string, error) {
