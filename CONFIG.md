@@ -130,8 +130,8 @@ The counter metric counts the number of matching log lines.
 ```yaml
 metrics:
     - type: counter
-      name: grok_example_lines_total_by_user
-      help: Counter metric with labels.
+      name: grok_example_lines_total
+      help: Example counter metric with labels.
       match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
       labels:
           - grok_field_name: user
@@ -148,10 +148,10 @@ The configuration is as follows:
 Output for the example log lines above:
 
 ```
-# HELP grok_example_lines_total_by_user Counter metric with labels.
-# TYPE grok_example_lines_total_by_user counter
-grok_example_lines_total_by_user{user="alice"} 3
-grok_example_lines_total_by_user{user="bob"} 1
+# HELP grok_example_lines_total Example counter metric with labels.
+# TYPE grok_example_lines_total counter
+grok_example_lines_total{user="alice"} 3
+grok_example_lines_total{user="bob"} 1
 ```
 
 ### Gauge Metric Type
@@ -161,8 +161,8 @@ The gauge metric is used to monitor values that are logged with each matching lo
 ```yaml
 metrics:
     - type: gauge
-      name: grok_example_values_total_by_user
-      help: Gauge metric with labels.
+      name: grok_example_values
+      help: Example gauge metric with labels.
       match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
       value: val
       labels:
@@ -178,10 +178,10 @@ The configuration is as follows:
 Output for the example log lines above::
 
 ```
-# HELP grok_example_values_total_by_user Gauge metric with labels.
-# TYPE grok_example_values_total_by_user gauge
-grok_example_values_total_by_user{user="alice"} 6.5
-grok_example_values_total_by_user{user="bob"} 2.5
+# HELP grok_example_values Example gauge metric with labels.
+# TYPE grok_example_values gauge
+grok_example_values{user="alice"} 6.5
+grok_example_values{user="bob"} 2.5
 ```
 
 ### Histogram Metric Type
@@ -190,8 +190,8 @@ Like `gauge` metrics, `histogram` metrics monitor values that are logged with ea
 
 ```yaml
     - type: histogram
-      name: grok_example_histogram_total_by_user
-      help: Histogram metric with labels.
+      name: grok_example_values
+      help: Example histogram metric with labels.
       match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
       value: val
       buckets: [1, 2, 3]
@@ -207,20 +207,20 @@ The configuration is as follows:
 
 Output for the example log lines above::
 ```
-# HELP grok_example_histogram_total_by_user Histogram metric with labels.
-# TYPE grok_example_histogram_total_by_user histogram
-grok_example_histogram_total_by_user_bucket{user="alice",le="1"} 0
-grok_example_histogram_total_by_user_bucket{user="alice",le="2"} 1
-grok_example_histogram_total_by_user_bucket{user="alice",le="3"} 3
-grok_example_histogram_total_by_user_bucket{user="alice",le="+Inf"} 3
-grok_example_histogram_total_by_user_sum{user="alice"} 6.5
-grok_example_histogram_total_by_user_count{user="alice"} 3
-grok_example_histogram_total_by_user_bucket{user="bob",le="1"} 0
-grok_example_histogram_total_by_user_bucket{user="bob",le="2"} 0
-grok_example_histogram_total_by_user_bucket{user="bob",le="3"} 1
-grok_example_histogram_total_by_user_bucket{user="bob",le="+Inf"} 1
-grok_example_histogram_total_by_user_sum{user="bob"} 2.5
-grok_example_histogram_total_by_user_count{user="bob"} 1
+# HELP grok_example_values Example histogram metric with labels.
+# TYPE grok_example_values histogram
+grok_example_values_bucket{user="alice",le="1"} 0
+grok_example_values_bucket{user="alice",le="2"} 1
+grok_example_values_bucket{user="alice",le="3"} 3
+grok_example_values_bucket{user="alice",le="+Inf"} 3
+grok_example_values_sum{user="alice"} 6.5
+grok_example_values_count{user="alice"} 3
+grok_example_values_bucket{user="bob",le="1"} 0
+grok_example_values_bucket{user="bob",le="2"} 0
+grok_example_values_bucket{user="bob",le="3"} 1
+grok_example_values_bucket{user="bob",le="+Inf"} 1
+grok_example_values_sum{user="bob"} 2.5
+grok_example_values_count{user="bob"} 1
 ```
 
 ### Summary Metric Type
@@ -230,7 +230,7 @@ Like `gauge` and `histogram` metrics, `summary` metrics monitor values that are 
 ```yaml
 metrics:
    - type: summary
-      name: grok_test_example_summary_total_by_user
+      name: grok_example_values
       help: Summary metric with labels.
       match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
       value: val
@@ -247,18 +247,18 @@ The configuration is as follows:
 
 Output for the example log lines above::
 ```
-# HELP grok_example_summary_total_by_user Summary metric with labels.
-# TYPE grok_example_summary_total_by_user summary
-grok_example_summary_total_by_user{user="alice",quantile="0.5"} 2.5
-grok_example_summary_total_by_user{user="alice",quantile="0.9"} 2.5
-grok_example_summary_total_by_user{user="alice",quantile="0.99"} 2.5
-grok_example_summary_total_by_user_sum{user="alice"} 6.5
-grok_example_summary_total_by_user_count{user="alice"} 3
-grok_example_summary_total_by_user{user="bob",quantile="0.5"} 2.5
-grok_example_summary_total_by_user{user="bob",quantile="0.9"} 2.5
-grok_example_summary_total_by_user{user="bob",quantile="0.99"} 2.5
-grok_example_summary_total_by_user_sum{user="bob"} 2.5
-grok_example_summary_total_by_user_count{user="bob"} 1
+# HELP grok_example_values Example summary metric with labels.
+# TYPE grok_example_values summary
+grok_example_values{user="alice",quantile="0.5"} 2.5
+grok_example_values{user="alice",quantile="0.9"} 2.5
+grok_example_values{user="alice",quantile="0.99"} 2.5
+grok_example_values_sum{user="alice"} 6.5
+grok_example_values_count{user="alice"} 3
+grok_example_values{user="bob",quantile="0.5"} 2.5
+grok_example_values{user="bob",quantile="0.9"} 2.5
+grok_example_values{user="bob",quantile="0.99"} 2.5
+grok_example_values_sum{user="bob"} 2.5
+grok_example_values_count{user="bob"} 1
 ```
 
 Server Section
