@@ -115,6 +115,13 @@ Developer notes are available on the [GitHub Wiki pages]:
 * [tailer (tail -f)](https://github.com/fstab/grok_exporter/wiki/tailer-(tail-%E2%80%90f))
 * [About the Regular Expression Library](https://github.com/fstab/grok_exporter/wiki/About-the-Regular-Expression-Library)
 
+Contact
+-------
+
+* For feature requests, bugs reports, etc: Please open a GitHub issue.
+* For bug fixes, contributions, etc: Create a pull request.
+* For questions and comments: There is a brand new mailing list: [https://groups.google.com/forum/#!forum/grok_exporter-users]
+
 Related Projects
 ----------------
 
@@ -156,3 +163,4 @@ You may obtain a copy of the License at [http://www.apache.org/licenses/LICENSE-
 [Gauge]: https://prometheus.io/docs/concepts/metric_types/#gauge
 [Histogram]: https://prometheus.io/docs/concepts/metric_types/#histogram
 [Summary]: https://prometheus.io/docs/concepts/metric_types/#summary
+[https://groups.google.com/forum/#!forum/grok_exporter-users]: https://groups.google.com/forum/#!forum/grok_exporter-users
