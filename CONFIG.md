@@ -84,22 +84,16 @@ grok:
     - 'EXIM_SENDER_ADDRESS F=<%{EMAILADDRESS}>'
 ```
 
-Grok patterns are key/value pairs: The key is the pattern name, and the value is a Grok macro defining a regular expression.
-There is a lot of documentation available on Grok patterns: The [logstash-patterns-core repository] contains [pre-defined patterns],
-the [Grok documentation] shows how patterns are defined, and there are online pattern builders available
-here: [http://grokdebug.herokuapp.com] and here: [http://grokconstructor.appspot.com].
+In most cases, we will have a directory containing the Grok pattern files. Grok's default pattern directory is included in the `grok_exporter` release. The path to that directory is configured with `patterns_dir`.
 
-In most cases, we will have a directory containing all our pattern files.
-This directory can be configured with `patterns_dir`. All files in this directory must be valid pattern definition files.
-Examples of these files can be found in Grok's [pre-defined patterns].
+In case we want to define additional patterns, there two options:
 
-The `additional_patterns` configuration defines a list of additional Grok patterns.
-This is convenient to quickly add some patterns without the need to create new files in `patterns_dir`.
-The lines defined in the `patterns` list have the same format as the lines in the files in `patterns_dir`.
+1. Create a custom pattern file and store it in the `patterns_dir` directory.
+2. Add pattern definitions directly to the `grok_exporter` configuration. This can be done via the `additional_patterns` configuration. It takes a list of pattern definitions. The pattern definitions have the same format as the lines in the Grok pattern files.
 
-`patterns_dir` and `additional_patterns` are both optional:
-If `patterns_dir` is missing all patterns must be defined directly in the `additional_patterns` config.
-If `additional_patterns` is missing all patterns must be defined in the `patterns_dir`.
+Grok patterns are simply key/value pairs: The key is the pattern name, and the value is a Grok macro defining a regular expression. There is a lot of documentation available on Grok patterns: The [logstash-patterns-core repository] contains [pre-defined patterns], the [Grok documentation] shows how patterns are defined, and there are online pattern builders available here: [http://grokdebug.herokuapp.com] and here: [http://grokconstructor.appspot.com].
+
+`patterns_dir` and `additional_patterns` are both optional: If `patterns_dir` is missing all patterns must be defined directly in the `additional_patterns` config. If `additional_patterns` is missing all patterns must be defined in the `patterns_dir`.
 
 Metrics Section
 ---------------
@@ -118,7 +112,7 @@ To exemplify the different metrics configurations, we use the following example 
 Each line consists of a date, time, user, and a number. Using [Grok's default patterns], we can create a simple Grok expression matching these lines:
 
 ```grok
-%{DATE} %{TIME} %{USER:user} %{NUMBER:val}
+%{DATE} %{TIME} %{USER} %{NUMBER}
 ```
 
 The following sections show how to configure the [Prometheus metric types] for parsing these lines with `grok_exporter`.
@@ -132,7 +126,7 @@ metrics:
     - type: counter
       name: grok_example_lines_total
       help: Example counter metric with labels.
-      match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
+      match: '%{DATE} %{TIME} %{USER:user} %{NUMBER}'
       labels:
           - grok_field_name: user
             prometheus_label: user
@@ -143,7 +137,7 @@ The configuration is as follows:
 * `name` is the name of the metric. Metric names are described in the [Prometheus data model documentation].
 * `help` is a comment describing the metric.
 * `match` is the Grok expression. See the [Grok documentation] for more info.
-* `labels` is optional and can be used to partition the metric by Grok fields. `labels` contains a list of `grok_field_name`/`prometheus_label` pairs. In the example, the Grok field name `user` comes from the match expression `%{USER:user}`. The Prometheus field name is also called `user`, so the Prometheus label has the same name as the Grok field. However, it is common to use different names for the Grok field and the Prometheus label, because Prometheus has other naming conventions than Grok. The [Prometheus data model documentation] has more info on Prometheus label names.
+* `labels` is optional and can be used to partition the metric by Grok fields. `labels` contains a list of `grok_field_name`/`prometheus_label` pairs. In the example `match` pattern, we used `%{USER:user}` to define that the match for `%{USER}` will have the Grok field name `user`. In `labels`, we configured that the `grok_field_name: user` is mapped to the the `prometheus_label: user`, so the Prometheus label has the same name as the Grok field. However, it is common to use different names for the Grok field and the Prometheus label, because Prometheus has other naming conventions than Grok. The [Prometheus data model documentation] has more info on Prometheus label names.
 
 Output for the example log lines above:
 
@@ -173,7 +167,7 @@ metrics:
 The configuration is as follows:
 * `type` is `gauge`.
 * `name`, `help`, `match`, and `labels` have the same meaning as for `counter` metrics.
-* `value` is the Grok field name to be monitored. In the example, the name `val` is taken from the `%{NUMBER:val}` expression. You must make sure that the expression always matches a valid number.
+* `value` is the Grok field to be monitored. In the example `match` pattern, we used `%{NUMBER:val}` to define that the match for `%{NUMBER}` will have the name `val`. We then use `val` as the `value` to be monitored. You must make sure that the Grok field used as `value` always matches a valid number.
 
 Output for the example log lines above::
 
@@ -286,6 +280,7 @@ server:
 [http://grokdebug.herokuapp.com]: http://grokdebug.herokuapp.com
 [http://grokconstructor.appspot.com]: http://grokconstructor.appspot.com
 [Grok's default patterns]: https://github.com/logstash-plugins/logstash-patterns-core/blob/master/patterns/grok-patterns 
+[release]: https://github.com/fstab/grok_exporter/releases
 [Prometheus metric types]: https://prometheus.io/docs/concepts/metric_types
 [Prometheus data model documentation]: https://prometheus.io/docs/concepts/data_model
 [Grok documentation]: https://www.elastic.co/guide/en/logstash/current/plugins-filters-grok.html
