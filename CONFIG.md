@@ -115,7 +115,7 @@ Each line consists of a date, time, user, and a number. Using [Grok's default pa
 %{DATE} %{TIME} %{USER} %{NUMBER}
 ```
 
-One of the main features of Prometheus is its multi-dimensional data model: A Prometheus metric can be further partitioned using different labels. In Grok, each pattern, like `%{USER}`, can be given a name, like `%{USER:user}`. With `grok_exporter`, we can use Grok field names as Prometheus labels.
+One of the main features of Prometheus is its multi-dimensional data model: A Prometheus metric can be further partitioned using different labels. In Grok, each field, like `%{USER}`, can be given a name, like `%{USER:user}`. With `grok_exporter`, we can use Grok field names as Prometheus labels.
 
 The resulting Grok expression for the log lines above would be as follows:
 
