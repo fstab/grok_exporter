@@ -115,6 +115,10 @@ Developer notes are available on the [GitHub Wiki pages]:
 * [tailer (tail -f)](https://github.com/fstab/grok_exporter/wiki/tailer-(tail-%E2%80%90f))
 * [About the Regular Expression Library](https://github.com/fstab/grok_exporter/wiki/About-the-Regular-Expression-Library)
 
+External documentation:
+
+* Extracting Prometheus Metrics from Application Logs - [https://labs.consol.de](https://labs.consol.de/monitoring/2016/07/31/Prometheus-Logfile-Monitoring.html)
+
 Contact
 -------
 
