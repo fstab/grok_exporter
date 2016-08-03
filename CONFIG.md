@@ -86,7 +86,7 @@ grok:
 
 In most cases, we will have a directory containing the Grok pattern files. Grok's default pattern directory is included in the `grok_exporter` release. The path to that directory is configured with `patterns_dir`.
 
-In case we want to define additional patterns, there two options:
+There are two ways to define additional Grok patterns:
 
 1. Create a custom pattern file and store it in the `patterns_dir` directory.
 2. Add pattern definitions directly to the `grok_exporter` configuration. This can be done via the `additional_patterns` configuration. It takes a list of pattern definitions. The pattern definitions have the same format as the lines in the Grok pattern files.
@@ -115,11 +115,19 @@ Each line consists of a date, time, user, and a number. Using [Grok's default pa
 %{DATE} %{TIME} %{USER} %{NUMBER}
 ```
 
-The following sections show how to configure the [Prometheus metric types] for parsing these lines with `grok_exporter`.
+One of the main features of Prometheus is its multi-dimensional data model: A Prometheus metric can be further partitioned using different labels. In Grok, each pattern, like `%{USER}`, can be given a name, like `%{USER:user}`. With `grok_exporter`, we can use Grok field names as Prometheus labels.
+
+The resulting Grok expression for the log lines above would be as follows:
+
+```grok
+%{DATE} %{TIME} %{USER:user} %{NUMBER}
+```
+
+The Grok field `user` can now be used as a Prometheus label, as shown in the sections below.
 
 ### Counter Metric Type
 
-The counter metric counts the number of matching log lines.
+The [counter metric] counts the number of matching log lines.
 
 ```yaml
 metrics:
@@ -150,7 +158,7 @@ grok_example_lines_total{user="bob"} 1
 
 ### Gauge Metric Type
 
-The gauge metric is used to monitor values that are logged with each matching log line.
+The [gauge metric] is used to monitor values that are logged with each matching log line.
 
 ```yaml
 metrics:
@@ -180,7 +188,7 @@ grok_example_values{user="bob"} 2.5
 
 ### Histogram Metric Type
 
-Like `gauge` metrics, `histogram` metrics monitor values that are logged with each matching log line. However, instead of just summing up the values, histograms count the observed values in configurable buckets.
+Like `gauge` metrics, the [histogram metric] monitors values that are logged with each matching log line. However, instead of just summing up the values, histograms count the observed values in configurable buckets.
 
 ```yaml
     - type: histogram
@@ -219,7 +227,7 @@ grok_example_values_count{user="bob"} 1
 
 ### Summary Metric Type
 
-Like `gauge` and `histogram` metrics, `summary` metrics monitor values that are logged with each matching log line. Summaries measure configurable φ quantiles, like the median (φ=0.5) or the 95% quantile (φ=0.95). See [histograms and summaries] for more info.
+Like `gauge` and `histogram` metrics, the [summary metric] monitors values that are logged with each matching log line. Summaries measure configurable φ quantiles, like the median (φ=0.5) or the 95% quantile (φ=0.95). See [histograms and summaries] for more info.
 
 ```yaml
 metrics:
@@ -280,6 +288,10 @@ server:
 [http://grokdebug.herokuapp.com]: http://grokdebug.herokuapp.com
 [http://grokconstructor.appspot.com]: http://grokconstructor.appspot.com
 [Grok's default patterns]: https://github.com/logstash-plugins/logstash-patterns-core/blob/master/patterns/grok-patterns 
+[counter metric]: https://prometheus.io/docs/concepts/metric_types/#counter
+[gauge metric]: https://prometheus.io/docs/concepts/metric_types/#gauge
+[summary metric]: https://prometheus.io/docs/concepts/metric_types/#summary
+[histogram metric]: https://prometheus.io/docs/concepts/metric_types/#histogram
 [release]: https://github.com/fstab/grok_exporter/releases
 [Prometheus metric types]: https://prometheus.io/docs/concepts/metric_types
 [Prometheus data model documentation]: https://prometheus.io/docs/concepts/data_model
