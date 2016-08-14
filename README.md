@@ -117,7 +117,8 @@ Developer notes are available on the [GitHub Wiki pages]:
 
 External documentation:
 
-* Extracting Prometheus Metrics from Application Logs - [https://labs.consol.de](https://labs.consol.de/monitoring/2016/07/31/Prometheus-Logfile-Monitoring.html)
+* Extracting Prometheus Metrics from Application Logs - [https://labs.consol.de/...](https://labs.consol.de/monitoring/2016/07/31/Prometheus-Logfile-Monitoring.html)
+* Counting Errors with Prometheus - [https://labs.consol.de/...](https://labs.consol.de/monitoring/2016/08/13/counting-errors-with-prometheus.html)
 
 Contact
 -------
