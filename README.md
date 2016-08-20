@@ -37,14 +37,14 @@ Example configuration:
 ```yaml
 input:
     type: file
-    path: ./example/exim-rejected-RCPT-examples.log
+    path: ./example/example.log
     readall: true
 grok:
     patterns_dir: ./logstash-patterns-core/patterns
 metrics:
     - type: counter
-      name: grok_example_lines_total_by_user
-      help: Counter metric with labels.
+      name: grok_example_lines_total
+      help: Counter metric example with labels.
       match: '%{DATE} %{TIME} %{USER:user} %{NUMBER}'
       labels:
           - grok_field_name: user
