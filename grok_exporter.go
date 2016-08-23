@@ -24,7 +24,7 @@ const (
 func main() {
 	flag.Parse()
 	if *printVersion {
-		fmt.Printf("grok_exporter version %v build date %v.\n", exporter.VERSION, exporter.BUILD_DATE)
+		fmt.Printf("%v\n", exporter.VersionString())
 		return
 	}
 	cfg, err := loadConfig()
@@ -129,6 +129,10 @@ func createMetrics(cfg *exporter.Config, patterns *exporter.Patterns) ([]exporte
 }
 
 func initSelfMonitoring(metrics []exporter.Metric) (*prometheus.CounterVec, *prometheus.CounterVec, *prometheus.CounterVec, *prometheus.CounterVec) {
+	buildInfo := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "grok_exporter_build_info",
+		Help: "A metric with a constant '1' value labeled by version, builddate, branch, revision, goversion, and platform on which grok_exporter was built.",
+	}, []string{"version", "builddate", "branch", "revision", "goversion", "platform"})
 	nLinesTotal := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "grok_exporter_lines_total",
 		Help: "Total number of log lines processed by grok_exporter.",
@@ -146,11 +150,13 @@ func initSelfMonitoring(metrics []exporter.Metric) (*prometheus.CounterVec, *pro
 		Help: "Number of errors for each metric. If this is > 0 there is an error in the configuration file. Check grok_exporter's console output.",
 	}, []string{"metric"})
 
+	prometheus.MustRegister(buildInfo)
 	prometheus.MustRegister(nLinesTotal)
 	prometheus.MustRegister(nMatchesByMetric)
 	prometheus.MustRegister(procTimeMicrosecondsByMetric)
 	prometheus.MustRegister(nErrorsByMetric)
 
+	buildInfo.WithLabelValues(exporter.Version, exporter.BuildDate, exporter.Branch, exporter.Revision, exporter.GoVersion, exporter.Platform).Set(1)
 	// Initializing a value with zero makes the label appear. Otherwise the label is not shown until the first value is observed.
 	nLinesTotal.WithLabelValues(number_of_lines_matched_label).Add(0)
 	nLinesTotal.WithLabelValues(number_of_lines_ignored_label).Add(0)

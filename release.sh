@@ -7,24 +7,17 @@ set -e
 # The Darwin release is built natively, Linux and Windows are built in a Docker container
 #========================================================================================
 
-export VERSION=0.1.1-SNAPSHOT
-
 cd $GOPATH/src/github.com/fstab/grok_exporter
 rm -rf dist
 
-#--------------------------------------------------------------
-# update the version file
-#--------------------------------------------------------------
+export VERSION=0.1.1-SNAPSHOT
 
-cat > exporter/version.go <<EOF
-package exporter
-
-const (
-	VERSION = "$VERSION"
-	BUILD_DATE = "`date +%Y-%m-%d`"
-)
-EOF
-go fmt exporter/version.go > /dev/null
+export VERSION_FLAGS="\
+        -X github.com/fstab/grok_exporter/exporter.Version=$VERSION                          \
+        -X github.com/fstab/grok_exporter/exporter.BuildDate=$(date +%Y-%m-%d)               \
+        -X github.com/fstab/grok_exporter/exporter.Branch=$(git rev-parse --abbrev-ref HEAD) \
+        -X github.com/fstab/grok_exporter/exporter.Revision=$(git rev-parse --short HEAD)    \
+"
 
 #--------------------------------------------------------------
 # Make sure all tests run.
@@ -40,12 +33,12 @@ function make_release {
     echo "Building grok_exporter-$VERSION.$ARCH"
     mkdir -p dist/grok_exporter-$VERSION.$ARCH
     if [ $MACHINE = "docker" ] ; then
-        docker run -v $GOPATH/src/github.com/fstab/grok_exporter:/root/go/src/github.com/fstab/grok_exporter --net none --rm -ti fstab/grok_exporter-compiler compile-$ARCH.sh -o dist/grok_exporter-$VERSION.$ARCH/grok_exporter$EXTENSION
+        docker run -v $GOPATH/src/github.com/fstab/grok_exporter:/root/go/src/github.com/fstab/grok_exporter --net none --rm -ti fstab/grok_exporter-compiler compile-$ARCH.sh -ldflags "$VERSION_FLAGS" -o dist/grok_exporter-$VERSION.$ARCH/grok_exporter$EXTENSION
     else
         # export CGO_LDFLAGS=/usr/local/lib/libonig.a
         # TODO: For some reason CGO_LDFLAGS does not work on darwin. As a workaround, we set LDFLAGS directly in the header of regex.go.
         sed -i.bak 's;#cgo LDFLAGS: -L/usr/local/lib -lonig;#cgo LDFLAGS: /usr/local/lib/libonig.a;' vendor/github.com/moovweb/rubex/regex.go
-        go build -o dist/grok_exporter-$VERSION.$ARCH/grok_exporter .
+        go build -ldflags "$VERSION_FLAGS" -o dist/grok_exporter-$VERSION.$ARCH/grok_exporter .
         mv vendor/github.com/moovweb/rubex/regex.go.bak vendor/github.com/moovweb/rubex/regex.go
     fi
     cp -a logstash-patterns-core/patterns dist/grok_exporter-$VERSION.$ARCH

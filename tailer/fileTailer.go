@@ -91,13 +91,23 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 			case <-done:
 				return
 			case err = <-eventLoop.Errors():
-				writeError(errors, done, "Failed to watch %v: %v", abspath, err.Error())
+				if err == nil {
+					select {
+					case <-done:
+						// The tailer is shutting down and closed the 'done' and 'errors' channels. This is ok.
+					default:
+						// 'done' is still open, the tailer is not shutting down. This is a bug.
+						writeError(errors, done, "failed to watch %v: unknown error", abspath)
+					}
+				} else {
+					writeError(errors, done, "failed to watch %v: %v", abspath, err)
+				}
 				return
 			case evnts := <-eventLoop.Events():
 				var freshLines []string
 				file, freshLines, err = processEvents(evnts, watcher, file, reader, abspath, logger)
 				if err != nil {
-					writeError(errors, done, "Failed to watch %v: %v", abspath, err.Error())
+					writeError(errors, done, "failed to watch %v: %v", abspath, err)
 					return
 				}
 				for _, line := range freshLines {

@@ -240,6 +240,12 @@ func mkTmpDirOrFail(t *testing.T) string {
 }
 
 func cleanUp(t *testing.T, dir string) {
+	// tailer.Close() on Windows is flaky: sometimes the tailer still reads files after Close() was called.
+	// As a workaround, we don't delete the tmp dir on Windows in our tests.
+	// This shouldn't be a problem when running grok_exporter in production, because in production the file system watcher runs forever and is never closed.
+	if runtime.GOOS == "windows" {
+		return
+	}
 	err := os.RemoveAll(dir)
 	if err != nil {
 		t.Errorf("%v: Failed to remove the test directory after running the tests: %v", dir, err.Error())
@@ -420,6 +426,7 @@ func runTestShutdown(t *testing.T, mode string) {
 
 	if runtime.GOOS == "windows" {
 		t.Skip("The shutdown tests are flaky on Windows. We skip them until either golang.org/x/exp/winfsnotify is fixed, or until we do our own implementation. This shouldn't be a problem when running grok_exporter, because in grok_exporter the file system watcher is never stopped.")
+		return
 	}
 
 	tmpDir := mkTmpDirOrFail(t)
