@@ -125,7 +125,7 @@ Contact
 
 * For feature requests, bugs reports, etc: Please open a GitHub issue.
 * For bug fixes, contributions, etc: Create a pull request.
-* Questions? Write to fabian@fstab.de.
+* Questions? Contact me at fabian@fstab.de.
 
 Related Projects
 ----------------
