@@ -125,7 +125,7 @@ Contact
 
 * For feature requests, bugs reports, etc: Please open a GitHub issue.
 * For bug fixes, contributions, etc: Create a pull request.
-* For questions and comments: There is a brand new mailing list: [https://groups.google.com/forum/#!forum/grok_exporter-users]
+* Questions? Write to fabian@fstab.de.
 
 Related Projects
 ----------------
