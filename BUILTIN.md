@@ -35,4 +35,19 @@ Each second, `grok_exporter` captures the peak load of the line buffer during th
 
 This metric is work in progress. The goal is to configure an alert when `grok_exporter` processes lines too slowly and may run out of memory. However, we still need to figure out if `grok_exporter_line_buffer_peak_load` is a good indicator for that.
 
+grok_exporter_build_info
+------------------------
+
+A metric with constant value `1` providing the following labels:
+
+* `version`: Version of the grok_exporter.
+* `builddate`: Date when the grok_exporter was built, format _YYYY-MM-DD_.
+* `branch`: Git branch from which the grok_exporter was built, e.g. _master_ .
+* `revision`: Git commit from which the grok_exporter was built.
+* `goversion`: Version of the Go compiler used for building the grok_eporter.
+* `platform`: Operating system and architecture for which the grok_exporter was built, e.g. _linux-amd64_.
+
+See [exposing the software version to Prometheus on robustperception.io] to learn more about this approach.
+
 [configuration file]: CONFIG.md
+[exposing the software version to Prometheus on robustperception.io]: http://www.robustperception.io/exposing-the-software-version-to-prometheus/
