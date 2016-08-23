@@ -8,7 +8,7 @@ Export [Prometheus] metrics from arbitrary unstructured log data.
 About Grok
 ----------
 
-[Grok] is tool to parse crappy unstructured log data into something structured and queryable. Grok is heavily used in [Logstash] to provide log data as input for [ElasticSearch].
+[Grok] is a tool to parse crappy unstructured log data into something structured and queryable. Grok is heavily used in [Logstash] to provide log data as input for [ElasticSearch].
 
 Grok ships with about 120 predefined patterns for syslog logs, apache and other webserver logs, mysql logs, etc. It is easy to extend Grok with custom patterns.
 
