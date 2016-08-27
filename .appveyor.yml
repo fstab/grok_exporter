@@ -13,6 +13,9 @@ environment:
     CC: x86_64-w64-mingw32-gcc
     CGO_ENABLED: 1
     CGO_LDFLAGS: C:\msys64\mingw64\lib\libonig.a
+    matrix:
+    - ONIG_VERSION: 5.9.6
+    - ONIG_VERSION: 6.1.0
 
 # --------------------------------------------------------------------------
 # The install phase installs the Oniguruma library,
@@ -28,21 +31,16 @@ install:
     # - C:\cygwin\setup-x86.exe -q -g
     - C:\cygwin\bin\bash -lc "cygcheck -dc cygwin"
 
-    # Download the Oniguruma sources from Ubuntu
+    # Download and unpack Oniguruma sources
 
     - cd C:\
-    - appveyor DownloadFile http://archive.ubuntu.com/ubuntu/pool/universe/libo/libonig/libonig_5.9.6.orig.tar.gz
-    - appveyor DownloadFile http://archive.ubuntu.com/ubuntu/pool/universe/libo/libonig/libonig_5.9.6-1.debian.tar.xz
-    - 7z x libonig_5.9.6.orig.tar.gz -so | 7z x -si -ttar > nul
-    - cd onig-5.9.6
-    - 7z x ..\libonig_5.9.6-1.debian.tar.xz -so | 7z x -si -ttar > nul
-    - git apply debian/patches/001-changes_build_sys.diff
+    - appveyor DownloadFile https://github.com/kkos/oniguruma/releases/download/v%ONIG_VERSION%/onig-%ONIG_VERSION%.tar.gz
+    - 7z x onig-%ONIG_VERSION%.tar.gz -so | 7z x -si -ttar > nul
+    - cd onig-%ONIG_VERSION%
 
     # Compile Oniguruma using x86_64-w64-mingw32-gcc
 
     - C:\cygwin\bin\bash -c "PATH='/usr/sbin:/usr/bin:/sbin:/bin' ./configure -v --host=x86_64-w64-mingw32 --prefix=/cygdrive/c/msys64/mingw64"
-    - C:\cygwin\bin\bash -c "PATH='/usr/sbin:/usr/bin:/sbin:/bin' make || true"
-    - C:\cygwin\bin\bash -c "PATH='/usr/sbin:/usr/bin:/sbin:/bin' mv '$(encdir)/.deps' enc"
     - C:\cygwin\bin\bash -c "PATH='/usr/sbin:/usr/bin:/sbin:/bin' make"
     - C:\cygwin\bin\bash -c "PATH='/usr/sbin:/usr/bin:/sbin:/bin' make install"
 

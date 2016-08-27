@@ -2,35 +2,48 @@ package exporter
 
 import (
 	"fmt"
-	"github.com/moovweb/rubex"
+	"regexp"
 	"strings"
 )
 
 // Compile a grok pattern string into a regular expression.
-func Compile(pattern string, patterns *Patterns) (*rubex.Regexp, error) {
+func Compile(pattern string, patterns *Patterns, libonig *OnigurumaLib) (*OnigurumaRegexp, error) {
 	regex, err := expand(pattern, patterns)
 	if err != nil {
 		return nil, err
 	}
-	result, err := rubex.CompileWithOption(regex, rubex.ONIG_OPTION_DEFAULT)
+	result, err := libonig.Compile(regex)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile pattern %v: error in regular expression %v: %v", pattern, regex, err.Error())
 	}
 	return result, nil
 }
 
+func VerifyFieldNames(m *MetricConfig, regex *OnigurumaRegexp) error {
+	for _, label := range m.Labels {
+		if !regex.HasCaptureGroup(label.GrokFieldName) {
+			return fmt.Errorf("grok field %v not found in match pattern", label.GrokFieldName)
+		}
+	}
+	if m.Value != "" {
+		if !regex.HasCaptureGroup(m.Value) {
+			return fmt.Errorf("grok field %v not found in match pattern", m.Value)
+		}
+	}
+	return nil
+}
+
 // PATTERN_RE matches the %{..} patterns. There are three possibilities:
 // 1) %{USER}               - grok pattern
 // 2) %{IP:clientip}        - grok pattern with name
 // 3) %{INT:clientport:int} - grok pattern with name and type (type is currently ignored)
-// TODO: Replace with PATTERN_RE from https://github.com/jordansissel/ruby-grok/blob/master/lib/grok-pure.rb
 const PATTERN_RE = `%{(.+?)}`
 
 // Expand recursively resolves all grok patterns %{..} and returns a regular expression.
 func expand(pattern string, patterns *Patterns) (string, error) {
 	result := pattern
 	for i := 0; i < 1000; i++ { // After 1000 replacements, we assume this is an infinite loop and abort.
-		match := rubex.MustCompile(PATTERN_RE).FindStringSubmatch(result)
+		match := regexp.MustCompile(PATTERN_RE).FindStringSubmatch(result)
 		if match == nil {
 			// No match means all grok patterns %{..} are expanded. We are done.
 			return result, nil

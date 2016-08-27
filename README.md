@@ -80,19 +80,27 @@ How to build from source
 
 In order to compile `grok_exporter` from source, you need [Go] installed and `$GOPATH` set, and you need the header files for the [Oniguruma] regular expression library:
 
-On OS X:
+Installing the Oniguruma library on OS X:
 
 ```bash
 brew install oniguruma
 ```
 
-On Ubuntu Linux:
+Installing the Oniguruma library on Ubuntu Linux:
 
 ```bash
 sudo apt-get install libonig-dev
 ```
 
-Then, download and compile as follows:
+Installing the Oniguruma library from source:
+
+```bash
+wget https://github.com/kkos/oniguruma/releases/download/v6.1.0/onig-6.1.0.tar.gz
+tar xfz onig-6.1.0.tar.gz
+cd onig-6.1.0 && ./configure && make && make install
+```
+
+Then, download and compile `grok_exporter` as follows:
 
 ```bash
 go get github.com/fstab/grok_exporter

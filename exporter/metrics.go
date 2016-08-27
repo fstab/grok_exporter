@@ -2,7 +2,6 @@ package exporter
 
 import (
 	"fmt"
-	"github.com/moovweb/rubex"
 	"github.com/prometheus/client_golang/prometheus"
 	"strconv"
 )
@@ -12,89 +11,99 @@ type Metric interface {
 	Collector() prometheus.Collector
 
 	// Returns true if the line matched, and false if the line didn't match.
-	Process(line string) (error, bool)
+	Process(line string) (bool, error)
 }
 
-// Metric for the number of matching log lines.
-type counterMetric struct {
+// Represents a Prometheus Counter
+type incMetric struct {
 	name      string
-	regex     *rubex.Regexp
+	regex     *OnigurumaRegexp
 	labels    []Label
 	collector prometheus.Collector
-	incFunc   func(line string)
+	incFunc   func(m *OnigurumaMatchResult) error
 }
 
-// Metric for a value that is parsed from the matching log lines.
-type valueMetric struct {
+// Represents a Prometheus Gauge, Histogram, or Summary
+type observeMetric struct {
 	name        string
-	regex       *rubex.Regexp
+	regex       *OnigurumaRegexp
 	value       string
 	labels      []Label
 	collector   prometheus.Collector
-	observeFunc func(line string, val float64)
+	observeFunc func(m *OnigurumaMatchResult, val float64) error
 }
 
-func NewCounterMetric(cfg *MetricConfig, regex *rubex.Regexp) Metric {
+func NewCounterMetric(cfg *MetricConfig, regex *OnigurumaRegexp) Metric {
 	counterOpts := prometheus.CounterOpts{
 		Name: cfg.Name,
 		Help: cfg.Help,
 	}
 	if len(cfg.Labels) == 0 { // regular counter
 		counter := prometheus.NewCounter(counterOpts)
-		return &counterMetric{
+		return &incMetric{
 			name:      cfg.Name,
 			regex:     regex,
 			collector: counter,
-			incFunc: func(_ string) {
+			incFunc: func(_ *OnigurumaMatchResult) error {
 				counter.Inc()
+				return nil
 			},
 		}
 	} else { // counterVec
 		counterVec := prometheus.NewCounterVec(counterOpts, prometheusLabels(cfg.Labels))
-		return &counterMetric{
+		return &incMetric{
 			name:      cfg.Name,
 			regex:     regex,
 			labels:    cfg.Labels,
 			collector: counterVec,
-			incFunc: func(line string) {
-				counterVec.WithLabelValues(labelValues(line, regex, cfg.Labels)...).Inc()
+			incFunc: func(m *OnigurumaMatchResult) error {
+				vals, err := labelValues(m, cfg.Labels)
+				if err == nil {
+					counterVec.WithLabelValues(vals...).Inc()
+				}
+				return err
 			},
 		}
 	}
 }
 
-func NewGaugeMetric(cfg *MetricConfig, regex *rubex.Regexp) Metric {
+func NewGaugeMetric(cfg *MetricConfig, regex *OnigurumaRegexp) Metric {
 	gaugeOpts := prometheus.GaugeOpts{
 		Name: cfg.Name,
 		Help: cfg.Help,
 	}
 	if len(cfg.Labels) == 0 { // regular gauge
 		gauge := prometheus.NewGauge(gaugeOpts)
-		return &valueMetric{
+		return &observeMetric{
 			name:      cfg.Name,
 			regex:     regex,
 			value:     cfg.Value,
 			collector: gauge,
-			observeFunc: func(_ string, val float64) {
+			observeFunc: func(_ *OnigurumaMatchResult, val float64) error {
 				gauge.Add(val)
+				return nil
 			},
 		}
 	} else { // gaugeVec
 		gaugeVec := prometheus.NewGaugeVec(gaugeOpts, prometheusLabels(cfg.Labels))
-		return &valueMetric{
+		return &observeMetric{
 			name:      cfg.Name,
 			regex:     regex,
 			value:     cfg.Value,
 			collector: gaugeVec,
 			labels:    cfg.Labels,
-			observeFunc: func(line string, val float64) {
-				gaugeVec.WithLabelValues(labelValues(line, regex, cfg.Labels)...).Add(val)
+			observeFunc: func(m *OnigurumaMatchResult, val float64) error {
+				vals, err := labelValues(m, cfg.Labels)
+				if err == nil {
+					gaugeVec.WithLabelValues(vals...).Add(val)
+				}
+				return err
 			},
 		}
 	}
 }
 
-func NewHistogramMetric(cfg *MetricConfig, regex *rubex.Regexp) Metric {
+func NewHistogramMetric(cfg *MetricConfig, regex *OnigurumaRegexp) Metric {
 	histogramOpts := prometheus.HistogramOpts{
 		Name: cfg.Name,
 		Help: cfg.Help,
@@ -104,31 +113,36 @@ func NewHistogramMetric(cfg *MetricConfig, regex *rubex.Regexp) Metric {
 	}
 	if len(cfg.Labels) == 0 { // regular histogram
 		histogram := prometheus.NewHistogram(histogramOpts)
-		return &valueMetric{
+		return &observeMetric{
 			name:      cfg.Name,
 			regex:     regex,
 			value:     cfg.Value,
 			collector: histogram,
-			observeFunc: func(_ string, val float64) {
+			observeFunc: func(_ *OnigurumaMatchResult, val float64) error {
 				histogram.Observe(val)
+				return nil
 			},
 		}
 	} else { // histogramVec
 		histogramVec := prometheus.NewHistogramVec(histogramOpts, prometheusLabels(cfg.Labels))
-		return &valueMetric{
+		return &observeMetric{
 			name:      cfg.Name,
 			regex:     regex,
 			value:     cfg.Value,
 			collector: histogramVec,
 			labels:    cfg.Labels,
-			observeFunc: func(line string, val float64) {
-				histogramVec.WithLabelValues(labelValues(line, regex, cfg.Labels)...).Observe(val)
+			observeFunc: func(m *OnigurumaMatchResult, val float64) error {
+				vals, err := labelValues(m, cfg.Labels)
+				if err == nil {
+					histogramVec.WithLabelValues(vals...).Observe(val)
+				}
+				return err
 			},
 		}
 	}
 }
 
-func NewSummaryMetric(cfg *MetricConfig, regex *rubex.Regexp) Metric {
+func NewSummaryMetric(cfg *MetricConfig, regex *OnigurumaRegexp) Metric {
 	summaryOpts := prometheus.SummaryOpts{
 		Name: cfg.Name,
 		Help: cfg.Help,
@@ -138,76 +152,99 @@ func NewSummaryMetric(cfg *MetricConfig, regex *rubex.Regexp) Metric {
 	}
 	if len(cfg.Labels) == 0 { // regular summary
 		summary := prometheus.NewSummary(summaryOpts)
-		return &valueMetric{
+		return &observeMetric{
 			name:      cfg.Name,
 			regex:     regex,
 			value:     cfg.Value,
 			collector: summary,
-			observeFunc: func(_ string, val float64) {
+			observeFunc: func(_ *OnigurumaMatchResult, val float64) error {
 				summary.Observe(val)
+				return nil
 			},
 		}
 	} else { // summaryVec
 		summaryVec := prometheus.NewSummaryVec(summaryOpts, prometheusLabels(cfg.Labels))
-		return &valueMetric{
+		return &observeMetric{
 			name:      cfg.Name,
 			regex:     regex,
 			value:     cfg.Value,
 			collector: summaryVec,
 			labels:    cfg.Labels,
-			observeFunc: func(line string, val float64) {
-				summaryVec.WithLabelValues(labelValues(line, regex, cfg.Labels)...).Observe(val)
+			observeFunc: func(m *OnigurumaMatchResult, val float64) error {
+				vals, err := labelValues(m, cfg.Labels)
+				if err == nil {
+					summaryVec.WithLabelValues(vals...).Observe(val)
+				}
+				return err
 			},
 		}
 	}
 }
 
-func (m *counterMetric) Process(line string) (error, bool) {
-	if m.regex.MatchString(line) {
-		m.incFunc(line)
-		return nil, true
+// Return: true if the line matched, false if it didn't match.
+func (m *incMetric) Process(line string) (bool, error) {
+	matchResult, err := m.regex.Match(line)
+	if err != nil {
+		return false, fmt.Errorf("error while processing metric %v: %v", m.name, err.Error())
+	}
+	defer matchResult.Free()
+	if matchResult.IsMatch() {
+		err = m.incFunc(matchResult)
+		return true, err
 	} else {
-		return nil, false
+		return false, nil
 	}
 }
 
-func (m *valueMetric) Process(line string) (error, bool) {
-	if m.regex.MatchString(line) {
-		stringVal := m.regex.Gsub(line, fmt.Sprintf("\\k<%v>", m.value))
+// Return: true if the line matched, false if it didn't match.
+func (m *observeMetric) Process(line string) (bool, error) {
+	matchResult, err := m.regex.Match(line)
+	if err != nil {
+		return false, fmt.Errorf("error while processing metric %v: %v", m.name, err.Error())
+	}
+	defer matchResult.Free()
+	if matchResult.IsMatch() {
+		stringVal, err := matchResult.Get(m.value)
+		if err != nil {
+			return true, fmt.Errorf("error while processing metric %v: %v", m.name, err.Error())
+		}
 		floatVal, err := strconv.ParseFloat(stringVal, 64)
 		if err != nil {
-			return fmt.Errorf("error processing log line with metric %v: value '%v' matches '%v', which is not a valid number.", m.name, m.value, stringVal), true
+			return true, fmt.Errorf("error while processing metric %v: value '%v' matches '%v', which is not a valid number.", m.name, m.value, stringVal)
 		}
-		m.observeFunc(line, floatVal)
-		return nil, true
+		err = m.observeFunc(matchResult, floatVal)
+		return true, err
 	} else {
-		return nil, false
+		return false, nil
 	}
 }
 
-func (m *counterMetric) Name() string {
+func (m *incMetric) Name() string {
 	return m.name
 }
 
-func (m *valueMetric) Name() string {
+func (m *observeMetric) Name() string {
 	return m.name
 }
 
-func (m *counterMetric) Collector() prometheus.Collector {
+func (m *incMetric) Collector() prometheus.Collector {
 	return m.collector
 }
 
-func (m *valueMetric) Collector() prometheus.Collector {
+func (m *observeMetric) Collector() prometheus.Collector {
 	return m.collector
 }
 
-func labelValues(line string, regex *rubex.Regexp, labels []Label) []string {
+func labelValues(matchResult *OnigurumaMatchResult, labels []Label) ([]string, error) {
 	values := make([]string, 0, len(labels))
 	for _, field := range labels {
-		value := regex.Gsub(line, fmt.Sprintf("\\k<%v>", field.GrokFieldName))
+		value, err := matchResult.Get(field.GrokFieldName)
+		if err != nil {
+			return nil, err
+		}
 		values = append(values, value)
 	}
-	return values
+	return values, nil
 }
 
 func prometheusLabels(labels []Label) []string {
