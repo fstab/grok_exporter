@@ -1,6 +1,7 @@
 package exporter
 
 import (
+	"github.com/moovweb/rubex"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_model/go"
 	"reflect"
@@ -64,17 +65,13 @@ func TestCounter(t *testing.T) {
 	}
 }
 
-func initRegex(t *testing.T) *OnigurumaRegexp {
+func initRegex(t *testing.T) *rubex.Regexp {
 	patterns := loadPatternDir(t)
 	err := patterns.AddPattern("EXIM_MESSAGE [a-zA-Z ]*")
 	if err != nil {
 		t.Error(err)
 	}
-	libonig, err := InitOnigurumaLib()
-	if err != nil {
-		t.Error(err)
-	}
-	regex, err := Compile("%{EXIM_DATE} %{EXIM_REMOTE_HOST} F=<%{EMAILADDRESS}> rejected RCPT <%{EMAILADDRESS}>: %{EXIM_MESSAGE:message}", patterns, libonig)
+	regex, err := Compile("%{EXIM_DATE} %{EXIM_REMOTE_HOST} F=<%{EMAILADDRESS}> rejected RCPT <%{EMAILADDRESS}>: %{EXIM_MESSAGE:message}", patterns)
 	if err != nil {
 		t.Error(err)
 	}

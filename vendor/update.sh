@@ -12,6 +12,19 @@ cd $VENDOR
 find . ! -path . -maxdepth 1 -type d | xargs rm -rf
 
 ###########################################################################
+# github.com/moovweb/rubex
+###########################################################################
+
+cd $VENDOR
+mkdir -p github.com/moovweb
+cd github.com/moovweb
+git clone https://github.com/moovweb/rubex.git
+cd rubex
+git checkout 6.2.256 # cb849acea6148000db8a55743f71476b0897ea41
+rm -rf .git
+patch -p1 < $VENDOR/rubex.patch
+
+###########################################################################
 # github.com/prometheus/client_golang
 ###########################################################################
 
