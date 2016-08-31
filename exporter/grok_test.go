@@ -12,16 +12,16 @@ func TestGrok(t *testing.T) {
 		t.Fatal(err)
 	}
 	patterns := loadPatternDir(t)
-	t.Run("compile all patterns", func(t *testing.T) {
+	run(t, "compile all patterns", func(t *testing.T) {
 		testCompileAllPatterns(t, patterns, libonig)
 	})
-	t.Run("compile unknown pattern", func(t *testing.T) {
+	run(t, "compile unknown pattern", func(t *testing.T) {
 		testCompileUnknownPattern(t, patterns, libonig)
 	})
-	t.Run("compile invalid regexp", func(t *testing.T) {
+	run(t, "compile invalid regexp", func(t *testing.T) {
 		testCompileInvalidRegexp(t, patterns, libonig)
 	})
-	t.Run("verify capture group", func(t *testing.T) {
+	run(t, "verify capture group", func(t *testing.T) {
 		testVerifyCaptureGroup(t, patterns, libonig)
 	})
 }

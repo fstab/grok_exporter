@@ -9,16 +9,16 @@ func TestOniguruma(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Run("valid patterns", func(t *testing.T) {
+	run(t, "valid patterns", func(t *testing.T) {
 		testValidPatterns(t, libonig)
 	})
-	t.Run("invalid patterns", func(t *testing.T) {
+	run(t, "invalid patterns", func(t *testing.T) {
 		testInvalidPatterns(t, libonig)
 	})
-	t.Run("valid capture groups", func(t *testing.T) {
+	run(t, "valid capture groups", func(t *testing.T) {
 		testValidCaptureGroups(t, libonig)
 	})
-	t.Run("invalid capture groups", func(t *testing.T) {
+	run(t, "invalid capture groups", func(t *testing.T) {
 		testInvalidCaptureGroups(t, libonig)
 	})
 }
