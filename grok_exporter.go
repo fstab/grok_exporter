@@ -31,7 +31,9 @@ func main() {
 	exitOnError(err)
 	patterns, err := initPatterns(cfg)
 	exitOnError(err)
-	metrics, err := createMetrics(cfg, patterns)
+	libonig, err := exporter.InitOnigurumaLib()
+	exitOnError(err)
+	metrics, err := createMetrics(cfg, patterns, libonig)
 	exitOnError(err)
 	for _, m := range metrics {
 		prometheus.MustRegister(m.Collector())
@@ -53,13 +55,13 @@ func main() {
 			matched := false
 			for _, metric := range metrics {
 				start := time.Now()
-				err, ok := metric.Process(line)
+				match, err := metric.Process(line)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "WARNING: Skipping log line: %v\n", err.Error())
 					fmt.Fprintf(os.Stderr, "%v\n", line)
 					nErrorsByMetric.WithLabelValues(metric.Name()).Inc()
 				}
-				if ok {
+				if match {
 					nMatchesByMetric.WithLabelValues(metric.Name()).Inc()
 					procTimeMicrosecondsByMetric.WithLabelValues(metric.Name()).Add(float64(time.Since(start).Nanoseconds() / int64(1000)))
 					matched = true
@@ -105,10 +107,14 @@ func initPatterns(cfg *exporter.Config) (*exporter.Patterns, error) {
 	return patterns, nil
 }
 
-func createMetrics(cfg *exporter.Config, patterns *exporter.Patterns) ([]exporter.Metric, error) {
+func createMetrics(cfg *exporter.Config, patterns *exporter.Patterns, libonig *exporter.OnigurumaLib) ([]exporter.Metric, error) {
 	result := make([]exporter.Metric, 0, len(*cfg.Metrics))
 	for _, m := range *cfg.Metrics {
-		regex, err := exporter.Compile(m.Match, patterns)
+		regex, err := exporter.Compile(m.Match, patterns, libonig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
+		}
+		err = exporter.VerifyFieldNames(m, regex)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
 		}

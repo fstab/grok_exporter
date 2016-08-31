@@ -1,27 +1,97 @@
 language: go
 
+go:
+  - 1.7
+
 os:
   - linux
   - osx
 
+env:
+  matrix:
+    - ONIG_VERSION=5.9.6 MODE=STATIC
+    - ONIG_VERSION=5.9.6 MODE=DYNAMIC
+    - ONIG_VERSION=DEFAULT
+
 before_install:
-  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update && brew install oniguruma ; fi
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get -qq update && sudo apt-get install libonig-dev ; fi
+  - |
+    set -e ;
+    set -x ;
+    case "$ONIG_VERSION" in
+    "DEFAULT")
+        if [[ "$TRAVIS_OS_NAME" == "osx" ]] ; then
+            brew update ;
+            brew install fstab/oniguruma/oniguruma-5.9.6 ;
+        elif [[ "$TRAVIS_OS_NAME" == "linux" ]] ; then
+            sudo apt-get -qq update ;
+            sudo apt-get install libonig-dev ;
+        fi
+        ;;
+    *)
+        PROJ_DIR=$(pwd) ;
+        cd /tmp ;
+        curl -sLO https://github.com/kkos/oniguruma/releases/download/v${ONIG_VERSION}/onig-${ONIG_VERSION}.tar.gz ;
+        tar xfz onig-${ONIG_VERSION}.tar.gz ;
+        cd onig-${ONIG_VERSION} ;
+        ./configure && make && sudo make install ;
+        cd "${PROJ_DIR}" ;
+        ;;
+    esac ;
+    if [[ "$TRAVIS_OS_NAME" == "linux" ]] ;
+    then
+        sudo ldconfig ;
+    fi ;
 
 install:
-  - echo "Skipping install phase, because github.com/fstab/grok_exporter has all its dependencies in the vendor/ folder."
+  - echo "nothing to do in install phase" ;
 
 script:
-  - go version
-  - go test -v $(go list ./... | grep -v /vendor/)
-  - go install .
-  - ./integration-test.sh
+  - |
+    set -e ;
+    set -x ;
+    if [[ "$TRAVIS_OS_NAME" == "osx" ]] ;
+    then
+        LDD_COMMAND="otool -L" ;
+    else
+        LDD_COMMAND="ldd" ;
+    fi
+    case "$MODE" in
+    "STATIC")
+        if [[ "$TRAVIS_OS_NAME" == "osx" ]] ;
+        then
+            sed -i.bak 's;#cgo LDFLAGS: -L/usr/local/lib -lonig;#cgo LDFLAGS: /usr/local/lib/libonig.a;' exporter/oniguruma.go ;
+        fi ;
+        CGO_LDFLAGS=/usr/local/lib/libonig.a go test -v $(go list ./... | grep -v /vendor/) ;
+        CGO_LDFLAGS=/usr/local/lib/libonig.a go install . ;
+        if $LDD_COMMAND $GOPATH/bin/grok_exporter | grep libonig ;
+        then
+            echo "ERROR: Expected statically linked binary." >&2 ;
+            exit -1 ;
+        fi ;
+        ./integration-test.sh ;
+        ;;
+    *)
+        go test -v $(go list ./... | grep -v /vendor/) ;
+        go install . ;
+        if ! $LDD_COMMAND $GOPATH/bin/grok_exporter | grep libonig ;
+        then
+            echo "ERROR: Expected dynamically linked binary." >&2 ;
+            exit -1 ;
+        fi ;
+        ;;
+    esac ;
 
 after_success:
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then go get golang.org/x/tools/cmd/cover github.com/mattn/goveralls github.com/modocache/gover ; fi
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then go list ./... | grep -v /vendor/ | while read package ; do go test -covermode count -coverprofile=$(basename $package).coverprofile $package ; done ; fi
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then gover && goveralls -coverprofile=gover.coverprofile -service=travis-ci ; fi
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then rm *.coverprofile ; fi
-
-go:
-  - tip
+  - |
+    set -e ;
+    set -x ;
+    if [[ "$TRAVIS_OS_NAME" == "linux" && "$ONIG_VERSION" == "DEFAULT" ]] ;
+    then
+        go get golang.org/x/tools/cmd/cover github.com/mattn/goveralls github.com/modocache/gover ;
+        go list ./... | grep -v /vendor/ | while read package ;
+        do
+            go test -covermode count -coverprofile=$(basename $package).coverprofile $package ;
+        done ;
+        gover && goveralls -coverprofile=gover.coverprofile -service=travis-ci ;
+        rm *.coverprofile ;
+    fi ;
