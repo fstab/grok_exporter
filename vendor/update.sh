@@ -12,7 +12,7 @@ cd $VENDOR
 find . ! -path . -maxdepth 1 -type d | xargs rm -rf
 
 ###########################################################################
-# github.com/prometheus/client_golang
+# github.com/prometheus/client_golang/prometheus
 ###########################################################################
 
 cd $VENDOR
@@ -20,7 +20,7 @@ mkdir -p github.com/prometheus
 cd github.com/prometheus
 git clone https://github.com/prometheus/client_golang.git
 cd client_golang
-git checkout 28be15864ef9ba05d74fa6fd13b928fd250e8f01
+git checkout v0.8.0
 rm -rf .git
 
 # Dependency: github.com/prometheus/client_model/go
@@ -50,8 +50,9 @@ mkdir -p github.com/prometheus
 cd github.com/prometheus
 git clone https://github.com/prometheus/common.git
 cd common
-git checkout bc0a4460d0fc2693fcdebafafbf07c6d18913b97
-ls -A | grep -v expfmt | grep -v internal | grep -v model | xargs rm -rf
+git checkout ebdfc6da46522d58825777cf1f90490a5b1ef1d8
+ls -A | grep -v expfmt | grep -v internal | grep -v model | xargs rm -r
+rm -r expfmt/testdata
 
 # Dependency: github.com/matttproud/golang_protobuf_extensions/pbutil
 
@@ -60,8 +61,9 @@ mkdir -p github.com/matttproud
 cd github.com/matttproud
 git clone https://github.com/matttproud/golang_protobuf_extensions.git
 cd golang_protobuf_extensions
-git checkout v1.0.0
-ls -A | grep -v pbutil | xargs rm -rf
+git checkout c12348ce28de40eed0136aa2b644d0ee0650e56c
+ls -A | grep -v pbutil | xargs rm -r
+rm pbutil/.gitignore pbutil/Makefile
 
 # Dependency: github.com/beorn7/perks/quantile
 
@@ -70,9 +72,8 @@ mkdir -p github.com/beorn7
 cd github.com/beorn7
 git clone https://github.com/beorn7/perks.git
 cd perks
-git checkout 3ac7bf7a47d159a033b107610db8a1b6575507a4
+git checkout 4c0e84591b9aa9e6dcfdf3e020114cd81f89d5f9
 rm -rf .git .gitignore histogram topk README.md
-patch -p1 < $VENDOR/perks.patch
 
 # Dependency: github.com/golang/protobuf/proto
 
@@ -81,7 +82,7 @@ mkdir -p github.com/golang
 cd github.com/golang
 git clone https://github.com/golang/protobuf.git
 cd protobuf
-git checkout c3cefd437628a0b7d31b34fe44b3a7a540e98527
+git checkout 7390af9dcd3c33042ebaf2474a1724a83cf1a7e6
 rm -rf .git .gitignore Make* jsonpb protoc-gen-go ptypes
 
 ###########################################################################
