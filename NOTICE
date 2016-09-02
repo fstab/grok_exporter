@@ -1,0 +1,20 @@
+grok_exporter
+Copyright 2016 The grok_exporter Authors
+
+The following components are included in this product:
+
+This product includes software developed as part of the
+Go project, https://golang.org/
+
+This product includes software developed as part of the
+Prometheus Golang client, https://github.com/prometheus/client_golang
+
+This product includes software developed as part of the
+"YAML support for the Go language" by Canonical Ltd.
+https://github.com/go-yaml/yaml
+
+This product uses the Oniguruma regular expression library
+https://github.com/kkos/oniguruma
+
+This product uses the Logstash core patterns
+https://github.com/logstash-plugins/logstash-patterns-core
