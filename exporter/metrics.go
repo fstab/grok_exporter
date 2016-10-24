@@ -94,7 +94,11 @@ func NewGaugeMetric(cfg *MetricConfig, regex *OnigurumaRegexp) Metric {
 			value:     cfg.Value,
 			collector: gauge,
 			observeFunc: func(_ *OnigurumaMatchResult, val float64) error {
-				gauge.Add(val)
+				if cfg.Cumulative {
+					gauge.Add(val)
+				} else {
+					gauge.Set(val)
+				}
 				return nil
 			},
 		}
@@ -109,7 +113,11 @@ func NewGaugeMetric(cfg *MetricConfig, regex *OnigurumaRegexp) Metric {
 			observeFunc: func(m *OnigurumaMatchResult, val float64) error {
 				vals, err := labelValues(m, cfg.Labels)
 				if err == nil {
-					gaugeVec.WithLabelValues(vals...).Add(val)
+					if cfg.Cumulative {
+						gaugeVec.WithLabelValues(vals...).Add(val)
+					} else {
+						gaugeVec.WithLabelValues(vals...).Set(val)
+					}
 				}
 				return err
 			},

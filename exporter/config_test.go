@@ -52,6 +52,7 @@ metrics:
       help: Dummy help message.
       match: Some text here, then a %{DATE}.
       value: val
+      cumulative: true
 server:
     protocol: http
     port: 9144
@@ -104,6 +105,29 @@ func TestGaugeInvalidConfig(t *testing.T) {
 	_, err := LoadConfigString([]byte(invalidCfg))
 	if err == nil || !strings.Contains(err.Error(), "'metrics.value' must not be empty") {
 		t.Fatal("Expected error message saying that value is missing.")
+	}
+}
+
+func TestGaugeCumulativeConfig(t *testing.T) {
+	cfg := loadOrFail(t, gauge_config)
+	if (*cfg.Metrics)[0].Cumulative != true {
+		t.Fatal("Expected 'true' as gauge cumulative option.")
+	}
+}
+
+func TestGaugeDefaultCumulativeConfig(t *testing.T) {
+	cfgString := strings.Replace(gauge_config, "      cumulative: true\n", "", 1)
+	cfg := loadOrFail(t, cfgString)
+	if (*cfg.Metrics)[0].Cumulative != false {
+		t.Fatal("Expected 'false' as default for gauge cumulative option.")
+	}
+}
+
+func TestGaugeInvalidCumulativeConfig(t *testing.T) {
+	invalidCfg := strings.Replace(gauge_config, "      cumulative: true\n", "      cumulative: dontknow\n", 1)
+	_, err := LoadConfigString([]byte(invalidCfg))
+	if err == nil || !strings.Contains(err.Error(), "dontknow") {
+		t.Fatal("Expected error message saying that 'dontknow' is invalid.", err)
 	}
 }
 

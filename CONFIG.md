@@ -167,6 +167,7 @@ metrics:
       help: Example gauge metric with labels.
       match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
       value: val
+      cumulative: false
       labels:
           - grok_field_name: user
             prometheus_label: user
@@ -176,6 +177,7 @@ The configuration is as follows:
 * `type` is `gauge`.
 * `name`, `help`, `match`, and `labels` have the same meaning as for `counter` metrics.
 * `value` is the Grok field to be monitored. In the example `match` pattern, we used `%{NUMBER:val}` to define that the match for `%{NUMBER}` will have the name `val`. We then use `val` as the `value` to be monitored. You must make sure that the Grok field used as `value` always matches a valid number.
+* `cumulative` is optional. By default, the last observed value is measured. With `cumulative: true`, the sum of all observed values is measured.
 
 Output for the example log lines above::
 

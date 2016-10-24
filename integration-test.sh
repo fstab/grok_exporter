@@ -117,8 +117,8 @@ checkMetric 'grok_test_counter_nolabels' 3
 checkMetric 'grok_test_counter_labels{user="alice"}' 2
 checkMetric 'grok_test_counter_labels{user="bob"}' 1
 
-checkMetric 'grok_test_gauge_nolabels' 6.5
-checkMetric 'grok_test_gauge_labels{user="alice"}' 4
+checkMetric 'grok_test_gauge_nolabels' 2.5
+checkMetric 'grok_test_gauge_labels{user="alice"}' 2.5
 checkMetric 'grok_test_gauge_labels{user="bob"}' 2.5
 
 checkMetric 'grok_test_histogram_nolabels_bucket{le="1"}' 0

@@ -22,7 +22,7 @@ import (
 )
 
 func TestCounterVec(t *testing.T) {
-	regex := initRegex(t)
+	regex := initCounterRegex(t)
 	counterCfg := &MetricConfig{
 		Name: "exim_rejected_rcpt_total",
 		Labels: []Label{
@@ -55,7 +55,7 @@ func TestCounterVec(t *testing.T) {
 }
 
 func TestCounter(t *testing.T) {
-	regex := initRegex(t)
+	regex := initCounterRegex(t)
 	counterCfg := &MetricConfig{
 		Name: "exim_rejected_rcpt_total",
 	}
@@ -78,7 +78,7 @@ func TestCounter(t *testing.T) {
 	}
 }
 
-func initRegex(t *testing.T) *OnigurumaRegexp {
+func initCounterRegex(t *testing.T) *OnigurumaRegexp {
 	patterns := loadPatternDir(t)
 	err := patterns.AddPattern("EXIM_MESSAGE [a-zA-Z ]*")
 	if err != nil {
@@ -89,6 +89,100 @@ func initRegex(t *testing.T) *OnigurumaRegexp {
 		t.Error(err)
 	}
 	regex, err := Compile("%{EXIM_DATE} %{EXIM_REMOTE_HOST} F=<%{EMAILADDRESS}> rejected RCPT <%{EMAILADDRESS}>: %{EXIM_MESSAGE:message}", patterns, libonig)
+	if err != nil {
+		t.Error(err)
+	}
+	return regex
+}
+
+func TestGauge(t *testing.T) {
+	regex := initGaugeRegex(t)
+	gaugeCfg := &MetricConfig{
+		Name:  "temperature",
+		Value: "temperature",
+	}
+	gauge := NewGaugeMetric(gaugeCfg, regex)
+
+	gauge.Process("Temperature in Berlin: 32")
+	gauge.Process("Temperature in Moscow: -5")
+
+	switch c := gauge.Collector().(type) {
+	case prometheus.Gauge:
+		m := io_prometheus_client.Metric{}
+		c.Write(&m)
+		if *m.Gauge.Value != float64(-5) {
+			t.Errorf("Expected -5 as last observed value, but got %v.", *m.Gauge.Value)
+		}
+	default:
+		t.Errorf("Unexpected type of metric: %v", reflect.TypeOf(c))
+	}
+}
+
+func TestGaugeCumulative(t *testing.T) {
+	regex := initGaugeRegex(t)
+	gaugeCfg := &MetricConfig{
+		Name:       "temperature",
+		Value:      "temperature",
+		Cumulative: true,
+	}
+	gauge := NewGaugeMetric(gaugeCfg, regex)
+
+	gauge.Process("Temperature in Berlin: 32")
+	gauge.Process("Temperature in Moscow: -5")
+
+	switch c := gauge.Collector().(type) {
+	case prometheus.Gauge:
+		m := io_prometheus_client.Metric{}
+		c.Write(&m)
+		if *m.Gauge.Value != float64(27) {
+			t.Errorf("Expected 27 as cumulative value, but got %v.", *m.Gauge.Value)
+		}
+	default:
+		t.Errorf("Unexpected type of metric: %v", reflect.TypeOf(c))
+	}
+}
+
+func TestGaugeVec(t *testing.T) {
+	regex := initGaugeRegex(t)
+	gaugeCfg := &MetricConfig{
+		Name:  "temperature",
+		Value: "temperature",
+		Labels: []Label{
+			{
+				GrokFieldName:   "city",
+				PrometheusLabel: "city",
+			},
+		},
+	}
+	gauge := NewGaugeMetric(gaugeCfg, regex)
+
+	gauge.Process("Temperature in Berlin: 32")
+	gauge.Process("Temperature in Moscow: -5")
+	gauge.Process("Temperature in Berlin: 31")
+
+	switch c := gauge.Collector().(type) {
+	case *prometheus.GaugeVec:
+		m := io_prometheus_client.Metric{}
+		c.WithLabelValues("Berlin").Write(&m)
+		if *m.Gauge.Value != float64(31) {
+			t.Errorf("Expected 31 as last observed value in Berlin, but got %v.", *m.Gauge.Value)
+		}
+		c.WithLabelValues("Moscow").Write(&m)
+		if *m.Gauge.Value != float64(-5) {
+			t.Errorf("Expected -5 as last observed value in Moscow, but got %v.", *m.Gauge.Value)
+		}
+	default:
+		t.Errorf("Unexpected type of metric: %v", reflect.TypeOf(c))
+	}
+}
+
+func initGaugeRegex(t *testing.T) *OnigurumaRegexp {
+	patterns := loadPatternDir(t)
+	libonig, err := InitOnigurumaLib()
+	if err != nil {
+		t.Error(err)
+	}
+	regex, err := Compile("Temperature in %{WORD:city}: %{INT:temperature}", patterns, libonig)
 	if err != nil {
 		t.Error(err)
 	}

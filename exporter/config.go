@@ -38,7 +38,7 @@ func LoadConfigString(content []byte) (*Config, error) {
 	cfg := &Config{}
 	err := yaml.Unmarshal(content, cfg)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Invalid configuration: %v", err.Error())
 	}
 	cfg.setDefaults()
 	err = cfg.validate()
@@ -73,14 +73,15 @@ type Label struct {
 }
 
 type MetricConfig struct {
-	Type      string              `yaml:",omitempty"`
-	Name      string              `yaml:",omitempty"`
-	Help      string              `yaml:",omitempty"`
-	Match     string              `yaml:",omitempty"`
-	Value     string              `yaml:",omitempty"`
-	Buckets   []float64           `yaml:",flow,omitempty"`
-	Quantiles map[float64]float64 `yaml:",flow,omitempty"`
-	Labels    []Label             `yaml:",omitempty"`
+	Type       string              `yaml:",omitempty"`
+	Name       string              `yaml:",omitempty"`
+	Help       string              `yaml:",omitempty"`
+	Match      string              `yaml:",omitempty"`
+	Value      string              `yaml:",omitempty"`
+	Cumulative bool                `yaml:",omitempty"`
+	Buckets    []float64           `yaml:",flow,omitempty"`
+	Quantiles  map[float64]float64 `yaml:",flow,omitempty"`
+	Labels     []Label             `yaml:",omitempty"`
 }
 
 type MetricsConfig []*MetricConfig
@@ -211,16 +212,16 @@ func (c *MetricConfig) validate() error {
 	case c.Match == "":
 		return fmt.Errorf("Invalid metric configuration: 'metrics.match' must not be empty.")
 	}
-	var hasValue, bucketsAllowed, quantilesAllowed bool
+	var hasValue, cumulativeAllowed, bucketsAllowed, quantilesAllowed bool
 	switch c.Type {
 	case "counter":
-		hasValue, bucketsAllowed, quantilesAllowed = false, false, false
+		hasValue, cumulativeAllowed, bucketsAllowed, quantilesAllowed = false, false, false, false
 	case "gauge":
-		hasValue, bucketsAllowed, quantilesAllowed = true, false, false
+		hasValue, cumulativeAllowed, bucketsAllowed, quantilesAllowed = true, true, false, false
 	case "histogram":
-		hasValue, bucketsAllowed, quantilesAllowed = true, true, false
+		hasValue, cumulativeAllowed, bucketsAllowed, quantilesAllowed = true, false, true, false
 	case "summary":
-		hasValue, bucketsAllowed, quantilesAllowed = true, false, true
+		hasValue, cumulativeAllowed, bucketsAllowed, quantilesAllowed = true, false, false, true
 	default:
 		return fmt.Errorf("Invalid 'metrics.type': '%v'. We currently only support 'counter' and 'gauge'.", c.Type)
 	}
@@ -229,6 +230,8 @@ func (c *MetricConfig) validate() error {
 		return fmt.Errorf("Invalid metric configuration: 'metrics.value' must not be empty for %v metrics.", c.Type)
 	case !hasValue && len(c.Value) > 0:
 		return fmt.Errorf("Invalid metric configuration: 'metrics.value' cannot be used for %v metrics.", c.Type)
+	case !cumulativeAllowed && c.Cumulative:
+		return fmt.Errorf("Invalid metric configuration: 'metrics.cumulative' cannot be used for %v metrics.", c.Type)
 	case !bucketsAllowed && len(c.Buckets) > 0:
 		return fmt.Errorf("Invalid metric configuration: 'metrics.buckets' cannot be used for %v metrics.", c.Type)
 	case !quantilesAllowed && len(c.Quantiles) > 0:
