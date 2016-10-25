@@ -41,6 +41,7 @@ before_install:
     then
         sudo ldconfig ;
     fi ;
+    set +e ;
 
 install:
   - echo "nothing to do in install phase" ;
@@ -80,6 +81,7 @@ script:
         fi ;
         ;;
     esac ;
+    set +e ;
 
 after_success:
   - |
@@ -95,3 +97,4 @@ after_success:
         gover && goveralls -coverprofile=gover.coverprofile -service=travis-ci ;
         rm *.coverprofile ;
     fi ;
+    set +e ;
