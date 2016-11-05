@@ -56,7 +56,7 @@ func main() {
 
 	tail, err := startTailer(cfg)
 	exitOnError(err)
-	fmt.Printf("Starting server on %v://localhost:%v/metrics\n", cfg.Server.Protocol, cfg.Server.Port)
+	fmt.Print(startMsg(cfg))
 	serverErrors := startServer(cfg, "/metrics", prometheus.Handler())
 
 	for {
@@ -88,6 +88,19 @@ func main() {
 			}
 		}
 	}
+}
+
+func startMsg(cfg *exporter.Config) string {
+	host := "localhost"
+	if len(cfg.Server.Host) > 0 {
+		host = cfg.Server.Host
+	} else {
+		hostname, err := os.Hostname()
+		if err == nil {
+			host = hostname
+		}
+	}
+	return fmt.Sprintf("Starting server on %v://%v:%v/metrics\n", cfg.Server.Protocol, host, cfg.Server.Port)
 }
 
 func exitOnError(err error) {
@@ -193,12 +206,12 @@ func startServer(cfg *exporter.Config, path string, handler http.Handler) chan e
 	go func() {
 		switch {
 		case cfg.Server.Protocol == "http":
-			serverErrors <- exporter.RunHttpServer(cfg.Server.Port, path, handler)
+			serverErrors <- exporter.RunHttpServer(cfg.Server.Host, cfg.Server.Port, path, handler)
 		case cfg.Server.Protocol == "https":
 			if cfg.Server.Cert != "" && cfg.Server.Key != "" {
-				serverErrors <- exporter.RunHttpsServer(cfg.Server.Port, cfg.Server.Cert, cfg.Server.Key, path, handler)
+				serverErrors <- exporter.RunHttpsServer(cfg.Server.Host, cfg.Server.Port, cfg.Server.Cert, cfg.Server.Key, path, handler)
 			} else {
-				serverErrors <- exporter.RunHttpsServerWithDefaultKeys(cfg.Server.Port, path, handler)
+				serverErrors <- exporter.RunHttpsServerWithDefaultKeys(cfg.Server.Host, cfg.Server.Port, path, handler)
 			}
 		default:
 			// This cannot happen, because cfg.validate() makes sure that protocol is either http or https.

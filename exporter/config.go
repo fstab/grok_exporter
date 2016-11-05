@@ -88,6 +88,7 @@ type MetricsConfig []*MetricConfig
 
 type ServerConfig struct {
 	Protocol string `yaml:",omitempty"`
+	Host     string `yaml:",omitempty"`
 	Port     int    `yaml:",omitempty"`
 	Cert     string `yaml:",omitempty"`
 	Key      string `yaml:",omitempty"`

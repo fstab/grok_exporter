@@ -15,4 +15,5 @@ metrics:
           - grok_field_name: message
             prometheus_label: error_message
 server:
+    host: localhost
     port: 9144

@@ -273,12 +273,14 @@ The server section configures the HTTP(S) server for exposing the metrics:
 ```yaml
 server:
     protocol: https
+    host: localhost
     port: 9144
     cert: /path/to/cert
     key: /path/to/key
 ```
 
 * `protocol` can be `http` or `https`. Default is `http`.
+* `host` can be a hostname or an IP address. If host is specified, `grok_exporter` will listen on the network interface with the given address. If host is omitted, `grok_exporter` will listen on all available network interfaces.
 * `port` is the TCP port to be used. Default is `9144`.
 * `cert` is the path to the SSL certificate file for protocol `https`. It is optional. If omitted, a hard-coded default certificate will be used.
 * `key` is the path to the SSL key file for protocol `https`. It is optional. If omitted, a hard-coded default key will be used.

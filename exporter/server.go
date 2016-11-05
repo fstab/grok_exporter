@@ -77,7 +77,7 @@ XLgD9hrDBrTbnKBHHQ6MHpT6ILi4w/e4+5XEUUOBf44ZJE71uRr4ZUA=
 -----END RSA PRIVATE KEY-----
 `
 
-func RunHttpsServerWithDefaultKeys(port int, path string, handler http.Handler) error {
+func RunHttpsServerWithDefaultKeys(host string, port int, path string, handler http.Handler) error {
 	cert, err := createTempFile("cert", []byte(defaultCert))
 	if err != nil {
 		return err
@@ -88,37 +88,45 @@ func RunHttpsServerWithDefaultKeys(port int, path string, handler http.Handler) 
 		return err
 	}
 	defer os.Remove(key)
-	return RunHttpsServer(port, cert, key, path, handler)
+	return RunHttpsServer(host, port, cert, key, path, handler)
 }
 
-func RunHttpsServer(port int, cert, key, path string, handler http.Handler) error {
-	err := tryOpenPort(port)
+func RunHttpsServer(host string, port int, cert, key, path string, handler http.Handler) error {
+	err := tryOpenPort(host, port)
 	if err != nil {
-		return fmt.Errorf("Cannot open port %v: %v", port, err)
+		return listenFailedError(host, port, err)
 	}
 	http.Handle(path, handler)
 	return http.ListenAndServeTLS(fmt.Sprintf(":%v", port), cert, key, nil)
 }
 
-func RunHttpServer(port int, path string, handler http.Handler) error {
-	err := tryOpenPort(port)
+func RunHttpServer(host string, port int, path string, handler http.Handler) error {
+	err := tryOpenPort(host, port)
 	if err != nil {
-		return fmt.Errorf("Cannot open port %v: %v", port, err)
+		return listenFailedError(host, port, err)
 	}
 	http.Handle(path, handler)
-	return http.ListenAndServe(fmt.Sprintf(":%v", port), nil)
+	return http.ListenAndServe(fmt.Sprintf("%v:%v", host, port), nil)
 }
 
 // Golang's http.ListenAndServe() has an unexpected behaviour when the port is in use:
 // Instead of returning an error, it tries to open an IPv6-only listener.
 // If this works (because the other application on that port is IPv4-only), no error is returned.
 // This is confusing for the user, we want an error if the IPv4 port is in use.
-func tryOpenPort(port int) error {
-	ln, err := net.Listen("tcp4", fmt.Sprintf(":%v", port))
+func tryOpenPort(host string, port int) error {
+	ln, err := net.Listen("tcp4", fmt.Sprintf("%v:%v", host, port))
 	if err != nil {
 		return err
 	}
 	return ln.Close()
+}
+
+func listenFailedError(host string, port int, err error) error {
+	if len(host) > 0 {
+		return fmt.Errorf("cannot bind to %v:%v: %v", host, port, err)
+	} else {
+		return fmt.Errorf("cannot open port %v: %v", port, err)
+	}
 }
 
 func createTempFile(prefix string, data []byte) (string, error) {
