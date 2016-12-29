@@ -17,6 +17,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/fstab/grok_exporter/config"
+	"github.com/fstab/grok_exporter/config/v2"
 	"github.com/fstab/grok_exporter/exporter"
 	"github.com/fstab/grok_exporter/tailer"
 	"github.com/prometheus/client_golang/prometheus"
@@ -28,6 +30,7 @@ import (
 var (
 	printVersion = flag.Bool("version", false, "Print the grok_exporter version.")
 	configPath   = flag.String("config", "", "Path to the config file. Try '-config ./example/config.yml' to get started.")
+	showConfig   = flag.Bool("showconfig", false, "Print the current configuration to the console. Example: 'grok_exporter -showconfig -config ./exemple/config.yml'")
 )
 
 const (
@@ -41,8 +44,15 @@ func main() {
 		fmt.Printf("%v\n", exporter.VersionString())
 		return
 	}
-	cfg, err := loadConfig()
+	validateCommandLineOrExit()
+	cfg, warn, err := config.LoadConfigFile(*configPath)
 	exitOnError(err)
+	if *showConfig {
+		fmt.Printf("%v\n", cfg)
+		return
+	} else if len(warn) > 0 { // warning is suppressed when '-showconfig' is used
+		fmt.Fprintf(os.Stderr, "%v\n", warn)
+	}
 	patterns, err := initPatterns(cfg)
 	exitOnError(err)
 	libonig, err := exporter.InitOnigurumaLib()
@@ -90,7 +100,7 @@ func main() {
 	}
 }
 
-func startMsg(cfg *exporter.Config) string {
+func startMsg(cfg *v2.Config) string {
 	host := "localhost"
 	if len(cfg.Server.Host) > 0 {
 		host = cfg.Server.Host
@@ -110,14 +120,18 @@ func exitOnError(err error) {
 	}
 }
 
-func loadConfig() (*exporter.Config, error) {
-	if *configPath == "" {
-		return nil, fmt.Errorf("Usage: grok_exporter -config <path>")
+func validateCommandLineOrExit() {
+	if len(*configPath) == 0 {
+		if *showConfig {
+			fmt.Fprint(os.Stderr, "Usage: grok_exporter -showconfig -config <path>\n")
+		} else {
+			fmt.Fprint(os.Stderr, "Usage: grok_exporter -config <path>\n")
+		}
+		os.Exit(-1)
 	}
-	return exporter.LoadConfigFile(*configPath)
 }
 
-func initPatterns(cfg *exporter.Config) (*exporter.Patterns, error) {
+func initPatterns(cfg *v2.Config) (*exporter.Patterns, error) {
 	patterns := exporter.InitPatterns()
 	if len(cfg.Grok.PatternsDir) > 0 {
 		err := patterns.AddDir(cfg.Grok.PatternsDir)
@@ -134,7 +148,7 @@ func initPatterns(cfg *exporter.Config) (*exporter.Patterns, error) {
 	return patterns, nil
 }
 
-func createMetrics(cfg *exporter.Config, patterns *exporter.Patterns, libonig *exporter.OnigurumaLib) ([]exporter.Metric, error) {
+func createMetrics(cfg *v2.Config, patterns *exporter.Patterns, libonig *exporter.OnigurumaLib) ([]exporter.Metric, error) {
 	result := make([]exporter.Metric, 0, len(*cfg.Metrics))
 	for _, m := range *cfg.Metrics {
 		regex, err := exporter.Compile(m.Match, patterns, libonig)
@@ -201,7 +215,7 @@ func initSelfMonitoring(metrics []exporter.Metric) (*prometheus.CounterVec, *pro
 	return nLinesTotal, nMatchesByMetric, procTimeMicrosecondsByMetric, nErrorsByMetric
 }
 
-func startServer(cfg *exporter.Config, path string, handler http.Handler) chan error {
+func startServer(cfg *v2.Config, path string, handler http.Handler) chan error {
 	serverErrors := make(chan error)
 	go func() {
 		switch {
@@ -221,7 +235,7 @@ func startServer(cfg *exporter.Config, path string, handler http.Handler) chan e
 	return serverErrors
 }
 
-func startTailer(cfg *exporter.Config) (tailer.Tailer, error) {
+func startTailer(cfg *v2.Config) (tailer.Tailer, error) {
 	var tail tailer.Tailer
 	switch {
 	case cfg.Input.Type == "file":

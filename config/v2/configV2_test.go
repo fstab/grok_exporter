@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package exporter
+package v2
 
 import (
 	"strings"
@@ -20,6 +20,8 @@ import (
 )
 
 const counter_config = `
+general:
+    config_version: 2
 input:
     type: file
     path: x/x/x
@@ -42,6 +44,8 @@ server:
 `
 
 const gauge_config = `
+general:
+    config_version: 2
 input:
     type: stdin
 grok:
@@ -60,6 +64,8 @@ server:
 `
 
 const histogram_config = `
+general:
+    config_version: 2
 input:
     type: stdin
 grok:
@@ -77,6 +83,8 @@ server:
 `
 
 const summary_config = `
+general:
+    config_version: 2
 input:
     type: stdin
 grok:
@@ -103,7 +111,7 @@ func TestGaugeValidConfig(t *testing.T) {
 
 func TestGaugeInvalidConfig(t *testing.T) {
 	invalidCfg := strings.Replace(gauge_config, "      value: val\n", "", 1)
-	_, err := LoadConfigString([]byte(invalidCfg))
+	_, err := Unmarshal([]byte(invalidCfg))
 	if err == nil || !strings.Contains(err.Error(), "'metrics.value' must not be empty") {
 		t.Fatal("Expected error message saying that value is missing.")
 	}
@@ -126,7 +134,7 @@ func TestGaugeDefaultCumulativeConfig(t *testing.T) {
 
 func TestGaugeInvalidCumulativeConfig(t *testing.T) {
 	invalidCfg := strings.Replace(gauge_config, "      cumulative: true\n", "      cumulative: dontknow\n", 1)
-	_, err := LoadConfigString([]byte(invalidCfg))
+	_, err := Unmarshal([]byte(invalidCfg))
 	if err == nil || !strings.Contains(err.Error(), "dontknow") {
 		t.Fatal("Expected error message saying that 'dontknow' is invalid.", err)
 	}
@@ -143,7 +151,7 @@ func TestHistogramValidConfig(t *testing.T) {
 
 func TestHistogramInvalidConfig(t *testing.T) {
 	invalidCfg := strings.Replace(histogram_config, "$BUCKETS", "[0.005, oops, 10]", 1)
-	_, err := LoadConfigString([]byte(invalidCfg))
+	_, err := Unmarshal([]byte(invalidCfg))
 	if err == nil || !strings.Contains(err.Error(), "oops") {
 		t.Fatal("Expected error saying that 'oops' is not a valid number.")
 	}
@@ -160,14 +168,14 @@ func TestSummaryValidConfig(t *testing.T) {
 
 func TestSummaryInvalidConfig(t *testing.T) {
 	invalidCfg := strings.Replace(summary_config, "$QUANTILES", "[0.005, 0.2, 10]", 1)
-	_, err := LoadConfigString([]byte(invalidCfg))
+	_, err := Unmarshal([]byte(invalidCfg))
 	if err == nil {
 		t.Fatal("Expected error, because quantiles are a list and not a map.")
 	}
 }
 
 func loadOrFail(t *testing.T, cfgString string) *Config {
-	cfg, err := LoadConfigString([]byte(cfgString))
+	cfg, err := Unmarshal([]byte(cfgString))
 	if err != nil {
 		t.Fatalf("Failed to read config: %v", err.Error())
 	}

@@ -12,36 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package exporter
+package v2
 
 import (
 	"fmt"
 	"gopkg.in/yaml.v2"
-	"io/ioutil"
 )
 
-// Example config: See ./example/config.yml
-
-func LoadConfigFile(filename string) (*Config, error) {
-	content, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to load %v: %v", filename, err.Error())
-	}
-	cfg, err := LoadConfigString(content)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to load %v: %v", filename, err.Error())
-	}
-	return cfg, nil
-}
-
-func LoadConfigString(content []byte) (*Config, error) {
+func Unmarshal(config []byte) (*Config, error) {
 	cfg := &Config{}
-	err := yaml.Unmarshal(content, cfg)
+	err := yaml.Unmarshal(config, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("Invalid configuration: %v", err.Error())
+		return nil, fmt.Errorf("invalid configuration: %v", err.Error())
 	}
-	cfg.setDefaults()
-	err = cfg.validate()
+	cfg.AddDefaults()
+	err = cfg.Validate()
 	if err != nil {
 		return nil, err
 	}
@@ -54,6 +39,10 @@ func (cfg *Config) String() string {
 		return fmt.Sprintf("ERROR: Failed to marshal config: %v", err.Error())
 	}
 	return string(out)
+}
+
+type GeneralConfig struct {
+	ConfigVersion int `yaml:"config_version,omitempty"`
 }
 
 type InputConfig struct {
@@ -95,43 +84,54 @@ type ServerConfig struct {
 }
 
 type Config struct {
+	General *GeneralConfig `yaml:",omitempty"`
 	Input   *InputConfig   `yaml:",omitempty"`
 	Grok    *GrokConfig    `yaml:",omitempty"`
 	Metrics *MetricsConfig `yaml:",omitempty"`
 	Server  *ServerConfig  `yaml:",omitempty"`
 }
 
-func (cfg *Config) setDefaults() {
+func (cfg *Config) AddDefaults() {
+	if cfg.General == nil {
+		cfg.General = &GeneralConfig{}
+	}
+	cfg.General.addDefaults()
 	if cfg.Input == nil {
 		cfg.Input = &InputConfig{}
 	}
-	cfg.Input.setDefaults()
+	cfg.Input.addDefaults()
 	if cfg.Grok == nil {
 		cfg.Grok = &GrokConfig{}
 	}
-	cfg.Grok.setDefaults()
+	cfg.Grok.addDefaults()
 	if cfg.Metrics == nil {
 		metrics := MetricsConfig(make([]*MetricConfig, 0))
 		cfg.Metrics = &metrics
 	}
-	cfg.Metrics.setDefaults()
+	cfg.Metrics.addDefaults()
 	if cfg.Server == nil {
 		cfg.Server = &ServerConfig{}
 	}
-	cfg.Server.setDefaults()
+	cfg.Server.addDefaults()
 }
 
-func (c *InputConfig) setDefaults() {
+func (c *GeneralConfig) addDefaults() {
+	if c.ConfigVersion == 0 {
+		c.ConfigVersion = 2
+	}
+}
+
+func (c *InputConfig) addDefaults() {
 	if c.Type == "" {
 		c.Type = "stdin"
 	}
 }
 
-func (c *GrokConfig) setDefaults() {}
+func (c *GrokConfig) addDefaults() {}
 
-func (c *MetricsConfig) setDefaults() {}
+func (c *MetricsConfig) addDefaults() {}
 
-func (c *ServerConfig) setDefaults() {
+func (c *ServerConfig) addDefaults() {
 	if c.Protocol == "" {
 		c.Protocol = "http"
 	}
@@ -140,7 +140,7 @@ func (c *ServerConfig) setDefaults() {
 	}
 }
 
-func (cfg *Config) validate() error {
+func (cfg *Config) Validate() error {
 	err := cfg.Input.validate()
 	if err != nil {
 		return err

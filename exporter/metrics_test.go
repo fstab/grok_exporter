@@ -15,6 +15,7 @@
 package exporter
 
 import (
+	"github.com/fstab/grok_exporter/config/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_model/go"
 	"reflect"
@@ -23,9 +24,9 @@ import (
 
 func TestCounterVec(t *testing.T) {
 	regex := initCounterRegex(t)
-	counterCfg := &MetricConfig{
+	counterCfg := &v2.MetricConfig{
 		Name: "exim_rejected_rcpt_total",
-		Labels: []Label{
+		Labels: []v2.Label{
 			{
 				GrokFieldName:   "message",
 				PrometheusLabel: "error_message",
@@ -56,7 +57,7 @@ func TestCounterVec(t *testing.T) {
 
 func TestCounter(t *testing.T) {
 	regex := initCounterRegex(t)
-	counterCfg := &MetricConfig{
+	counterCfg := &v2.MetricConfig{
 		Name: "exim_rejected_rcpt_total",
 	}
 	counter := NewCounterMetric(counterCfg, regex)
@@ -97,7 +98,7 @@ func initCounterRegex(t *testing.T) *OnigurumaRegexp {
 
 func TestGauge(t *testing.T) {
 	regex := initGaugeRegex(t)
-	gaugeCfg := &MetricConfig{
+	gaugeCfg := &v2.MetricConfig{
 		Name:  "temperature",
 		Value: "temperature",
 	}
@@ -120,7 +121,7 @@ func TestGauge(t *testing.T) {
 
 func TestGaugeCumulative(t *testing.T) {
 	regex := initGaugeRegex(t)
-	gaugeCfg := &MetricConfig{
+	gaugeCfg := &v2.MetricConfig{
 		Name:       "temperature",
 		Value:      "temperature",
 		Cumulative: true,
@@ -144,10 +145,10 @@ func TestGaugeCumulative(t *testing.T) {
 
 func TestGaugeVec(t *testing.T) {
 	regex := initGaugeRegex(t)
-	gaugeCfg := &MetricConfig{
+	gaugeCfg := &v2.MetricConfig{
 		Name:  "temperature",
 		Value: "temperature",
-		Labels: []Label{
+		Labels: []v2.Label{
 			{
 				GrokFieldName:   "city",
 				PrometheusLabel: "city",

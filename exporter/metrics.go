@@ -16,6 +16,7 @@ package exporter
 
 import (
 	"fmt"
+	"github.com/fstab/grok_exporter/config/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"strconv"
 )
@@ -32,7 +33,7 @@ type Metric interface {
 type incMetric struct {
 	name      string
 	regex     *OnigurumaRegexp
-	labels    []Label
+	labels    []v2.Label
 	collector prometheus.Collector
 	incFunc   func(m *OnigurumaMatchResult) error
 }
@@ -42,12 +43,12 @@ type observeMetric struct {
 	name        string
 	regex       *OnigurumaRegexp
 	value       string
-	labels      []Label
+	labels      []v2.Label
 	collector   prometheus.Collector
 	observeFunc func(m *OnigurumaMatchResult, val float64) error
 }
 
-func NewCounterMetric(cfg *MetricConfig, regex *OnigurumaRegexp) Metric {
+func NewCounterMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp) Metric {
 	counterOpts := prometheus.CounterOpts{
 		Name: cfg.Name,
 		Help: cfg.Help,
@@ -81,7 +82,7 @@ func NewCounterMetric(cfg *MetricConfig, regex *OnigurumaRegexp) Metric {
 	}
 }
 
-func NewGaugeMetric(cfg *MetricConfig, regex *OnigurumaRegexp) Metric {
+func NewGaugeMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp) Metric {
 	gaugeOpts := prometheus.GaugeOpts{
 		Name: cfg.Name,
 		Help: cfg.Help,
@@ -125,7 +126,7 @@ func NewGaugeMetric(cfg *MetricConfig, regex *OnigurumaRegexp) Metric {
 	}
 }
 
-func NewHistogramMetric(cfg *MetricConfig, regex *OnigurumaRegexp) Metric {
+func NewHistogramMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp) Metric {
 	histogramOpts := prometheus.HistogramOpts{
 		Name: cfg.Name,
 		Help: cfg.Help,
@@ -164,7 +165,7 @@ func NewHistogramMetric(cfg *MetricConfig, regex *OnigurumaRegexp) Metric {
 	}
 }
 
-func NewSummaryMetric(cfg *MetricConfig, regex *OnigurumaRegexp) Metric {
+func NewSummaryMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp) Metric {
 	summaryOpts := prometheus.SummaryOpts{
 		Name: cfg.Name,
 		Help: cfg.Help,
@@ -257,7 +258,7 @@ func (m *observeMetric) Collector() prometheus.Collector {
 	return m.collector
 }
 
-func labelValues(matchResult *OnigurumaMatchResult, labels []Label) ([]string, error) {
+func labelValues(matchResult *OnigurumaMatchResult, labels []v2.Label) ([]string, error) {
 	values := make([]string, 0, len(labels))
 	for _, field := range labels {
 		value, err := matchResult.Get(field.GrokFieldName)
@@ -269,7 +270,7 @@ func labelValues(matchResult *OnigurumaMatchResult, labels []Label) ([]string, e
 	return values, nil
 }
 
-func prometheusLabels(labels []Label) []string {
+func prometheusLabels(labels []v2.Label) []string {
 	promLabels := make([]string, 0, len(labels))
 	for _, label := range labels {
 		promLabels = append(promLabels, label.PrometheusLabel)

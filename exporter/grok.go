@@ -16,6 +16,7 @@ package exporter
 
 import (
 	"fmt"
+	"github.com/fstab/grok_exporter/config/v2"
 	"regexp"
 	"strings"
 )
@@ -33,7 +34,7 @@ func Compile(pattern string, patterns *Patterns, libonig *OnigurumaLib) (*Onigur
 	return result, nil
 }
 
-func VerifyFieldNames(m *MetricConfig, regex *OnigurumaRegexp) error {
+func VerifyFieldNames(m *v2.MetricConfig, regex *OnigurumaRegexp) error {
 	for _, label := range m.Labels {
 		if !regex.HasCaptureGroup(label.GrokFieldName) {
 			return fmt.Errorf("grok field %v not found in match pattern", label.GrokFieldName)
