@@ -24,15 +24,12 @@ import (
 
 func TestCounterVec(t *testing.T) {
 	regex := initCounterRegex(t)
-	counterCfg := &v2.MetricConfig{
+	counterCfg := newMetricConfig(t, &v2.MetricConfig{
 		Name: "exim_rejected_rcpt_total",
-		Labels: []v2.Label{
-			{
-				GrokFieldName:   "message",
-				PrometheusLabel: "error_message",
-			},
+		Labels: map[string]string{
+			"error_message": "{{.message}}",
 		},
-	}
+	})
 	counter := NewCounterMetric(counterCfg, regex)
 	counter.Process("some unrelated line")
 	counter.Process("2016-04-26 10:19:57 H=(85.214.241.101) [36.224.138.227] F=<z2007tw@yahoo.com.tw> rejected RCPT <alan.a168@msa.hinet.net>: relay not permitted")
@@ -57,9 +54,9 @@ func TestCounterVec(t *testing.T) {
 
 func TestCounter(t *testing.T) {
 	regex := initCounterRegex(t)
-	counterCfg := &v2.MetricConfig{
+	counterCfg := newMetricConfig(t, &v2.MetricConfig{
 		Name: "exim_rejected_rcpt_total",
-	}
+	})
 	counter := NewCounterMetric(counterCfg, regex)
 
 	counter.Process("some unrelated line")
@@ -98,10 +95,10 @@ func initCounterRegex(t *testing.T) *OnigurumaRegexp {
 
 func TestGauge(t *testing.T) {
 	regex := initGaugeRegex(t)
-	gaugeCfg := &v2.MetricConfig{
+	gaugeCfg := newMetricConfig(t, &v2.MetricConfig{
 		Name:  "temperature",
-		Value: "temperature",
-	}
+		Value: "{{.temperature}}",
+	})
 	gauge := NewGaugeMetric(gaugeCfg, regex)
 
 	gauge.Process("Temperature in Berlin: 32")
@@ -121,11 +118,11 @@ func TestGauge(t *testing.T) {
 
 func TestGaugeCumulative(t *testing.T) {
 	regex := initGaugeRegex(t)
-	gaugeCfg := &v2.MetricConfig{
+	gaugeCfg := newMetricConfig(t, &v2.MetricConfig{
 		Name:       "temperature",
-		Value:      "temperature",
+		Value:      "{{.temperature}}",
 		Cumulative: true,
-	}
+	})
 	gauge := NewGaugeMetric(gaugeCfg, regex)
 
 	gauge.Process("Temperature in Berlin: 32")
@@ -145,16 +142,13 @@ func TestGaugeCumulative(t *testing.T) {
 
 func TestGaugeVec(t *testing.T) {
 	regex := initGaugeRegex(t)
-	gaugeCfg := &v2.MetricConfig{
+	gaugeCfg := newMetricConfig(t, &v2.MetricConfig{
 		Name:  "temperature",
-		Value: "temperature",
-		Labels: []v2.Label{
-			{
-				GrokFieldName:   "city",
-				PrometheusLabel: "city",
-			},
+		Value: "{{.temperature}}",
+		Labels: map[string]string{
+			"city": "{{.city}}",
 		},
-	}
+	})
 	gauge := NewGaugeMetric(gaugeCfg, regex)
 
 	gauge.Process("Temperature in Berlin: 32")
@@ -188,4 +182,12 @@ func initGaugeRegex(t *testing.T) *OnigurumaRegexp {
 		t.Error(err)
 	}
 	return regex
+}
+
+func newMetricConfig(t *testing.T, cfg *v2.MetricConfig) *v2.MetricConfig {
+	err := cfg.InitTemplates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cfg
 }

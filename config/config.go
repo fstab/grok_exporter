@@ -48,12 +48,12 @@ func LoadConfigString(content []byte) (*v2.Config, string, error) {
 }
 
 func findVersion(content []byte) (int, string, error) {
-	versionExpr := regexp.MustCompile(`general:\s*config_version:[\t\f ]*(\S+)`)
+	versionExpr := regexp.MustCompile(`global:\s*config_version:[\t\f ]*(\S+)`)
 	versionInfo := versionExpr.FindStringSubmatch(string(content))
 	if len(versionInfo) == 2 {
 		version, err := strconv.Atoi(strings.TrimSpace(versionInfo[1]))
 		if err != nil {
-			return 0, "", fmt.Errorf("invalid 'general' configuration: '%v' is not a valid 'config_version'.", versionInfo[1])
+			return 0, "", fmt.Errorf("invalid 'global' configuration: '%v' is not a valid 'config_version'.", versionInfo[1])
 		}
 		return version, "", nil
 	} else { // no version found

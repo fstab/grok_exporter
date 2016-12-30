@@ -32,10 +32,10 @@ metrics:
       help: Dummy help message for counter.
       match: Some text here, then a %{DATE}.
       labels:
-          - grok_field_name: a
-            prometheus_label: b
-          - grok_field_name: c
-            prometheus_label: d
+          - grok_field_name: grok_field_a
+            prometheus_label: prom_label_a
+          - grok_field_name: grok_field_b
+            prometheus_label: prom_label_b
     - type: gauge
       name: test_gauge
       help: Dummy help message for gauge.
@@ -69,7 +69,7 @@ server:
 `
 
 const expected = `
-general:
+global:
     config_version: 2
 input:
     type: file
@@ -83,37 +83,32 @@ metrics:
       help: Dummy help message for counter.
       match: Some text here, then a %{DATE}.
       labels:
-          - grok_field_name: a
-            prometheus_label: b
-          - grok_field_name: c
-            prometheus_label: d
+        prom_label_a: '{{.grok_field_a}}'
+        prom_label_b: '{{.grok_field_b}}'
     - type: gauge
       name: test_gauge
       help: Dummy help message for gauge.
       match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
-      value: val
+      value: '{{.val}}'
       cumulative: true
       labels:
-          - grok_field_name: user
-            prometheus_label: user
+        user: '{{.user}}'
     - type: histogram
       name: test_histogram
       help: Dummy help message for histogram.
       match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
-      value: val
+      value: '{{.val}}'
       buckets: [1, 2, 3]
       labels:
-          - grok_field_name: user
-            prometheus_label: user
+        user: '{{.user}}'
     - type: summary
       name: test_summary
       help: Dummy help message for summary.
       match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
-      value: val
+      value: '{{.val}}'
       quantiles: {0.5: 0.05, 0.9: 0.01, 0.99: 0.001}
       labels:
-          - grok_field_name: user
-            prometheus_label: user
+        user: '{{.user}}'
 server:
     protocol: https
     port: 1111

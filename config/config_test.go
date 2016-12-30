@@ -20,7 +20,7 @@ import (
 )
 
 const exampleConfig = `
-general:
+global:
     config_version: 2
 input:
     type: file

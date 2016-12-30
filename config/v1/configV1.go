@@ -32,8 +32,7 @@ func Unmarshal(config []byte) (*v2.Config, error) {
 		Metrics: convertMetrics(*v1cfg.Metrics),
 		Server:  v1cfg.Server,
 	}
-	v2cfg.AddDefaults()
-	err = v2cfg.Validate()
+	err = v2.AddDefaultsAndValidate(v2cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -51,23 +50,28 @@ func convertMetrics(v1metrics []*MetricConfig) *v2.MetricsConfig {
 			Name:       v1metric.Name,
 			Help:       v1metric.Help,
 			Match:      v1metric.Match,
-			Value:      v1metric.Value,
+			Value:      makeTemplate(v1metric.Value),
 			Cumulative: v1metric.Cumulative,
 			Buckets:    v1metric.Buckets,
 			Quantiles:  v1metric.Quantiles,
 		}
 		if len(v1metric.Labels) > 0 {
-			v2metrics[i].Labels = make([]v2.Label, len(v1metric.Labels))
-			for j, v1label := range v1metric.Labels {
-				v2metrics[i].Labels[j] = v2.Label{
-					GrokFieldName:   v1label.GrokFieldName,
-					PrometheusLabel: v1label.PrometheusLabel,
-				}
+			v2metrics[i].Labels = make(map[string]string, len(v1metric.Labels))
+			for _, v1label := range v1metric.Labels {
+				v2metrics[i].Labels[v1label.PrometheusLabel] = makeTemplate(v1label.GrokFieldName)
 			}
 		}
 	}
 	result := v2.MetricsConfig(v2metrics)
 	return &result
+}
+
+func makeTemplate(grokFieldName string) string {
+	if len(grokFieldName) > 0 {
+		return fmt.Sprintf("{{.%v}}", grokFieldName)
+	} else {
+		return ""
+	}
 }
 
 type Config struct {

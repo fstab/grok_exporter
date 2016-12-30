@@ -17,16 +17,16 @@ package v2
 import (
 	"fmt"
 	"gopkg.in/yaml.v2"
+	"text/template"
 )
 
 func Unmarshal(config []byte) (*Config, error) {
 	cfg := &Config{}
 	err := yaml.Unmarshal(config, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("invalid configuration: %v", err.Error())
+		return nil, fmt.Errorf("invalid configuration: %v. make sure to use 'single quotes' around strings with special characters (like match patterns or label templates), and make sure to use '-' only for lists (metrics) but not for maps (labels).", err.Error())
 	}
-	cfg.AddDefaults()
-	err = cfg.Validate()
+	err = AddDefaultsAndValidate(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +41,7 @@ func (cfg *Config) String() string {
 	return string(out)
 }
 
-type GeneralConfig struct {
+type GlobalConfig struct {
 	ConfigVersion int `yaml:"config_version,omitempty"`
 }
 
@@ -56,21 +56,18 @@ type GrokConfig struct {
 	AdditionalPatterns []string `yaml:"additional_patterns,omitempty"`
 }
 
-type Label struct {
-	GrokFieldName   string `yaml:"grok_field_name,omitempty"`
-	PrometheusLabel string `yaml:"prometheus_label,omitempty"`
-}
-
 type MetricConfig struct {
-	Type       string              `yaml:",omitempty"`
-	Name       string              `yaml:",omitempty"`
-	Help       string              `yaml:",omitempty"`
-	Match      string              `yaml:",omitempty"`
-	Value      string              `yaml:",omitempty"`
-	Cumulative bool                `yaml:",omitempty"`
-	Buckets    []float64           `yaml:",flow,omitempty"`
-	Quantiles  map[float64]float64 `yaml:",flow,omitempty"`
-	Labels     []Label             `yaml:",omitempty"`
+	Type           string               `yaml:",omitempty"`
+	Name           string               `yaml:",omitempty"`
+	Help           string               `yaml:",omitempty"`
+	Match          string               `yaml:",omitempty"`
+	Value          string               `yaml:",omitempty"`
+	Cumulative     bool                 `yaml:",omitempty"`
+	Buckets        []float64            `yaml:",flow,omitempty"`
+	Quantiles      map[float64]float64  `yaml:",flow,omitempty"`
+	Labels         map[string]string    `yaml:",omitempty"`
+	LabelTemplates []*template.Template `yaml:"-"` // parsed version of Labels, will not be serialized to yaml.
+	ValueTemplate  *template.Template   `yaml:"-"` // parsed version of Value, will not be serialized to yaml.
 }
 
 type MetricsConfig []*MetricConfig
@@ -84,18 +81,18 @@ type ServerConfig struct {
 }
 
 type Config struct {
-	General *GeneralConfig `yaml:",omitempty"`
+	Global  *GlobalConfig  `yaml:",omitempty"`
 	Input   *InputConfig   `yaml:",omitempty"`
 	Grok    *GrokConfig    `yaml:",omitempty"`
 	Metrics *MetricsConfig `yaml:",omitempty"`
 	Server  *ServerConfig  `yaml:",omitempty"`
 }
 
-func (cfg *Config) AddDefaults() {
-	if cfg.General == nil {
-		cfg.General = &GeneralConfig{}
+func (cfg *Config) addDefaults() {
+	if cfg.Global == nil {
+		cfg.Global = &GlobalConfig{}
 	}
-	cfg.General.addDefaults()
+	cfg.Global.addDefaults()
 	if cfg.Input == nil {
 		cfg.Input = &InputConfig{}
 	}
@@ -115,7 +112,7 @@ func (cfg *Config) AddDefaults() {
 	cfg.Server.addDefaults()
 }
 
-func (c *GeneralConfig) addDefaults() {
+func (c *GlobalConfig) addDefaults() {
 	if c.ConfigVersion == 0 {
 		c.ConfigVersion = 2
 	}
@@ -140,7 +137,7 @@ func (c *ServerConfig) addDefaults() {
 	}
 }
 
-func (cfg *Config) Validate() error {
+func (cfg *Config) validate() error {
 	err := cfg.Input.validate()
 	if err != nil {
 		return err
@@ -238,25 +235,8 @@ func (c *MetricConfig) validate() error {
 	case !quantilesAllowed && len(c.Quantiles) > 0:
 		return fmt.Errorf("Invalid metric configuration: 'metrics.buckets' cannot be used for %v metrics.", c.Type)
 	}
-	// Labels are optionally supported for all metric types.
-	for _, label := range c.Labels {
-		err := label.validate()
-		if err != nil {
-			return err
-		}
-	}
+	// Labels and value are validated in InitTemplates()
 	return nil
-}
-
-func (l *Label) validate() error {
-	switch {
-	case l.GrokFieldName == "":
-		return fmt.Errorf("Invalid metrics configuration: 'metrics.label.grok_field_name' must not be empty.")
-	case l.PrometheusLabel == "":
-		return fmt.Errorf("Invalid metrics configuration: 'metrics.label.prometheus_label' must not be empty.")
-	default:
-		return nil
-	}
 }
 
 func (c *ServerConfig) validate() error {
@@ -275,6 +255,44 @@ func (c *ServerConfig) validate() error {
 	case c.Protocol == "http":
 		if c.Cert != "" || c.Key != "" {
 			return fmt.Errorf("Invalid server configuration: 'server.cert' and 'server.key' can only be configured for protocol 'https'.")
+		}
+	}
+	return nil
+}
+
+// Made this public so it can be called when converting config v1 to config v2.
+func AddDefaultsAndValidate(cfg *Config) error {
+	var err error
+	cfg.addDefaults()
+	for _, metric := range []*MetricConfig(*cfg.Metrics) {
+		err = metric.InitTemplates()
+		if err != nil {
+			return err
+		}
+	}
+	return cfg.validate()
+}
+
+// Made this public so MetricConfig can be initialized in tests.
+func (metric *MetricConfig) InitTemplates() error {
+	var (
+		err   error
+		tmplt *template.Template
+		msg   = "invalid configuration: failed to read metric %v: error parsing %v template: %v: " +
+			"don't forget to put a . (dot) in front of grok fields, otherwise it will be interpreted as a function."
+	)
+	metric.LabelTemplates = make([]*template.Template, 0, len(metric.Labels))
+	for name, templateString := range metric.Labels {
+		tmplt, err = template.New(name).Parse(templateString)
+		if err != nil {
+			return fmt.Errorf(msg, fmt.Sprintf("label %v", metric.Name), name, err.Error())
+		}
+		metric.LabelTemplates = append(metric.LabelTemplates, tmplt)
+	}
+	if len(metric.Value) > 0 {
+		metric.ValueTemplate, err = template.New("__value__").Parse(metric.Value)
+		if err != nil {
+			return fmt.Errorf(msg, "value", metric.Name, err.Error())
 		}
 	}
 	return nil
