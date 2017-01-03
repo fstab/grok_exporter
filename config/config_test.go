@@ -33,11 +33,6 @@ metrics:
       name: test_count_total
       help: Dummy help message.
       match: Some text here, then a %{DATE}.
-      labels:
-          - grok_field_name: a
-            prometheus_label: b
-          - grok_field_name: c
-            prometheus_label: d
 server:
     protocol: https
     port: 1111
@@ -48,14 +43,14 @@ func TestVersionDetection(t *testing.T) {
 	expectVersion(t, strings.Replace(exampleConfig, "config_version: 2", "config_version: 1", 1), 1, false)
 	expectVersion(t, strings.Replace(exampleConfig, "config_version: 2", "config_version:", 1), 1, true)
 	expectVersion(t, strings.Replace(exampleConfig, "config_version: 2", "", 1), 1, true)
-	_, _, err := findVersion([]byte(strings.Replace(exampleConfig, "config_version: 2", "config_version: a", 1)))
+	_, _, err := findVersion(strings.Replace(exampleConfig, "config_version: 2", "config_version: a", 1))
 	if err == nil {
 		t.Fatalf("Expected error, because 'a' is not a number.")
 	}
 }
 
 func expectVersion(t *testing.T, config string, expectedVersion int, warningExpected bool) {
-	version, warn, err := findVersion([]byte(config))
+	version, warn, err := findVersion(config)
 	if err != nil {
 		t.Fatalf("unexpected error while getting version info: %v", err.Error())
 	}

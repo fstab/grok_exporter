@@ -39,7 +39,7 @@ func LoadConfigFile(filename string) (*v2.Config, string, error) {
 }
 
 func LoadConfigString(content []byte) (*v2.Config, string, error) {
-	version, warn, err := findVersion(content)
+	version, warn, err := findVersion(string(content))
 	if err != nil {
 		return nil, warn, err
 	}
@@ -47,9 +47,9 @@ func LoadConfigString(content []byte) (*v2.Config, string, error) {
 	return cfg, warn, err
 }
 
-func findVersion(content []byte) (int, string, error) {
+func findVersion(content string) (int, string, error) {
 	versionExpr := regexp.MustCompile(`global:\s*config_version:[\t\f ]*(\S+)`)
-	versionInfo := versionExpr.FindStringSubmatch(string(content))
+	versionInfo := versionExpr.FindStringSubmatch(content)
 	if len(versionInfo) == 2 {
 		version, err := strconv.Atoi(strings.TrimSpace(versionInfo[1]))
 		if err != nil {
@@ -57,12 +57,16 @@ func findVersion(content []byte) (int, string, error) {
 		}
 		return version, "", nil
 	} else { // no version found
-		warn := "No 'global.config_version' found in config file. " +
-			"Assuming it is a config file for grok_exporter <= 0.1.4, using 'config_version: 1'. " +
-			"grok_exporter still supports 'config_version: 1', " +
-			"but you should consider updating your configuration. " +
-			"Use the '-showconfig' command line option to view your configuration in the current format."
-		return 1, warn, nil
+		if strings.Contains(content, "prometheus_label") || !strings.Contains(content, "{{") {
+			warn := "No 'global.config_version' found in config file. " +
+				"Assuming it is a config file for grok_exporter <= 0.1.4, using 'config_version: 1'. " +
+				"grok_exporter still supports 'config_version: 1', " +
+				"but you should consider updating your configuration. " +
+				"Use the '-showconfig' command line option to view your configuration in the current format."
+			return 1, warn, nil
+		} else {
+			return 0, "", fmt.Errorf("invalid configuration: 'global.config_version' not found.")
+		}
 	}
 }
 
@@ -73,6 +77,6 @@ func unmarshal(content []byte, version int) (*v2.Config, error) {
 	case 2:
 		return v2.Unmarshal(content)
 	default:
-		return nil, fmt.Errorf("config_version %v is not supported.", version)
+		return nil, fmt.Errorf("global.config_version %v is not supported.", version)
 	}
 }

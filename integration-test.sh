@@ -26,6 +26,8 @@ function cleanup_temp_files {
 trap cleanup_temp_files EXIT
 
 cat <<EOF > $config_file
+global:
+    config_version: 2
 input:
     type: file
     path: $(cygpath -w $log_file)
@@ -44,51 +46,47 @@ metrics:
       help: Counter metric with labels.
       match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
       labels:
-          - grok_field_name: user
-            prometheus_label: user
+          user: '{{.user}}'
     - type: gauge
       name: grok_test_gauge_nolabels
       help: Gauge metric without labels.
       match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
-      value: val
+      value: '{{.val}}'
     - type: gauge
       name: grok_test_gauge_labels
       help: Gauge metric with labels.
       match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
-      value: val
+      value: '{{.val}}'
       labels:
-          - grok_field_name: user
-            prometheus_label: user
+          user: '{{.user}}'
     - type: histogram
       name: grok_test_histogram_nolabels
       help: Histogram metric without labels.
       match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
-      value: val
+      value: '{{.val}}'
       buckets: [1, 2, 3]
     - type: histogram
       name: grok_test_histogram_labels
       help: Histogram metric with labels.
       match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
-      value: val
+      value: '{{.val}}'
       buckets: [1, 2, 3]
       labels:
-          - grok_field_name: user
-            prometheus_label: user
+          user: '{{.user}}'
     - type: summary
       name: grok_test_summary_nolabels
       help: Summary metric without labels.
       match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
       quantiles: {0.5: 0.05, 0.9: 0.01, 0.99: 0.001}
-      value: val
+      value: '{{.val}}'
     - type: summary
       name: grok_test_summary_labels
       help: Summary metric with labels.
       match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
-      value: val
+      value: '{{.val}}'
       quantiles: {0.5: 0.05, 0.9: 0.01, 0.99: 0.001}
       labels:
-          - grok_field_name: user
-            prometheus_label: user
+          user: '{{.user}}'
 server:
     port: 9144
 EOF
