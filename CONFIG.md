@@ -209,7 +209,7 @@ metrics:
 The configuration is as follows:
 * `type` is `gauge`.
 * `name`, `help`, `match`, and `labels` have the same meaning as for `counter` metrics.
-* `value` is a [Go template] for the value to be monitored. The template must evaluate to a valid number. The template may use to Grok fields from the `match` patterns, like the labels described above.
+* `value` is a [Go template] for the value to be monitored. The template must evaluate to a valid number. The template may use to Grok fields from the `match` patterns, like the label templates described above.
 * `cumulative` is optional. By default, the last observed value is measured. With `cumulative: true`, the sum of all observed values is measured.
 
 Output for the example log lines above::
