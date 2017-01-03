@@ -33,7 +33,7 @@ func LoadConfigFile(filename string) (*v2.Config, string, error) {
 	}
 	cfg, warn, err := LoadConfigString(content)
 	if err != nil {
-		return nil, "", fmt.Errorf("Failed to load %v: %v", filename, err.Error())
+		return nil, warn, fmt.Errorf("Failed to load %v: %v", filename, err.Error())
 	}
 	return cfg, warn, nil
 }
@@ -41,7 +41,7 @@ func LoadConfigFile(filename string) (*v2.Config, string, error) {
 func LoadConfigString(content []byte) (*v2.Config, string, error) {
 	version, warn, err := findVersion(content)
 	if err != nil {
-		return nil, "", err
+		return nil, warn, err
 	}
 	cfg, err := unmarshal(content, version)
 	return cfg, warn, err
@@ -57,9 +57,9 @@ func findVersion(content []byte) (int, string, error) {
 		}
 		return version, "", nil
 	} else { // no version found
-		warn := "No config_version found in config file. " +
-			"Assuming it is a config file for grok_exporter <= 0.1.4, using \"config_version: 1\". " +
-			"grok_exporter still supports \"config_version 1\", " +
+		warn := "No 'global.config_version' found in config file. " +
+			"Assuming it is a config file for grok_exporter <= 0.1.4, using 'config_version: 1'. " +
+			"grok_exporter still supports 'config_version: 1', " +
 			"but you should consider updating your configuration. " +
 			"Use the '-showconfig' command line option to view your configuration in the current format."
 		return 1, warn, nil

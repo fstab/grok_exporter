@@ -46,12 +46,14 @@ func main() {
 	}
 	validateCommandLineOrExit()
 	cfg, warn, err := config.LoadConfigFile(*configPath)
+	if len(warn) > 0 && !*showConfig {
+		// warning is suppressed when '-showconfig' is used
+		fmt.Fprintf(os.Stderr, "%v\n", warn)
+	}
 	exitOnError(err)
 	if *showConfig {
 		fmt.Printf("%v\n", cfg)
 		return
-	} else if len(warn) > 0 { // warning is suppressed when '-showconfig' is used
-		fmt.Fprintf(os.Stderr, "%v\n", warn)
 	}
 	patterns, err := initPatterns(cfg)
 	exitOnError(err)
