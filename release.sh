@@ -10,7 +10,7 @@ set -e
 cd $GOPATH/src/github.com/fstab/grok_exporter
 rm -rf dist
 
-export VERSION=0.1.5-SNAPSHOT
+export VERSION=0.2.0
 
 export VERSION_FLAGS="\
         -X github.com/fstab/grok_exporter/exporter.Version=$VERSION                          \
