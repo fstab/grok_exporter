@@ -1,3 +1,5 @@
+global:
+    config_version: 2
 input:
     type: file
     path: ./example/exim-rejected-RCPT-examples.log
@@ -12,8 +14,7 @@ metrics:
       help: Total number of rejected recipients, partitioned by error message.
       match: '%{EXIM_DATE} %{EXIM_REMOTE_HOST} F=<%{EMAILADDRESS}> rejected RCPT <%{EMAILADDRESS}>: %{EXIM_MESSAGE:message}'
       labels:
-          - grok_field_name: message
-            prometheus_label: error_message
+          error_message: '{{.message}}'
 server:
     host: localhost
     port: 9144

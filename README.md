@@ -35,6 +35,8 @@ Configuration
 Example configuration:
 
 ```yaml
+global:
+    config_version: 2
 input:
     type: file
     path: ./example/example.log
@@ -47,8 +49,7 @@ metrics:
       help: Counter metric example with labels.
       match: '%{DATE} %{TIME} %{USER:user} %{NUMBER}'
       labels:
-          - grok_field_name: user
-            prometheus_label: user
+          user: '{{.user}}'
 server:
     port: 9144
 ```

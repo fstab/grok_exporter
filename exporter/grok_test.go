@@ -15,9 +15,11 @@
 package exporter
 
 import (
+	"github.com/fstab/grok_exporter/config/v2"
 	"gopkg.in/yaml.v2"
 	"strings"
 	"testing"
+	"text/template"
 )
 
 func TestGrok(t *testing.T) {
@@ -70,26 +72,22 @@ func testVerifyCaptureGroup(t *testing.T, patterns *Patterns, libonig *Oniguruma
 	}
 	expectOK(t, regex, `
             name: test
-            value: val
+            value: '{{.val}}'
             labels:
-            - grok_field_name: user
-              prometheus_label: user
-            - grok_field_name: host
-              prometheus_label: something`)
+              user: '{{.user}}'
+              host: '{{.host}}'`)
 	expectOK(t, regex, `
             name: test`)
 	expectError(t, regex, `
             name: test
-            value: value
+            value: '{{.value}}'
             labels:
-            - grok_field_name: user
-              prometheus_label: user`)
+              user: '{{.user}}'`)
 	expectError(t, regex, `
             name: test
-            value: val
+            value: '{{.val}}'
             labels:
-            - grok_field_name: user2
-              prometheus_label: user`)
+              user: '{{.user2}}'`)
 	regex.Free()
 }
 
@@ -102,16 +100,56 @@ func expectError(t *testing.T, regex *OnigurumaRegexp, config string) {
 }
 
 func expect(t *testing.T, regex *OnigurumaRegexp, config string, isErrorExpected bool) {
-	cfg := &MetricConfig{}
+	cfg := &v2.MetricConfig{}
 	err := yaml.Unmarshal([]byte(config), cfg)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
+	}
+	err = cfg.InitTemplates()
+	if err != nil {
+		t.Fatal(err)
 	}
 	err = VerifyFieldNames(cfg, regex)
 	if isErrorExpected && err == nil {
-		t.Error("Expected error, but got no error.")
+		t.Fatal("Expected error, but got no error.")
 	}
 	if !isErrorExpected && err != nil {
-		t.Error("Expected ok, but got error.")
+		t.Fatal("Expected ok, but got error.")
+	}
+}
+
+func TestReferencedGrokFields(t *testing.T) {
+	grokFieldTest(t, "test1", "{{.count_total}} items are made of {{.material}}", "count_total", "material")
+	grokFieldTest(t, "test2", "{{23 -}} < {{- 45}}")
+	grokFieldTest(t, "test3", "{{.conca -}} < {{- .tenated}}", "conca", "tenated")
+	grokFieldTest(t, "test4", "{{with $x := \"output\" | printf \"%q\"}}{{$x}}{{end}}{{.bla}}", "bla")
+	grokFieldTest(t, "test5", "")
+	// Templates not supported yet.
+	// grokFieldTest(t, "test6", `
+	//	{{define "T1"}}{{.value1_total}}{{end}}
+	//	{{define "T2"}}{{.value2_total}}{{end}}
+	//	{{define "T3"}}{{template "T1"}} / {{template "T2"}}{{end}}
+	//	{{template "T3"}}`, "value1_total", "value2_total")
+}
+
+func grokFieldTest(t *testing.T, name, tmplt string, expectedFields ...string) {
+	parsedTemplate, err := template.New(name).Parse(tmplt)
+	if err != nil {
+		t.Fatalf("%v: error parsing template: %v", name, err.Error())
+	}
+	actualFields := referencedGrokFields(parsedTemplate)
+	if len(actualFields) != len(expectedFields) {
+		t.Fatalf("%v: expected: %v, actual: %v", name, expectedFields, actualFields)
+	}
+	for _, actualField := range actualFields {
+		found := false
+		for _, expectedField := range expectedFields {
+			if expectedField == actualField {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("%v: expected: %v, actual: %v", name, expectedFields, actualFields)
+		}
 	}
 }

@@ -12,11 +12,9 @@ grok_exporter -config ./example/config.yml
 Overall Structure
 -----------------
 
-The `grok_exporter` configuration file consists of five main sections:
+The `grok_exporter` configuration file consists of four main sections:
 
 ```yaml
-global:
-    # Config version
 input:
     # How to read log lines (file or stdin).
 grok:
@@ -28,25 +26,6 @@ server:
 ```
 
 The following shows the configuration options for each of these sections.
-
-Global Section
---------------
-
-The `global:` section contains only one property, which is the `config_version`. The current `config_version` is `2`.
-
-```yaml
-global:
-    config_version: 2
-```
-
-The config file is versioned independently of the `grok_exporter` program. When a new version of `grok_exporter` keeps using the same config file, the `config_version` will remain the same.
-
-The following table shows which `grok_exporter` version uses which `config_version`:
-
-| grok_exporter | config_version           |
-| ------------- | ------------------------ |
-| ≤ 0.1.4       | 1 _(see [CONFIG_v1.md])_ |
-| 0.2.0         | 2 _(current version)_    |
 
 Input Section
 -------------
@@ -105,7 +84,7 @@ grok:
     - 'EXIM_SENDER_ADDRESS F=<%{EMAILADDRESS}>'
 ```
 
-In most cases, we will have a directory containing the Grok pattern files. Grok's default pattern directory is included in the `grok_exporter` release. The path to this directory is configured with `patterns_dir`.
+In most cases, we will have a directory containing the Grok pattern files. Grok's default pattern directory is included in the `grok_exporter` release. The path to that directory is configured with `patterns_dir`.
 
 There are two ways to define additional Grok patterns:
 
@@ -119,12 +98,7 @@ At least one of `patterns_dir` or `additional_patterns` is required: If `pattern
 Metrics Section
 ---------------
 
-The metrics section contains a list of metric definitions, specifying how log lines are mapped to Prometheus metrics. Four metric types are supported:
-
-* [Counter](#counter-metric-type)
-* [Gauge](#gauge-metric-type)
-* [Histogram](#histogram-metric-type)
-* [Summary](#summary-metric-type)
+The metrics section contains a list of metrics. These metrics define how Grok fields are mapped to Prometheus metrics.
 
 To exemplify the different metrics configurations, we use the following example log lines:
 
@@ -141,24 +115,15 @@ Each line consists of a date, time, user, and a number. Using [Grok's default pa
 %{DATE} %{TIME} %{USER} %{NUMBER}
 ```
 
-One of the main features of Prometheus is its multi-dimensional data model: A Prometheus metric can be further partitioned using different labels.
+One of the main features of Prometheus is its multi-dimensional data model: A Prometheus metric can be further partitioned using different labels. In Grok, each field, like `%{USER}`, can be given a name, like `%{USER:user}`. With `grok_exporter`, we can use Grok field names as Prometheus labels.
 
-Labels are defined in two steps:
+The resulting Grok expression for the log lines above would be as follows:
 
-1. _Define Grok field names._ In Grok, each field, like `%{USER}`, can be given a name, like `%{USER:user}`. The name `user` can then be used in label templates.
-2. _Define label templates._ Each metric type supports `labels`, which is a map of name/template pairs. The name will be used in Prometheus as the label name. The template is a [Go template] that may contain references to Grok fields, like `{{.user}}`.
-
-Example: In order to define a label `user` for the example log lines above, use the following fragment:
-
-```yaml
-match: '%{DATE} %{TIME} %{USER:user} %{NUMBER}'
-labels:
-    user: '{{.user}}'
+```grok
+%{DATE} %{TIME} %{USER:user} %{NUMBER}
 ```
 
-The `match` stores whatever matches the `%{USER}` pattern under the Grok field name `user`. The label defines a Prometheus label `user` with the value of the Grok field `user` as its content.
-
-This simple example shows a one-to-one mapping of a Grok field to a Prometheus label. However, the label definition is pretty flexible: You can combine multiple Grok fields in one label, and you can define constant labels that don't use Grok fields at all.
+The Grok field `user` can now be used as a Prometheus label, as shown in the sections below.
 
 ### Counter Metric Type
 
@@ -171,7 +136,8 @@ metrics:
       help: Example counter metric with labels.
       match: '%{DATE} %{TIME} %{USER:user} %{NUMBER}'
       labels:
-          user: '{{.user}}'
+          - grok_field_name: user
+            prometheus_label: user
 ```
 
 The configuration is as follows:
@@ -179,7 +145,7 @@ The configuration is as follows:
 * `name` is the name of the metric. Metric names are described in the [Prometheus data model documentation].
 * `help` is a comment describing the metric.
 * `match` is the Grok expression. See the [Grok documentation] for more info.
-* `labels` is an optional map of name/template pairs, as described above.
+* `labels` is optional and can be used to partition the metric by Grok fields. `labels` contains a list of `grok_field_name`/`prometheus_label` pairs. In the example `match` pattern, we used `%{USER:user}` to define that the match for `%{USER}` will have the Grok field name `user`. In `labels`, we configured that the `grok_field_name: user` is mapped to the the `prometheus_label: user`, so the Prometheus label has the same name as the Grok field. However, it is common to use different names for the Grok field and the Prometheus label, because Prometheus has other naming conventions than Grok. The [Prometheus data model documentation] has more info on Prometheus label names.
 
 Output for the example log lines above:
 
@@ -200,16 +166,17 @@ metrics:
       name: grok_example_values
       help: Example gauge metric with labels.
       match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
-      value: '{{.val}}'
+      value: val
       cumulative: false
       labels:
-          user: '{{.user}}'
+          - grok_field_name: user
+            prometheus_label: user
 ```
 
 The configuration is as follows:
 * `type` is `gauge`.
 * `name`, `help`, `match`, and `labels` have the same meaning as for `counter` metrics.
-* `value` is a [Go template] for the value to be monitored. The template must evaluate to a valid number. The template may use to Grok fields from the `match` patterns, like the label templates described above.
+* `value` is the Grok field to be monitored. In the example `match` pattern, we used `%{NUMBER:val}` to define that the match for `%{NUMBER}` will have the name `val`. We then use `val` as the `value` to be monitored. You must make sure that the Grok field used as `value` always matches a valid number.
 * `cumulative` is optional. By default, the last observed value is measured. With `cumulative: true`, the sum of all observed values is measured.
 
 Output for the example log lines above::
@@ -230,10 +197,11 @@ Like `gauge` metrics, the [histogram metric] monitors values that are logged wit
       name: grok_example_values
       help: Example histogram metric with labels.
       match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
-      value: '{{.val}}'
+      value: val
       buckets: [1, 2, 3]
       labels:
-          user: '{{.user}}'
+          - grok_field_name: user
+            prometheus_label: user
 ```
 
 The configuration is as follows:
@@ -269,10 +237,11 @@ metrics:
       name: grok_example_values
       help: Summary metric with labels.
       match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
-      value: '{{.val}}'
+      value: val
       quantiles: {0.5: 0.05, 0.9: 0.01, 0.99: 0.001}
       labels:
-          user: '{{.user}}'
+          - grok_field_name: user
+            prometheus_label: user
 ```
 
 The configuration is as follows:
@@ -317,19 +286,18 @@ server:
 * `key` is the path to the SSL key file for protocol `https`. It is optional. If omitted, a hard-coded default key will be used.
 
 [example/config.yml]: example/config.yml
-[CONFIG_v1.md]: CONFIG_v1.md
 [logstash-patterns-core repository]: https://github.com/logstash-plugins/logstash-patterns-core
 [pre-defined patterns]: https://github.com/logstash-plugins/logstash-patterns-core/tree/master/patterns
 [Grok documentation]: https://www.elastic.co/guide/en/logstash/current/plugins-filters-grok.html
 [http://grokdebug.herokuapp.com]: http://grokdebug.herokuapp.com
 [http://grokconstructor.appspot.com]: http://grokconstructor.appspot.com
-[Grok's default patterns]: https://github.com/logstash-plugins/logstash-patterns-core/blob/master/patterns/grok-patterns
-[Go template]: https://golang.org/pkg/text/template/
+[Grok's default patterns]: https://github.com/logstash-plugins/logstash-patterns-core/blob/master/patterns/grok-patterns 
 [counter metric]: https://prometheus.io/docs/concepts/metric_types/#counter
 [gauge metric]: https://prometheus.io/docs/concepts/metric_types/#gauge
 [summary metric]: https://prometheus.io/docs/concepts/metric_types/#summary
 [histogram metric]: https://prometheus.io/docs/concepts/metric_types/#histogram
 [release]: https://github.com/fstab/grok_exporter/releases
 [Prometheus metric types]: https://prometheus.io/docs/concepts/metric_types
+[Prometheus data model documentation]: https://prometheus.io/docs/concepts/data_model
 [Grok documentation]: https://www.elastic.co/guide/en/logstash/current/plugins-filters-grok.html
 [histograms and summaries]: https://prometheus.io/docs/practices/histograms/
