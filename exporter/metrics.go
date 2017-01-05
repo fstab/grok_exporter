@@ -15,13 +15,11 @@
 package exporter
 
 import (
-	"bytes"
 	"fmt"
 	"github.com/fstab/grok_exporter/config/v2"
+	"github.com/fstab/grok_exporter/templates"
 	"github.com/prometheus/client_golang/prometheus"
 	"strconv"
-	"text/template"
-	"text/template/parse"
 )
 
 type Metric interface {
@@ -36,7 +34,7 @@ type Metric interface {
 type incMetric struct {
 	name      string
 	regex     *OnigurumaRegexp
-	labels    []*template.Template
+	labels    []templates.Template
 	collector prometheus.Collector
 	incFunc   func(m *OnigurumaMatchResult) error
 }
@@ -45,8 +43,8 @@ type incMetric struct {
 type observeMetric struct {
 	name        string
 	regex       *OnigurumaRegexp
-	value       *template.Template
-	labels      []*template.Template
+	value       templates.Template
+	labels      []templates.Template
 	collector   prometheus.Collector
 	observeFunc func(m *OnigurumaMatchResult, val float64) error
 }
@@ -262,7 +260,7 @@ func (m *observeMetric) Collector() prometheus.Collector {
 	return m.collector
 }
 
-func labelValues(matchResult *OnigurumaMatchResult, templates []*template.Template) ([]string, error) {
+func labelValues(matchResult *OnigurumaMatchResult, templates []templates.Template) ([]string, error) {
 	result := make([]string, 0, len(templates))
 	for _, t := range templates {
 		value, err := evalTemplate(matchResult, t)
@@ -274,44 +272,22 @@ func labelValues(matchResult *OnigurumaMatchResult, templates []*template.Templa
 	return result, nil
 }
 
-func evalTemplate(matchResult *OnigurumaMatchResult, t *template.Template) (string, error) {
-	grokFields := referencedGrokFields(t)
-	grokValues := make(map[string]string, len(grokFields))
-	for _, field := range grokFields {
+func evalTemplate(matchResult *OnigurumaMatchResult, t templates.Template) (string, error) {
+	grokValues := make(map[string]string, len(t.ReferencedGrokFields()))
+	for _, field := range t.ReferencedGrokFields() {
 		value, err := matchResult.Get(field)
 		if err != nil {
 			return "", err
 		}
 		grokValues[field] = value
 	}
-	var buf bytes.Buffer
-	err := t.Execute(&buf, grokValues)
-	if err != nil {
-		return "", fmt.Errorf("unexpected error while evaluating %v template: %v", t.Name(), err.Error())
-	}
-	return buf.String(), nil
+	return t.Execute(grokValues)
 }
 
-func prometheusLabels(templates []*template.Template) []string {
+func prometheusLabels(templates []templates.Template) []string {
 	promLabels := make([]string, 0, len(templates))
 	for _, t := range templates {
 		promLabels = append(promLabels, t.Name())
 	}
 	return promLabels
-}
-
-func referencedGrokFields(t *template.Template) []string {
-	result := make([]string, 0)
-	for _, node := range t.Root.Nodes {
-		if actionNode, ok := node.(*parse.ActionNode); ok {
-			for _, cmd := range actionNode.Pipe.Cmds {
-				for _, arg := range cmd.Args {
-					if fieldNode, ok := arg.(*parse.FieldNode); ok {
-						result = append(result, fieldNode.Ident...)
-					}
-				}
-			}
-		}
-	}
-	return result
 }

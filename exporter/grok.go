@@ -36,14 +36,14 @@ func Compile(pattern string, patterns *Patterns, libonig *OnigurumaLib) (*Onigur
 
 func VerifyFieldNames(m *v2.MetricConfig, regex *OnigurumaRegexp) error {
 	for _, template := range m.LabelTemplates {
-		for _, grokFieldName := range referencedGrokFields(template) {
+		for _, grokFieldName := range template.ReferencedGrokFields() {
 			if !regex.HasCaptureGroup(grokFieldName) {
 				return fmt.Errorf("%v: error in label %v: grok field %v not found in match pattern", m.Name, template.Name(), grokFieldName)
 			}
 		}
 	}
 	if len(m.Value) > 0 {
-		for _, grokFieldName := range referencedGrokFields(m.ValueTemplate) {
+		for _, grokFieldName := range m.ValueTemplate.ReferencedGrokFields() {
 			if !regex.HasCaptureGroup(grokFieldName) {
 				return fmt.Errorf("%v: grok field %v not found in match pattern", m.Name, grokFieldName)
 			}

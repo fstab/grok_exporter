@@ -19,7 +19,6 @@ import (
 	"gopkg.in/yaml.v2"
 	"strings"
 	"testing"
-	"text/template"
 )
 
 func TestGrok(t *testing.T) {
@@ -115,41 +114,5 @@ func expect(t *testing.T, regex *OnigurumaRegexp, config string, isErrorExpected
 	}
 	if !isErrorExpected && err != nil {
 		t.Fatal("Expected ok, but got error.")
-	}
-}
-
-func TestReferencedGrokFields(t *testing.T) {
-	grokFieldTest(t, "test1", "{{.count_total}} items are made of {{.material}}", "count_total", "material")
-	grokFieldTest(t, "test2", "{{23 -}} < {{- 45}}")
-	grokFieldTest(t, "test3", "{{.conca -}} < {{- .tenated}}", "conca", "tenated")
-	grokFieldTest(t, "test4", "{{with $x := \"output\" | printf \"%q\"}}{{$x}}{{end}}{{.bla}}", "bla")
-	grokFieldTest(t, "test5", "")
-	// Templates not supported yet.
-	// grokFieldTest(t, "test6", `
-	//	{{define "T1"}}{{.value1_total}}{{end}}
-	//	{{define "T2"}}{{.value2_total}}{{end}}
-	//	{{define "T3"}}{{template "T1"}} / {{template "T2"}}{{end}}
-	//	{{template "T3"}}`, "value1_total", "value2_total")
-}
-
-func grokFieldTest(t *testing.T, name, tmplt string, expectedFields ...string) {
-	parsedTemplate, err := template.New(name).Parse(tmplt)
-	if err != nil {
-		t.Fatalf("%v: error parsing template: %v", name, err.Error())
-	}
-	actualFields := referencedGrokFields(parsedTemplate)
-	if len(actualFields) != len(expectedFields) {
-		t.Fatalf("%v: expected: %v, actual: %v", name, expectedFields, actualFields)
-	}
-	for _, actualField := range actualFields {
-		found := false
-		for _, expectedField := range expectedFields {
-			if expectedField == actualField {
-				found = true
-			}
-		}
-		if !found {
-			t.Fatalf("%v: expected: %v, actual: %v", name, expectedFields, actualFields)
-		}
 	}
 }

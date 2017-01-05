@@ -16,8 +16,8 @@ package v2
 
 import (
 	"fmt"
+	"github.com/fstab/grok_exporter/templates"
 	"gopkg.in/yaml.v2"
-	"text/template"
 )
 
 func Unmarshal(config []byte) (*Config, error) {
@@ -66,8 +66,8 @@ type MetricConfig struct {
 	Buckets        []float64            `yaml:",flow,omitempty"`
 	Quantiles      map[float64]float64  `yaml:",flow,omitempty"`
 	Labels         map[string]string    `yaml:",omitempty"`
-	LabelTemplates []*template.Template `yaml:"-"` // parsed version of Labels, will not be serialized to yaml.
-	ValueTemplate  *template.Template   `yaml:"-"` // parsed version of Value, will not be serialized to yaml.
+	LabelTemplates []templates.Template `yaml:"-"` // parsed version of Labels, will not be serialized to yaml.
+	ValueTemplate  templates.Template   `yaml:"-"` // parsed version of Value, will not be serialized to yaml.
 }
 
 type MetricsConfig []*MetricConfig
@@ -277,20 +277,20 @@ func AddDefaultsAndValidate(cfg *Config) error {
 func (metric *MetricConfig) InitTemplates() error {
 	var (
 		err   error
-		tmplt *template.Template
+		tmplt templates.Template
 		msg   = "invalid configuration: failed to read metric %v: error parsing %v template: %v: " +
 			"don't forget to put a . (dot) in front of grok fields, otherwise it will be interpreted as a function."
 	)
-	metric.LabelTemplates = make([]*template.Template, 0, len(metric.Labels))
+	metric.LabelTemplates = make([]templates.Template, 0, len(metric.Labels))
 	for name, templateString := range metric.Labels {
-		tmplt, err = template.New(name).Parse(templateString)
+		tmplt, err = templates.New(name, templateString)
 		if err != nil {
 			return fmt.Errorf(msg, fmt.Sprintf("label %v", metric.Name), name, err.Error())
 		}
 		metric.LabelTemplates = append(metric.LabelTemplates, tmplt)
 	}
 	if len(metric.Value) > 0 {
-		metric.ValueTemplate, err = template.New("__value__").Parse(metric.Value)
+		metric.ValueTemplate, err = templates.New("__value__", metric.Value)
 		if err != nil {
 			return fmt.Errorf(msg, "value", metric.Name, err.Error())
 		}
