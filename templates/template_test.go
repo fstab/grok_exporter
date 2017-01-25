@@ -31,13 +31,23 @@ func TestReferencedGrokFields(t *testing.T) {
 			template:           "{{.hello}} world, {{timestamp \"02/01/2006 - 15:04:05.000\" .time}}",
 			expectedGrokFields: []string{"hello", "time"},
 		},
+		{
+			// Issue #10
+			template:           "{{if eq .field \"value\"}}text{{end}}",
+			expectedGrokFields: []string{"field"},
+		},
+		{
+			// Issue #10
+			template:           "{{if eq .field1 .field2}}{{.field3}}{{else}}{{.field4}}{{end}}",
+			expectedGrokFields: []string{"field1", "field2", "field3", "field4"},
+		},
 	} {
 		parsedTemplate, err := New(fmt.Sprintf("test%v", i), test.template)
 		if err != nil {
 			t.Fatalf("unexpected error in template %v: %v", i, err)
 			return
 		}
-		assertArrayEqualsIgnoreOrder(t, parsedTemplate.ReferencedGrokFields(), test.expectedGrokFields)
+		assertArrayEqualsIgnoreOrder(t, test.expectedGrokFields, parsedTemplate.ReferencedGrokFields())
 	}
 }
 

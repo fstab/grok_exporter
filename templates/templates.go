@@ -93,28 +93,75 @@ func fixCommas(layout, value string) (string, string, error) {
 }
 
 func referencedGrokFields(t *text_template.Template) ([]string, error) {
-	result := make([]string, 0)
+	var (
+		result = make([]string, 0)
+		fields []string
+		err    error
+	)
 	for _, node := range t.Root.Nodes {
-		if actionNode, ok := node.(*parse.ActionNode); ok {
-			for _, cmd := range actionNode.Pipe.Cmds {
-				if err := validateFunctionCalls(cmd); err != nil {
+		if fields, err = extractGrokFieldsFromNode(node); err != nil {
+			return nil, err
+		}
+		result = append(result, fields...)
+	}
+	return result, nil
+}
+
+func extractGrokFieldsFromNode(node parse.Node) ([]string, error) {
+	var (
+		result = make([]string, 0)
+		fields []string
+		err    error
+	)
+	switch t := node.(type) {
+	case *parse.ActionNode:
+		for _, cmd := range t.Pipe.Cmds {
+			if err = validateFunctionCalls(cmd); err != nil {
+				return nil, err
+			}
+			if fields, err = extractGrokFieldsFromCmd(cmd); err != nil {
+				return nil, err
+			}
+			result = append(result, fields...)
+		}
+	case *parse.IfNode:
+		for _, cmd := range t.Pipe.Cmds {
+			if err = validateFunctionCalls(cmd); err != nil {
+				return nil, err
+			}
+			if fields, err = extractGrokFieldsFromCmd(cmd); err != nil {
+				return nil, err
+			}
+			result = append(result, fields...)
+		}
+		if t.List != nil {
+			for _, n := range t.List.Nodes {
+				if fields, err = extractGrokFieldsFromNode(n); err != nil {
 					return nil, err
 				}
-				result = append(result, extractGrokFields(cmd)...)
+				result = append(result, fields...)
+			}
+		}
+		if t.ElseList != nil {
+			for _, n := range t.ElseList.Nodes {
+				if fields, err = extractGrokFieldsFromNode(n); err != nil {
+					return nil, err
+				}
+				result = append(result, fields...)
 			}
 		}
 	}
 	return result, nil
 }
 
-func extractGrokFields(cmd *parse.CommandNode) []string {
+func extractGrokFieldsFromCmd(cmd *parse.CommandNode) ([]string, error) {
 	result := make([]string, 0)
 	for _, arg := range cmd.Args {
 		if fieldNode, ok := arg.(*parse.FieldNode); ok {
 			result = append(result, fieldNode.Ident...)
 		}
 	}
-	return result
+	return result, nil
 }
 
 func validateFunctionCalls(cmd *parse.CommandNode) error {
