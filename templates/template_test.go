@@ -41,13 +41,62 @@ func TestReferencedGrokFields(t *testing.T) {
 			template:           "{{if eq .field1 .field2}}{{.field3}}{{else}}{{.field4}}{{end}}",
 			expectedGrokFields: []string{"field1", "field2", "field3", "field4"},
 		},
+		{
+			// Issue #10
+			template:           "{{if eq .field1 .field2}}{{.field3}}{{else if eq .field4 .field5}}{{.field6}}{{else}}{{.field7}}{{end}}",
+			expectedGrokFields: []string{"field1", "field2", "field3", "field4", "field5", "field6", "field7"},
+		},
+		{
+			// Issue #10
+			template:           "{{define \"T1\"}} {{.field}} {{end}} {{template \"T1\" .}}",
+			expectedGrokFields: []string{"field"},
+		},
 	} {
-		parsedTemplate, err := New(fmt.Sprintf("test%v", i), test.template)
+		parsedTemplate, err := New(fmt.Sprintf("test_1_%v", i), test.template)
 		if err != nil {
 			t.Fatalf("unexpected error in template %v: %v", i, err)
 			return
 		}
 		assertArrayEqualsIgnoreOrder(t, test.expectedGrokFields, parsedTemplate.ReferencedGrokFields())
+	}
+}
+
+func TestExecute(t *testing.T) {
+	for i, test := range []struct {
+		template       string
+		grokValues     map[string]string
+		expectedResult string
+	}{
+		{
+			template: "{{.count_total}} items are made of {{.material}}",
+			grokValues: map[string]string{
+				"count_total": "3",
+				"material":    "metal",
+			},
+			expectedResult: "3 items are made of metal",
+		},
+		{
+			template: "{{define \"T1\"}}{{.field}}{{end}}{{template \"T1\" .}}",
+			grokValues: map[string]string{
+				"field": "hello",
+			},
+			expectedResult: "hello",
+		},
+	} {
+		parsedTemplate, err := New(fmt.Sprintf("test_2_%v", i), test.template)
+		if err != nil {
+			t.Fatalf("unexpected error in template %v: %v", i, err)
+			return
+		}
+		result, err := parsedTemplate.Execute(test.grokValues)
+		if err != nil {
+			t.Fatalf("unexpected error while executing template %v: %v", i, err)
+			return
+		}
+		if result != test.expectedResult {
+			t.Fatalf("Expected \"%v\", but got \"%v\".", test.expectedResult, result)
+			return
+		}
 	}
 }
 

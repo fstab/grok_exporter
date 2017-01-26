@@ -11,7 +11,7 @@ import (
 
 type tmplate struct {
 	template             *text_template.Template
-	referencedGrokFields []string
+	referencedGrokFields map[string]bool // We use this for a set of strings, the value is always true.
 }
 
 type Template interface {
@@ -50,8 +50,15 @@ func (t *tmplate) Execute(grokValues map[string]string) (string, error) {
 	return buf.String(), nil
 }
 
+// TODO Issue #10: return map[string]bool
 func (t *tmplate) ReferencedGrokFields() []string {
-	return t.referencedGrokFields
+	result := make([]string, len(t.referencedGrokFields))
+	i := 0
+	for field := range t.referencedGrokFields {
+		result[i] = field
+		i++
+	}
+	return result
 }
 
 var funcs = text_template.FuncMap{
@@ -92,25 +99,29 @@ func fixCommas(layout, value string) (string, string, error) {
 	}
 }
 
-func referencedGrokFields(t *text_template.Template) ([]string, error) {
+func referencedGrokFields(t *text_template.Template) (map[string]bool, error) {
 	var (
-		result = make([]string, 0)
-		fields []string
+		result = make(map[string]bool)
+		fields map[string]bool
 		err    error
 	)
-	for _, node := range t.Root.Nodes {
-		if fields, err = extractGrokFieldsFromNode(node); err != nil {
-			return nil, err
+	for _, template := range t.Templates() {
+		for _, node := range template.Root.Nodes {
+			if fields, err = extractGrokFieldsFromNode(node); err != nil {
+				return nil, err
+			}
+			for field := range fields {
+				result[field] = true
+			}
 		}
-		result = append(result, fields...)
 	}
 	return result, nil
 }
 
-func extractGrokFieldsFromNode(node parse.Node) ([]string, error) {
+func extractGrokFieldsFromNode(node parse.Node) (map[string]bool, error) {
 	var (
-		result = make([]string, 0)
-		fields []string
+		result = make(map[string]bool)
+		fields map[string]bool
 		err    error
 	)
 	switch t := node.(type) {
@@ -122,7 +133,9 @@ func extractGrokFieldsFromNode(node parse.Node) ([]string, error) {
 			if fields, err = extractGrokFieldsFromCmd(cmd); err != nil {
 				return nil, err
 			}
-			result = append(result, fields...)
+			for field := range fields {
+				result[field] = true
+			}
 		}
 	case *parse.IfNode:
 		for _, cmd := range t.Pipe.Cmds {
@@ -132,14 +145,18 @@ func extractGrokFieldsFromNode(node parse.Node) ([]string, error) {
 			if fields, err = extractGrokFieldsFromCmd(cmd); err != nil {
 				return nil, err
 			}
-			result = append(result, fields...)
+			for field := range fields {
+				result[field] = true
+			}
 		}
 		if t.List != nil {
 			for _, n := range t.List.Nodes {
 				if fields, err = extractGrokFieldsFromNode(n); err != nil {
 					return nil, err
 				}
-				result = append(result, fields...)
+				for field := range fields {
+					result[field] = true
+				}
 			}
 		}
 		if t.ElseList != nil {
@@ -147,18 +164,22 @@ func extractGrokFieldsFromNode(node parse.Node) ([]string, error) {
 				if fields, err = extractGrokFieldsFromNode(n); err != nil {
 					return nil, err
 				}
-				result = append(result, fields...)
+				for field := range fields {
+					result[field] = true
+				}
 			}
 		}
 	}
 	return result, nil
 }
 
-func extractGrokFieldsFromCmd(cmd *parse.CommandNode) ([]string, error) {
-	result := make([]string, 0)
+func extractGrokFieldsFromCmd(cmd *parse.CommandNode) (map[string]bool, error) {
+	result := make(map[string]bool)
 	for _, arg := range cmd.Args {
 		if fieldNode, ok := arg.(*parse.FieldNode); ok {
-			result = append(result, fieldNode.Ident...)
+			for _, ident := range fieldNode.Ident {
+				result[ident] = true
+			}
 		}
 	}
 	return result, nil
