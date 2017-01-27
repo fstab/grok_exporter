@@ -50,7 +50,6 @@ func (t *tmplate) Execute(grokValues map[string]string) (string, error) {
 	return buf.String(), nil
 }
 
-// TODO Issue #10: return map[string]bool
 func (t *tmplate) ReferencedGrokFields() []string {
 	result := make([]string, len(t.referencedGrokFields))
 	i := 0
@@ -119,55 +118,40 @@ func referencedGrokFields(t *text_template.Template) (map[string]bool, error) {
 }
 
 func extractGrokFieldsFromNode(node parse.Node) (map[string]bool, error) {
+	switch t := node.(type) {
+	case *parse.ActionNode:
+		return extractGrokFieldsFromPipeNode(t.Pipe)
+	case *parse.RangeNode:
+		return extractGrokFieldsFromBranchNode(&t.BranchNode)
+	case *parse.IfNode:
+		return extractGrokFieldsFromBranchNode(&t.BranchNode)
+	case *parse.WithNode:
+		return extractGrokFieldsFromBranchNode(&t.BranchNode)
+	case *parse.TemplateNode:
+		return extractGrokFieldsFromPipeNode(t.Pipe)
+	default: // TextNode, etc have no grok fields
+		return make(map[string]bool), nil
+	}
+}
+
+func extractGrokFieldsFromPipeNode(node *parse.PipeNode) (map[string]bool, error) {
 	var (
 		result = make(map[string]bool)
 		fields map[string]bool
 		err    error
 	)
-	switch t := node.(type) {
-	case *parse.ActionNode:
-		for _, cmd := range t.Pipe.Cmds {
-			if err = validateFunctionCalls(cmd); err != nil {
-				return nil, err
-			}
-			if fields, err = extractGrokFieldsFromCmd(cmd); err != nil {
-				return nil, err
-			}
-			for field := range fields {
-				result[field] = true
-			}
+	if node == nil {
+		return result, err
+	}
+	for _, cmd := range node.Cmds {
+		if err = validateFunctionCalls(cmd); err != nil {
+			return nil, err
 		}
-	case *parse.IfNode:
-		for _, cmd := range t.Pipe.Cmds {
-			if err = validateFunctionCalls(cmd); err != nil {
-				return nil, err
-			}
-			if fields, err = extractGrokFieldsFromCmd(cmd); err != nil {
-				return nil, err
-			}
-			for field := range fields {
-				result[field] = true
-			}
+		if fields, err = extractGrokFieldsFromCmd(cmd); err != nil {
+			return nil, err
 		}
-		if t.List != nil {
-			for _, n := range t.List.Nodes {
-				if fields, err = extractGrokFieldsFromNode(n); err != nil {
-					return nil, err
-				}
-				for field := range fields {
-					result[field] = true
-				}
-			}
-		}
-		if t.ElseList != nil {
-			for _, n := range t.ElseList.Nodes {
-				if fields, err = extractGrokFieldsFromNode(n); err != nil {
-					return nil, err
-				}
-				for field := range fields {
-					result[field] = true
-				}
-			}
+		for field := range fields {
+			result[field] = true
 		}
 	}
 	return result, nil
@@ -197,6 +181,41 @@ func validateFunctionCalls(cmd *parse.CommandNode) error {
 		}
 	}
 	return nil
+}
+
+func extractGrokFieldsFromBranchNode(node *parse.BranchNode) (map[string]bool, error) {
+	var (
+		result = make(map[string]bool)
+		fields map[string]bool
+		err    error
+	)
+	if fields, err = extractGrokFieldsFromPipeNode(node.Pipe); err != nil {
+		return nil, err
+	}
+	for field := range fields {
+		result[field] = true
+	}
+	if node.List != nil {
+		for _, n := range node.List.Nodes {
+			if fields, err = extractGrokFieldsFromNode(n); err != nil {
+				return nil, err
+			}
+			for field := range fields {
+				result[field] = true
+			}
+		}
+	}
+	if node.ElseList != nil {
+		for _, n := range node.ElseList.Nodes {
+			if fields, err = extractGrokFieldsFromNode(n); err != nil {
+				return nil, err
+			}
+			for field := range fields {
+				result[field] = true
+			}
+		}
+	}
+	return result, nil
 }
 
 func validateTimestampCall(cmd *parse.CommandNode) error {
