@@ -50,7 +50,7 @@ mkdir -p github.com/prometheus
 cd github.com/prometheus
 git clone https://github.com/prometheus/common.git
 cd common
-git checkout ebdfc6da46522d58825777cf1f90490a5b1ef1d8
+git checkout dd2f054febf4a6c00f2343686efb775948a8bff4
 ls -A | grep -v expfmt | grep -v internal | grep -v model | xargs rm -r
 rm -r expfmt/testdata
 
@@ -82,7 +82,7 @@ mkdir -p github.com/golang
 cd github.com/golang
 git clone https://github.com/golang/protobuf.git
 cd protobuf
-git checkout 7390af9dcd3c33042ebaf2474a1724a83cf1a7e6
+git checkout 8ee79997227bf9b34611aee7946ae64735e6fd93
 rm -rf .git .gitignore Make* jsonpb protoc-gen-go ptypes
 
 ###########################################################################
