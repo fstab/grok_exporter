@@ -46,7 +46,7 @@ The following table shows which `grok_exporter` version uses which `config_versi
 | grok_exporter | config_version           |
 | ------------- | ------------------------ |
 | ≤ 0.1.4       | 1 _(see [CONFIG_v1.md])_ |
-| 0.2.0         | 2 _(current version)_    |
+| 0.2.0, 0.2.1  | 2 _(current version)_    |
 
 Input Section
 -------------
