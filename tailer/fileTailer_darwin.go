@@ -131,6 +131,7 @@ func (l *eventLoop) Events() chan []syscall.Kevent_t {
 func processEvents(events []syscall.Kevent_t, w *watcher, fileBefore *os.File, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *os.File, lines []string, err error) {
 	file = fileBefore
 	lines = []string{}
+	var truncated bool
 	for _, event := range events {
 		logger.Debug("File system watcher received %v.\n", event2string(w.dir, file, event))
 	}
@@ -138,9 +139,15 @@ func processEvents(events []syscall.Kevent_t, w *watcher, fileBefore *os.File, r
 	// Handle truncate events.
 	for _, event := range events {
 		if file != nil && event.Ident == uint64(file.Fd()) && event.Fflags&syscall.NOTE_ATTRIB == syscall.NOTE_ATTRIB {
-			_, err = file.Seek(0, os.SEEK_SET)
+			truncated, err = checkTruncated(file)
 			if err != nil {
 				return
+			}
+			if truncated {
+				_, err = file.Seek(0, os.SEEK_SET)
+				if err != nil {
+					return
+				}
 			}
 		}
 	}
@@ -190,6 +197,18 @@ func processEvents(events []syscall.Kevent_t, w *watcher, fileBefore *os.File, r
 		}
 	}
 	return
+}
+
+func checkTruncated(file *os.File) (bool, error) {
+	currentPos, err := file.Seek(0, os.SEEK_CUR)
+	if err != nil {
+		return false, fmt.Errorf("%v: Seek() failed: %v", file.Name(), err.Error())
+	}
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return false, fmt.Errorf("%v: Stat() failed: %v", file.Name(), err.Error())
+	}
+	return currentPos > fileInfo.Size(), nil
 }
 
 func makeEvent(file *os.File) syscall.Kevent_t {
