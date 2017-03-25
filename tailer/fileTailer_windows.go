@@ -16,10 +16,12 @@ package tailer
 
 import (
 	"fmt"
-	"golang.org/x/exp/winfsnotify"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/exp/winfsnotify"
 )
 
 func initWatcher(abspath string, _ *autoClosingFile) (*winfsnotify.Watcher, error) {
@@ -71,7 +73,7 @@ func processEvents(event *winfsnotify.Event, _ *winfsnotify.Watcher, fileBefore 
 			return
 		}
 		if truncated {
-			_, err = file.Seek(0, os.SEEK_SET)
+			_, err = file.Seek(0, io.SeekStart)
 			if err != nil {
 				return
 			}
@@ -140,7 +142,7 @@ func (f *autoClosingFile) Seek(offset int64, whence int) (int64, error) {
 	}
 	defer file.Close()
 	result, resultErr := file.Seek(offset, whence)
-	f.currentPos, err = file.Seek(0, os.SEEK_CUR)
+	f.currentPos, err = file.Seek(0, io.SeekCurrent)
 	if err != nil {
 		return 0, err
 	}
@@ -153,12 +155,12 @@ func (f *autoClosingFile) Read(b []byte) (int, error) {
 		return 0, err
 	}
 	defer file.Close()
-	_, err = file.Seek(f.currentPos, os.SEEK_SET)
+	_, err = file.Seek(f.currentPos, io.SeekStart)
 	if err != nil {
 		return 0, err
 	}
 	result, resultErr := file.Read(b)
-	f.currentPos, err = file.Seek(0, os.SEEK_CUR)
+	f.currentPos, err = file.Seek(0, io.SeekCurrent)
 	if err != nil {
 		return 0, err
 	}
