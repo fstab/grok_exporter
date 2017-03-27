@@ -17,7 +17,6 @@ package tailer
 import (
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 )
 
@@ -67,7 +66,7 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 			return
 		}
 		if !readall {
-			_, err = file.Seek(0, os.SEEK_END)
+			_, err = file.Seek(0, io.SeekEnd)
 			if err != nil {
 				writeError(errors, done, "Failed to initialize file system watcher for %v: %v", path, err.Error())
 				return

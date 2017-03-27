@@ -16,6 +16,7 @@ package tailer
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -144,7 +145,7 @@ func processEvents(events []syscall.Kevent_t, w *watcher, fileBefore *os.File, r
 				return
 			}
 			if truncated {
-				_, err = file.Seek(0, os.SEEK_SET)
+				_, err = file.Seek(0, io.SeekStart)
 				if err != nil {
 					return
 				}
@@ -200,7 +201,7 @@ func processEvents(events []syscall.Kevent_t, w *watcher, fileBefore *os.File, r
 }
 
 func checkTruncated(file *os.File) (bool, error) {
-	currentPos, err := file.Seek(0, os.SEEK_CUR)
+	currentPos, err := file.Seek(0, io.SeekCurrent)
 	if err != nil {
 		return false, fmt.Errorf("%v: Seek() failed: %v", file.Name(), err.Error())
 	}
