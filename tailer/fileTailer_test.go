@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -104,6 +105,47 @@ func TestFileTailerKeepLogfileOpen(t *testing.T) {
 	// When the logger keeps the file open, only the logrotate options 'copy' and 'copytruncate' make sense.
 	testLogrotate(t, NewTestRunLogger(100), _copy, cp, keepOpen)
 	testLogrotate(t, NewTestRunLogger(101), _copytruncate, cp, keepOpen)
+}
+
+// On Mac OS, we receive an additional NOTE_ATTRIB event for each change on the file unless
+// the file is located a "hidden" directory. This is probably because Mac OS updates attributes
+// used for showing the files in the Finder. This does not happen for files in hidden directories:
+// * directories starting with a dot are hidden
+// * directories with the xattr com.apple.FinderInfo (like everything in /tmp) are hidden
+// In order to test this, we must create a log file somewhere outside of /tmp, so we use $HOME.
+func TestVisibleInOSXFinder(t *testing.T) {
+	log := NewTestRunLogger(200)
+	usr, err := user.Current()
+	if err != nil {
+		t.Fatalf("failed to get current user: %v", err)
+	}
+	testDir, err := ioutil.TempDir(usr.HomeDir, "grok_exporter_test_dir_")
+	if err != nil {
+		t.Fatalf("failed to create test directory: %v", err.Error())
+	}
+	defer cleanUp(t, testDir)
+	logfile := mkTmpFileOrFail(t, testDir)
+	logFileWriter := newLogFileWriter(t, logfile, closeFileAfterEachLine)
+	defer logFileWriter.close(t)
+	logFileWriter.writeLine(t, log, "test line 1")
+	tail := RunFileTailer(logfile, false, log)
+	defer tail.Close()
+	go func() {
+		for err := range tail.Errors() {
+			t.Fatalf("Tailer failed: %v", err.Error())
+		}
+	}()
+	// This test runs the tailer with readAll=false, i.e. the tailer reads only lines that are added after the
+	// tailer is started. In order to avoid race conditions, we give it a second before we write 'test line 2'.
+	time.Sleep(1 * time.Second)
+	logFileWriter.writeLine(t, log, "test line 2")
+	expect(t, log, tail.Lines(), "test line 2", 1*time.Second)
+	// On Mac OS, we get a delayed NOTE_ATTRIB event after we wrote 'test line 2'. Wait 5 seconds for this event.
+	time.Sleep(5 * time.Second)
+	logFileWriter.writeLine(t, log, "test line 3")
+	// If we wrongly interpret NOTE_ATTRIB as truncate, we read 'test line 1' again. If we correctly ignore
+	// NOTE_ATTRIB here, we will read 'test line 3'.
+	expect(t, log, tail.Lines(), "test line 3", 1*time.Second)
 }
 
 func TestShutdownDuringSyscall(t *testing.T) {
