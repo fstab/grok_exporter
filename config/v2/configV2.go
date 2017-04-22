@@ -42,13 +42,17 @@ func (cfg *Config) String() string {
 }
 
 type GlobalConfig struct {
-	ConfigVersion int `yaml:"config_version,omitempty"`
+	ConfigVersion int  `yaml:"config_version,omitempty"`
+	Debug         bool `yaml:",omitempty"`
 }
 
 type InputConfig struct {
-	Type    string `yaml:",omitempty"`
-	Path    string `yaml:",omitempty"`
-	Readall bool   `yaml:",omitempty"`
+	Type       string `yaml:",omitempty"`
+	Path       string `yaml:",omitempty"`
+	Readall    bool   `yaml:",omitempty"`
+	Brokers    string `yaml:",omitempty"`
+	Topics     string `yaml:",omitempty"`
+	Jsonfields string `yaml:",omitempty"`
 }
 
 type GrokConfig struct {
@@ -166,6 +170,13 @@ func (c *InputConfig) validate() error {
 	case c.Type == "file":
 		if c.Path == "" {
 			return fmt.Errorf("Invalid input configuration: 'input.path' is required for input type \"file\".")
+		}
+	case c.Type == "kafka":
+		if c.Brokers == "" {
+			return fmt.Errorf("Invalid input configuration: 'input.brokers' is required for input type \"kafka\".")
+		}
+		if c.Topics == "" {
+			return fmt.Errorf("Invalid input configuration: 'input.topics' is required for input type \"kafka\".")
 		}
 	default:
 		return fmt.Errorf("Unsupported 'input.type': %v", c.Type)

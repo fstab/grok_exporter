@@ -51,6 +51,6 @@ function make_release {
     cd ..
 }
 
-make_release native darwin-amd64
+#make_release native darwin-amd64
 make_release docker linux-amd64
-make_release docker windows-amd64 .exe
+#make_release docker windows-amd64 .exe
