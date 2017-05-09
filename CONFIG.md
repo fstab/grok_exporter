@@ -51,7 +51,7 @@ The following table shows which `grok_exporter` version uses which `config_versi
 Input Section
 -------------
 
-We currently support two input types: `file` and `stdin`. The following two sections describe the `file` input type and the `stdin` input type:
+We currently support two input types: `file`, `stdin` and `kafka`. The following sections describe `file`, `stdin` and `kafka` input types:
 
 ### File Input Type
 
@@ -91,6 +91,30 @@ That means, if we run `cat sample.log | grok_exporter -config config.yml`,
 the exporter will terminate as soon as `sample.log` is processed,
 and we will not be able to access the result via HTTP(S) after that.
 Always use a command that keeps the output open (like `tail -f`) when testing the `grok_exporter` with the `stdin` input.
+
+### Kafka Input Type
+Grok exporter can subscribe to kafka topics and parse message text. If messages are in json format some fields can be extracted from message.
+
+```yaml
+input:
+    type: kafka
+    brokers:    'broker1:9092,broker2:9092'
+    topics:     'topic1,topic2'
+    jsonfields: 'loglevel,message,tag'
+```
+Brokers parameter is a comma separated list of Kafka brokers (mandatory for input type kafka). Topics parameter is comma separated list of topics to subscribe to (mandatory for input type kafka).
+Jsonfields parameter is a comma separated list of JSON fields which values will be extracted from JSON message and concatinated to one line (space as separator). 
+Jsonfields is optional parameter for input type kafka. If omited kafka messages will be sent to parser as string.
+I.e. having this message from kafka
+```json
+{message: "123", loglevel: "INFO", host: "myhost1", tag: "live"}
+```
+Parser will receive the text
+```INFO 123 live```
+So Grok regexp should be designed accordingly.
+
+Messages from all topics are processed in same way (same grok parser).
+
 
 Grok Section
 ------------

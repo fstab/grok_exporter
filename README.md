@@ -119,6 +119,14 @@ git submodule update --init --recursive
 
 The resulting `grok_exporter` binary will be dynamically linked to the Oniguruma library, i.e. it needs the Oniguruma library to run. The [releases] are statically linked with Oniguruma, i.e. the releases don't require Oniguruma as a run-time dependency. The releases are built with `release.sh`.
 
+**Building grok_exporter docker image**
+Building docker image requires docker installed.
+```bash
+go get get github.com/mbarzilovich/grok_exporter
+cd $GOPATH/src/github.com/fstab/grok_exporter
+./build_image.sh
+```
+
 More Documentation
 ------------------
 

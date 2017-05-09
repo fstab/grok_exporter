@@ -120,6 +120,7 @@ func (c *GlobalConfig) addDefaults() {
 	if c.ConfigVersion == 0 {
 		c.ConfigVersion = 2
 	}
+	c.Debug = false
 }
 
 func (c *InputConfig) addDefaults() {
@@ -128,13 +129,20 @@ func (c *InputConfig) addDefaults() {
 	}
 }
 
-func (c *GrokConfig) addDefaults() {}
+func (c *GrokConfig) addDefaults() {
+	if c.PatternsDir == "" {
+		c.PatternsDir = "/patterns"
+	}
+}
 
 func (c *MetricsConfig) addDefaults() {}
 
 func (c *ServerConfig) addDefaults() {
 	if c.Protocol == "" {
 		c.Protocol = "http"
+	}
+	if c.Host == "" {
+		c.Host = "0.0.0.0"
 	}
 	if c.Port == 0 {
 		c.Port = 9144
@@ -185,9 +193,6 @@ func (c *InputConfig) validate() error {
 }
 
 func (c *GrokConfig) validate() error {
-	if c.PatternsDir == "" && len(c.AdditionalPatterns) == 0 {
-		return fmt.Errorf("Invalid grok configuration: no patterns defined: one of 'grok.patterns_dir' and 'grok.additional_patterns' must be configured.")
-	}
 	return nil
 }
 

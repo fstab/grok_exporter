@@ -111,5 +111,18 @@ find . -type f | grep -v winfsnotify.go | xargs rm -f
 find . -type d -empty -delete
 
 ###########################################################################
+# github.com/optiopay/kafka
+###########################################################################
+
+cd $VENDOR
+mkdir -p github.com/optiopay/
+cd github.com/optiopay
+git clone https://github.com/optiopay/kafka.git
+cd kafka
+git checkout 7b7b6a0d49740e36cd39226913b38cecf9ef76cb
+rm -rf .git .gitignore .travis.yml LICENSE README.md
+
+
+###########################################################################
 
 find $VENDOR -type f -name '*_test.go'  | xargs rm
