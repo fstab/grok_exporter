@@ -138,7 +138,7 @@ func (c *InputConfig) addDefaults() {
 func (c *GrokConfig) addDefaults() {}
 
 //add default job name
-func (c *MetricsConfig) addDefaults() {
+func (c *MetricConfig) addDefaults() {
 	if c.JobName == "" {
 		c.JobName = "grok_exporter"
 	}
@@ -177,7 +177,7 @@ func (cfg *Config) validate() error {
 	return nil
 }
 
-func (c *GrokConfig) validate() error {
+func (c *GlobalConfig) validate() error {
 	//ignore version validation
 	if len(c.PushgatewayAddr) > 0 {
 			reg := regexp.MustCompile("\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}:[0-9]{1,5}")
@@ -332,7 +332,7 @@ func (metric *MetricConfig) InitTemplates() error {
         if err != nil {
             return fmt.Errorf(msg, fmt.Sprintf("groupingKey %v", metric.Name), name, err.Error())
         }
-        metric.GroupTemplates = append(metric.GroupingKey, tmplt)
+        metric.GroupTemplates = append(metric.GroupTemplates, tmplt)
     }
 
 	if len(metric.Value) > 0 {
