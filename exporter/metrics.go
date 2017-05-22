@@ -353,14 +353,14 @@ func (m *observeMetric) JobName() string {
 func evalGroupingKey(matchResult *OnigurumaMatchResult, templates []templates.Template) (map[string]string, error) {
 	result := make(map[string]string, len(templates))
 	for _, t := range templates {
-		for _, field := range t.ReferencedGrokFields() {
-			value, err := matchResult.Get(field)
-			if err != nil {
-				return nil, err
-			}
-			result[field] = value
+		value, err := evalTemplate(matchResult, t)
+		if err != nil {
+			return nil, err
 		}
+		result[t.Name()] = value
+
 	}
+	fmt.Println("[DEBUG] got groupingKey: %s", result)
 	return result, nil
 }
 
