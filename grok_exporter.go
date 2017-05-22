@@ -121,23 +121,23 @@ func main() {
 	}
 }
 
-func pushMetric(m exporter.Metric, url string, groupingKey map[string]string) error {
-	err := push.Collectors(m.getJobName(), groupingKey, url, m.Collector())
+func pushMetric(m exporter.Metric, pushUrl string, groupingKey map[string]string) error {
+	err := push.Collectors(m.JobName(), groupingKey, pushUrl, m.Collector())
 	return err
 }
 
 func deleteMetric(m exporter.Metric, deleteUrl string, groupingKey map[string]string) error {
-	if !strings.Contains(url, "://") {
-		deleteUrl = "http://" + url
+	if !strings.Contains(deleteUrl, "://") {
+		deleteUrl = "http://" + deleteUrl
 	}
-	if strings.HasSuffix(url, "/") {
-		deleteUrl = url[:len(url)-1]
+	if strings.HasSuffix(deleteUrl, "/") {
+		deleteUrl = deleteUrl[:len(deleteUrl)-1]
 	}
 
-	if strings.Contains(m.getJobName(), "/") {
-		return fmt.Errorf("job contains '/' : %s", m.getJobName())
+	if strings.Contains(m.JobName(), "/") {
+		return fmt.Errorf("job contains '/' : %s", m.JobName())
 	}
-	urlComponents := []string{url.QueryEscape(m.getJobName())}
+	urlComponents := []string{url.QueryEscape(m.JobName())}
 	for ln, lv := range groupingKey {
 		if !model.LabelName(ln).IsValid() {
 			return fmt.Errorf("groupingKey label has invalid name: %s", ln)
