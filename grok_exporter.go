@@ -122,13 +122,13 @@ func main() {
 }
 
 func pushMetric(m exporter.Metric, pushUrl string, groupingKey map[string]string) error {
-	fmt.Println(fmt.Sprintf("Pushing metric %s with labels %s to pushgateway %s", m.Name(), groupingKey, pushUrl))
+	fmt.Println(fmt.Sprintf("Pushing metric %s with labels %s to pushgateway %s of job %s", m.Name(), groupingKey, pushUrl, m.JobName()))
 	err := push.Collectors(m.JobName(), groupingKey, pushUrl, m.Collector())
 	return err
 }
 
 func deleteMetric(m exporter.Metric, deleteUrl string, groupingKey map[string]string) error {
-	fmt.Println(fmt.Sprintf("Deleting metric %s with labels %s from pushgateway %s", m.Name(), groupingKey, deleteUrl))
+	fmt.Println(fmt.Sprintf("Deleting metric %s with labels %s from pushgateway %s of job %s", m.Name(), groupingKey, deleteUrl, m.JobName()))
 	if !strings.Contains(deleteUrl, "://") {
 		deleteUrl = "http://" + deleteUrl
 	}
