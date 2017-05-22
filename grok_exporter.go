@@ -73,7 +73,7 @@ func main() {
 
 	tail, err := startTailer(cfg)
 	exitOnError(err)
-	fmt.Print(startMsg(cfg))
+	fmt.Println(startMsg(cfg))
 	serverErrors := startServer(cfg, "/metrics", prometheus.Handler())
 
 	for {
@@ -122,13 +122,13 @@ func main() {
 }
 
 func pushMetric(m exporter.Metric, pushUrl string, groupingKey map[string]string) error {
-	fmt.Printf("Pushing metric %s to pushgateway %s", m.Name(), pushUrl)
+	fmt.Println(fmt.Sprintf("Pushing metric %s to pushgateway %s", m.Name(), pushUrl))
 	err := push.Collectors(m.JobName(), groupingKey, pushUrl, m.Collector())
 	return err
 }
 
 func deleteMetric(m exporter.Metric, deleteUrl string, groupingKey map[string]string) error {
-	fmt.Printf("Deleting metric %s from pushgateway %s", m.Name(), deleteUrl)
+	fmt.Println(fmt.Sprintf("Deleting metric %s from pushgateway %s", m.Name(), deleteUrl))
 	if !strings.Contains(deleteUrl, "://") {
 		deleteUrl = "http://" + deleteUrl
 	}
