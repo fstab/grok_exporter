@@ -28,6 +28,8 @@ type Metric interface {
 
 	// Returns true if the line matched, and false if the line didn't match.
 	Process(line string) (bool, bool, map[string]string, error)
+	NeedPush() (bool)
+	JobName() (string)
 }
 
 // Represents a Prometheus Counter
@@ -328,19 +330,19 @@ func (m *observeMetric) Collector() prometheus.Collector {
 	return m.collector
 }
 
-func (m *incMetric) push() bool {
+func (m *incMetric) NeedPush() bool {
 	return m.pushgateway
 }
 
-func (m *observeMetric) push() bool {
+func (m *observeMetric) NeedPush() bool {
 	return m.pushgateway
 }
 
-func (m *incMetric) getJobName() string {
+func (m *incMetric) JobName() string {
 	return m.job_name
 }
 
-func (m *observeMetric) getJobName() string {
+func (m *observeMetric) JobName() string {
 	return m.job_name
 }
 

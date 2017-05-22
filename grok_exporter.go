@@ -94,8 +94,8 @@ func main() {
 					nErrorsByMetric.WithLabelValues(metric.Name()).Inc()
 				}
 				if match {
-					if metric.push() {
-						err := pushMetric(metric, cfg.PushgatewayAddr, groupingKey)
+					if metric.NeedPush() {
+						err := pushMetric(metric, cfg.Global.PushgatewayAddr, groupingKey)
 						if err != nil {
 							fmt.Errorf("Error pushing metric %v to pushgateway.", metric.Name())
 						}
@@ -106,7 +106,7 @@ func main() {
 					matched = true
 				}
 				if delete_match {
-					err := deleteMetric(metric, cfg.PushgatewayAddr, groupingKey)
+					err := deleteMetric(metric, cfg.Global.PushgatewayAddr, groupingKey)
 					if err != nil {
 						fmt.Errorf("Error deleting metric %v from pushgateway.", metric.Name())
 					}
@@ -126,12 +126,12 @@ func pushMetric(m exporter.Metric, url string, groupingKey map[string]string) er
 	return err
 }
 
-func deleteMetric(m exporter.Metric, url string, groupingKey map[string]string) error {
+func deleteMetric(m exporter.Metric, deleteUrl string, groupingKey map[string]string) error {
 	if !strings.Contains(url, "://") {
-		url = "http://" + url
+		deleteUrl = "http://" + url
 	}
 	if strings.HasSuffix(url, "/") {
-		url = url[:len(url)-1]
+		deleteUrl = url[:len(url)-1]
 	}
 
 	if strings.Contains(m.getJobName(), "/") {
@@ -148,9 +148,9 @@ func deleteMetric(m exporter.Metric, url string, groupingKey map[string]string) 
 		urlComponents = append(urlComponents, ln, lv)
 	}
 
-	url = fmt.Sprintf("%s/metrics/job/%s", url, strings.Join(urlComponents, "/"))
+	deleteUrl = fmt.Sprintf("%s/metrics/job/%s", deleteUrl, strings.Join(urlComponents, "/"))
 
-	request, err := http.NewRequest("DELETE", url, nil)
+	request, err := http.NewRequest("DELETE", deleteUrl, nil)
 	if err != nil {
 		return err
 	}
@@ -161,7 +161,7 @@ func deleteMetric(m exporter.Metric, url string, groupingKey map[string]string) 
 	}
 	defer response.Body.Close()
 	if response.StatusCode != 202 {
-		return fmt.Errorf("unexpected status code %d while deleting metric from %s", response.StatusCode, url)
+		return fmt.Errorf("unexpected status code %d while deleting metric from %s", response.StatusCode, deleteUrl)
 	}
 	return nil
 }
