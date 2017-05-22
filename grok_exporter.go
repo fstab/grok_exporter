@@ -87,7 +87,6 @@ func main() {
 			for _, metric := range metrics {
 				start := time.Now()
 				match, delete_match, groupingKey, err := metric.Process(line)
-				fmt.Printf("processing result: %s %s %s %s", match, delete_match, groupingKey, err)
 
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "WARNING: Skipping log line: %v\n", err.Error())
@@ -123,13 +122,13 @@ func main() {
 }
 
 func pushMetric(m exporter.Metric, pushUrl string, groupingKey map[string]string) error {
-	fmt.Println(fmt.Sprintf("Pushing metric %s to pushgateway %s", m.Name(), pushUrl))
+	fmt.Println(fmt.Sprintf("Pushing metric %s with labels %s to pushgateway %s", m.Name(), groupingKey, pushUrl))
 	err := push.Collectors(m.JobName(), groupingKey, pushUrl, m.Collector())
 	return err
 }
 
 func deleteMetric(m exporter.Metric, deleteUrl string, groupingKey map[string]string) error {
-	fmt.Println(fmt.Sprintf("Deleting metric %s from pushgateway %s", m.Name(), deleteUrl))
+	fmt.Println(fmt.Sprintf("Deleting metric %s with labels %s from pushgateway %s", m.Name(), groupingKey, pushUrl))
 	if !strings.Contains(deleteUrl, "://") {
 		deleteUrl = "http://" + deleteUrl
 	}
