@@ -123,7 +123,7 @@ func main() {
 
 func pushMetric(m exporter.Metric, pushUrl string, groupingKey map[string]string) error {
 	fmt.Println(fmt.Sprintf("Pushing metric %s with labels %s to pushgateway %s of job %s", m.Name(), groupingKey, pushUrl, m.JobName()))
-	err := push.Collectors(m.JobName(), groupingKey, pushUrl, m.Collector())
+	err := push.AddCollectors(m.JobName(), groupingKey, pushUrl, m.Collector())
 	return err
 }
 
