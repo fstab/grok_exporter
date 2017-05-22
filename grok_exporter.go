@@ -87,6 +87,7 @@ func main() {
 			for _, metric := range metrics {
 				start := time.Now()
 				match, delete_match, groupingKey, err := metric.Process(line)
+				fmt.Printf("processing result: %s %s %s %s", match, delete_match, groupingKey, err)
 
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "WARNING: Skipping log line: %v\n", err.Error())
