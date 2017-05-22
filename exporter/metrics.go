@@ -251,7 +251,7 @@ func NewSummaryMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp, delete_regex
 }
 
 // Return: true if the line matched, false if it didn't match.
-func (m *incMetric) Process(line string) (bool, bool, map[string][string], error) {
+func (m *incMetric) Process(line string) (bool, bool, map[string]string, error) {
 	matchResult, err := m.regex.Match(line)
 	deleteMatch, e := m.delete_regex.Match(line)
 	if err != nil  {
