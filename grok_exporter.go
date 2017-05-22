@@ -151,7 +151,8 @@ func deleteMetric(m exporter.Metric, deleteUrl string, groupingKey map[string]st
 	}
 
 	deleteUrl = fmt.Sprintf("%s/metrics/job/%s", deleteUrl, strings.Join(urlComponents, "/"))
-
+	fmt.Println(deleteUrl)
+	
 	request, err := http.NewRequest("DELETE", deleteUrl, nil)
 	if err != nil {
 		return err
