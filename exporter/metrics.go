@@ -27,7 +27,7 @@ type Metric interface {
 	Collector() prometheus.Collector
 
 	// Returns true if the line matched, and false if the line didn't match.
-	Process(line string) (bool, bool, error)
+	Process(line string) (bool, bool, map[string]string, error)
 }
 
 // Represents a Prometheus Counter
