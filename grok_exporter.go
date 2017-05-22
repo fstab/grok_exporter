@@ -88,7 +88,7 @@ func main() {
 				start := time.Now()
 				match, delete_match, groupingKey, err := metric.Process(line)
 				fmt.Println(fmt.Sprintf("Process result: match: %s, delete_match: %s, groupingKey: %s, err: %s", match, delete_match, groupingKey, err))
-				
+
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "WARNING: Skipping log line: %v\n", err.Error())
 					fmt.Fprintf(os.Stderr, "%v\n", line)
@@ -124,7 +124,8 @@ func main() {
 
 func pushMetric(m exporter.Metric, pushUrl string, groupingKey map[string]string) error {
 	fmt.Println(fmt.Sprintf("Pushing metric %s with labels %s to pushgateway %s of job %s", m.Name(), groupingKey, pushUrl, m.JobName()))
-	err := push.AddCollectors(m.JobName(), groupingKey, pushUrl, m.Collector())
+	//err := push.AddCollectors(m.JobName(), groupingKey, pushUrl, m.Collector())
+	err := push.AddCollectors(m.JobName(), map[string]string{"user":"alice"}, pushUrl, m.Collector())
 	return err
 }
 
