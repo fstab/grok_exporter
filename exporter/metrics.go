@@ -32,33 +32,33 @@ type Metric interface {
 
 // Represents a Prometheus Counter
 type incMetric struct {
-	name      		string
-	regex     		*OnigurumaRegexp
-	labels    		[]templates.Template
-	collector 		prometheus.Collector
+	name      string
+	regex     *OnigurumaRegexp
+	labels    []templates.Template
+	collector prometheus.Collector
 	//pushgateway related configs
-	delete_regex	*OnigurumaRegexp
-	pushgateway		bool
-	job_name		string
-	groupingKey		[]templates.Template
+	delete_regex *OnigurumaRegexp
+	pushgateway  bool
+	job_name     string
+	groupingKey  []templates.Template
 
-	incFunc   		func(m *OnigurumaMatchResult) error
+	incFunc func(m *OnigurumaMatchResult) error
 }
 
 // Represents a Prometheus Gauge, Histogram, or Summary
 type observeMetric struct {
-	name        	string
-	regex      		*OnigurumaRegexp
-	value       	templates.Template
-	labels      	[]templates.Template
+	name   string
+	regex  *OnigurumaRegexp
+	value  templates.Template
+	labels []templates.Template
 	//pushgateway related configs
-	delete_regex	*OnigurumaRegexp
-	pushgateway		bool
-	job_name		string
-	groupingKey		[]templates.Template
+	delete_regex *OnigurumaRegexp
+	pushgateway  bool
+	job_name     string
+	groupingKey  []templates.Template
 
-	collector   	prometheus.Collector
-	observeFunc 	func(m *OnigurumaMatchResult, val float64) error
+	collector   prometheus.Collector
+	observeFunc func(m *OnigurumaMatchResult, val float64) error
 }
 
 func NewCounterMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp, delete_regex *OnigurumaRegexp) Metric {
@@ -69,13 +69,13 @@ func NewCounterMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp, delete_regex
 	if len(cfg.Labels) == 0 { // regular counter
 		counter := prometheus.NewCounter(counterOpts)
 		return &incMetric{
-			name:      cfg.Name,
-			regex:     regex,
-			collector: counter,
-			delete_regex:	delete_regex,
-			pushgateway:	cfg.Pushgateway,
-			job_name: 		cfg.JobName,
-			groupingKey:	cfg.GroupTemplates,
+			name:         cfg.Name,
+			regex:        regex,
+			collector:    counter,
+			delete_regex: delete_regex,
+			pushgateway:  cfg.Pushgateway,
+			job_name:     cfg.JobName,
+			groupingKey:  cfg.GroupTemplates,
 			incFunc: func(_ *OnigurumaMatchResult) error {
 				counter.Inc()
 				return nil
@@ -84,14 +84,14 @@ func NewCounterMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp, delete_regex
 	} else { // counterVec
 		counterVec := prometheus.NewCounterVec(counterOpts, prometheusLabels(cfg.LabelTemplates))
 		result := &incMetric{
-			name:      cfg.Name,
-			regex:     regex,
-			labels:    cfg.LabelTemplates,
-			collector: counterVec,
-			delete_regex:	delete_regex,
-			pushgateway:	cfg.Pushgateway,
-			job_name: 		cfg.JobName,
-			groupingKey:	cfg.GroupTemplates,
+			name:         cfg.Name,
+			regex:        regex,
+			labels:       cfg.LabelTemplates,
+			collector:    counterVec,
+			delete_regex: delete_regex,
+			pushgateway:  cfg.Pushgateway,
+			job_name:     cfg.JobName,
+			groupingKey:  cfg.GroupTemplates,
 			incFunc: func(m *OnigurumaMatchResult) error {
 				vals, err := labelValues(m, cfg.LabelTemplates)
 				if err == nil {
@@ -112,14 +112,14 @@ func NewGaugeMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp, delete_regex *
 	if len(cfg.Labels) == 0 { // regular gauge
 		gauge := prometheus.NewGauge(gaugeOpts)
 		return &observeMetric{
-			name:      cfg.Name,
-			regex:     regex,
-			value:     cfg.ValueTemplate,
-			collector: gauge,
-			delete_regex:	delete_regex,
-			pushgateway:	cfg.Pushgateway,
-			job_name: 		cfg.JobName,
-			groupingKey:	cfg.GroupTemplates,
+			name:         cfg.Name,
+			regex:        regex,
+			value:        cfg.ValueTemplate,
+			collector:    gauge,
+			delete_regex: delete_regex,
+			pushgateway:  cfg.Pushgateway,
+			job_name:     cfg.JobName,
+			groupingKey:  cfg.GroupTemplates,
 			observeFunc: func(_ *OnigurumaMatchResult, val float64) error {
 				if cfg.Cumulative {
 					gauge.Add(val)
@@ -132,15 +132,15 @@ func NewGaugeMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp, delete_regex *
 	} else { // gaugeVec
 		gaugeVec := prometheus.NewGaugeVec(gaugeOpts, prometheusLabels(cfg.LabelTemplates))
 		return &observeMetric{
-			name:      cfg.Name,
-			regex:     regex,
-			value:     cfg.ValueTemplate,
-			collector: gaugeVec,
-			labels:    cfg.LabelTemplates,
-			delete_regex:	delete_regex,
-			pushgateway:	cfg.Pushgateway,
-			job_name: 		cfg.JobName,
-			groupingKey:	cfg.GroupTemplates,
+			name:         cfg.Name,
+			regex:        regex,
+			value:        cfg.ValueTemplate,
+			collector:    gaugeVec,
+			labels:       cfg.LabelTemplates,
+			delete_regex: delete_regex,
+			pushgateway:  cfg.Pushgateway,
+			job_name:     cfg.JobName,
+			groupingKey:  cfg.GroupTemplates,
 			observeFunc: func(m *OnigurumaMatchResult, val float64) error {
 				vals, err := labelValues(m, cfg.LabelTemplates)
 				if err == nil {
@@ -167,14 +167,14 @@ func NewHistogramMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp, delete_reg
 	if len(cfg.Labels) == 0 { // regular histogram
 		histogram := prometheus.NewHistogram(histogramOpts)
 		return &observeMetric{
-			name:      cfg.Name,
-			regex:     regex,
-			value:     cfg.ValueTemplate,
-			collector: histogram,
-			delete_regex:	delete_regex,
-			pushgateway:	cfg.Pushgateway,
-			job_name: 		cfg.JobName,
-			groupingKey:	cfg.GroupTemplates,
+			name:         cfg.Name,
+			regex:        regex,
+			value:        cfg.ValueTemplate,
+			collector:    histogram,
+			delete_regex: delete_regex,
+			pushgateway:  cfg.Pushgateway,
+			job_name:     cfg.JobName,
+			groupingKey:  cfg.GroupTemplates,
 			observeFunc: func(_ *OnigurumaMatchResult, val float64) error {
 				histogram.Observe(val)
 				return nil
@@ -183,15 +183,15 @@ func NewHistogramMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp, delete_reg
 	} else { // histogramVec
 		histogramVec := prometheus.NewHistogramVec(histogramOpts, prometheusLabels(cfg.LabelTemplates))
 		return &observeMetric{
-			name:      cfg.Name,
-			regex:     regex,
-			value:     cfg.ValueTemplate,
-			collector: histogramVec,
-			labels:    cfg.LabelTemplates,
-			delete_regex:	delete_regex,
-			pushgateway:	cfg.Pushgateway,
-			job_name: 		cfg.JobName,
-			groupingKey:	cfg.GroupTemplates,
+			name:         cfg.Name,
+			regex:        regex,
+			value:        cfg.ValueTemplate,
+			collector:    histogramVec,
+			labels:       cfg.LabelTemplates,
+			delete_regex: delete_regex,
+			pushgateway:  cfg.Pushgateway,
+			job_name:     cfg.JobName,
+			groupingKey:  cfg.GroupTemplates,
 			observeFunc: func(m *OnigurumaMatchResult, val float64) error {
 				vals, err := labelValues(m, cfg.LabelTemplates)
 				if err == nil {
@@ -214,14 +214,14 @@ func NewSummaryMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp, delete_regex
 	if len(cfg.Labels) == 0 { // regular summary
 		summary := prometheus.NewSummary(summaryOpts)
 		return &observeMetric{
-			name:      cfg.Name,
-			regex:     regex,
-			value:     cfg.ValueTemplate,
-			collector: summary,
-			delete_regex:	delete_regex,
-			pushgateway:	cfg.Pushgateway,
-			job_name: 		cfg.JobName,
-			groupingKey:	cfg.GroupTemplates,
+			name:         cfg.Name,
+			regex:        regex,
+			value:        cfg.ValueTemplate,
+			collector:    summary,
+			delete_regex: delete_regex,
+			pushgateway:  cfg.Pushgateway,
+			job_name:     cfg.JobName,
+			groupingKey:  cfg.GroupTemplates,
 			observeFunc: func(_ *OnigurumaMatchResult, val float64) error {
 				summary.Observe(val)
 				return nil
@@ -230,15 +230,15 @@ func NewSummaryMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp, delete_regex
 	} else { // summaryVec
 		summaryVec := prometheus.NewSummaryVec(summaryOpts, prometheusLabels(cfg.LabelTemplates))
 		return &observeMetric{
-			name:      cfg.Name,
-			regex:     regex,
-			value:     cfg.ValueTemplate,
-			collector: summaryVec,
-			labels:    cfg.LabelTemplates,
-			delete_regex:	delete_regex,
-			pushgateway:	cfg.Pushgateway,
-			job_name: 		cfg.JobName,
-			groupingKey:	cfg.GroupTemplates,
+			name:         cfg.Name,
+			regex:        regex,
+			value:        cfg.ValueTemplate,
+			collector:    summaryVec,
+			labels:       cfg.LabelTemplates,
+			delete_regex: delete_regex,
+			pushgateway:  cfg.Pushgateway,
+			job_name:     cfg.JobName,
+			groupingKey:  cfg.GroupTemplates,
 			observeFunc: func(m *OnigurumaMatchResult, val float64) error {
 				vals, err := labelValues(m, cfg.LabelTemplates)
 				if err == nil {
@@ -254,11 +254,11 @@ func NewSummaryMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp, delete_regex
 func (m *incMetric) Process(line string) (bool, bool, map[string]string, error) {
 	matchResult, err := m.regex.Match(line)
 	deleteMatch, e := m.delete_regex.Match(line)
-	if err != nil  {
+	if err != nil {
 		return false, false, nil, fmt.Errorf("error while processing metric %v: %v", m.name, err.Error())
 	}
 	if e != nil {
-		return false, false, nil, fmt.Errorf("error while processing metric %v: %v", m.name, e.Error())	
+		return false, false, nil, fmt.Errorf("error while processing metric %v: %v", m.name, e.Error())
 	}
 
 	defer matchResult.Free()
@@ -267,12 +267,12 @@ func (m *incMetric) Process(line string) (bool, bool, map[string]string, error) 
 	deleteMatched := deleteMatch.IsMatch()
 	if matchResult.IsMatch() {
 		err = m.incFunc(matchResult)
-		groupingKey, e:= evalGroupingKey(matchResult, m.groupingKey)
+		groupingKey, e := evalGroupingKey(matchResult, m.groupingKey)
 		if e != nil {
 			return true, deleteMatched, nil, fmt.Errorf("error while getting grouping key %v: %v", m.name, e.Error())
 		}
 		return true, deleteMatched, groupingKey, err
-		
+
 	} else {
 		return false, deleteMatched, nil, nil
 	}

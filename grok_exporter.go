@@ -21,14 +21,14 @@ import (
 	"github.com/fstab/grok_exporter/config/v2"
 	"github.com/fstab/grok_exporter/exporter"
 	"github.com/fstab/grok_exporter/tailer"
-	"github.com/prometheus/common/expfmt"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/push"
-	"strings"
-	"net/url"
+	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -87,7 +87,7 @@ func main() {
 			for _, metric := range metrics {
 				start := time.Now()
 				match, delete_match, groupingKey, err := metric.Process(line)
-				
+
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "WARNING: Skipping log line: %v\n", err.Error())
 					fmt.Fprintf(os.Stderr, "%v\n", line)
@@ -127,11 +127,11 @@ func pushMetric(m exporter.Metric, url string, groupingKey map[string]string) er
 }
 
 func deleteMetric(m exporter.Metric, url string, groupingKey map[string]string) error {
-	if (!strings.Contains(url, "://")) {
+	if !strings.Contains(url, "://") {
 		url = "http://" + url
 	}
 	if strings.HasSuffix(url, "/") {
-		url = url[:len(url) - 1]
+		url = url[:len(url)-1]
 	}
 
 	if strings.Contains(m.getJobName(), "/") {
@@ -249,7 +249,6 @@ func createMetrics(cfg *v2.Config, patterns *exporter.Patterns, libonig *exporte
 			return nil, fmt.Errorf("Failed to initialize metrics: Metric type %v is not supported.", m.Type)
 		}
 
-	
 	}
 	return result, nil
 }

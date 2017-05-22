@@ -43,7 +43,7 @@ func (cfg *Config) String() string {
 }
 
 type GlobalConfig struct {
-	ConfigVersion int `yaml:"config_version,omitempty"`
+	ConfigVersion   int    `yaml:"config_version,omitempty"`
 	PushgatewayAddr string `yaml:"pushgateway_addr,omitempty"` // add pushgateway address <ip>:<port>
 }
 
@@ -59,17 +59,17 @@ type GrokConfig struct {
 }
 
 type MetricConfig struct {
-	Type           string               `yaml:",omitempty"`
-	Name           string               `yaml:",omitempty"`
-	Help           string               `yaml:",omitempty"`
-	Match          string               `yaml:",omitempty"`
+	Type  string `yaml:",omitempty"`
+	Name  string `yaml:",omitempty"`
+	Help  string `yaml:",omitempty"`
+	Match string `yaml:",omitempty"`
 
 	/**************pushgateway related configs*******************/
-	Pushgateway    bool					`yaml:",omitempty"` //flag for if push metric to pushgateway or not 
-	JobName		   string 				`yaml:"job_name,omitempty"` //job name used to push metric to pushgateway
+	Pushgateway    bool                 `yaml:",omitempty"`             //flag for if push metric to pushgateway or not
+	JobName        string               `yaml:"job_name,omitempty"`     //job name used to push metric to pushgateway
 	DeleteMatch    string               `yaml:"delete_match,omitempty"` //if match, metric will be deleted from pushgateway
-	GroupingKey    map[string]string 	`yaml:"grouping_key,omitempty"` //grouping key used to push and delete metric from pushgateway
-    GroupTemplates []templates.Template `yaml:"-"`
+	GroupingKey    map[string]string    `yaml:"grouping_key,omitempty"` //grouping key used to push and delete metric from pushgateway
+	GroupTemplates []templates.Template `yaml:"-"`
 	/**************end of pushgateway related configs************/
 
 	Value          string               `yaml:",omitempty"`
@@ -140,8 +140,8 @@ func (c *GrokConfig) addDefaults() {}
 //add default job name
 func (c *MetricsConfig) addDefaults() {
 	for _, metric := range *c {
-        metric.JobName = "grok_exporter"
-    }
+		metric.JobName = "grok_exporter"
+	}
 }
 
 func (c *ServerConfig) addDefaults() {
@@ -180,11 +180,11 @@ func (cfg *Config) validate() error {
 func (c *GlobalConfig) validate() error {
 	//ignore version validation
 	if len(c.PushgatewayAddr) > 0 {
-			reg := regexp.MustCompile("\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}:[0-9]{1,5}")
-			result := reg.FindString(c.PushgatewayAddr)
-			if result == "" {
-				return fmt.Errorf("Not valid pushgateway address, usage: <ip>>:<port>.")
-			}
+		reg := regexp.MustCompile("\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}:[0-9]{1,5}")
+		result := reg.FindString(c.PushgatewayAddr)
+		if result == "" {
+			return fmt.Errorf("Not valid pushgateway address, usage: <ip>>:<port>.")
+		}
 	}
 	return nil
 }
@@ -327,13 +327,13 @@ func (metric *MetricConfig) InitTemplates() error {
 	}
 	// validate grouping key
 	metric.GroupTemplates = make([]templates.Template, 0, len(metric.GroupingKey))
-    for name, templateString := range metric.GroupingKey {
-        tmplt, err = templates.New(name, templateString)
-        if err != nil {
-            return fmt.Errorf(msg, fmt.Sprintf("groupingKey %v", metric.Name), name, err.Error())
-        }
-        metric.GroupTemplates = append(metric.GroupTemplates, tmplt)
-    }
+	for name, templateString := range metric.GroupingKey {
+		tmplt, err = templates.New(name, templateString)
+		if err != nil {
+			return fmt.Errorf(msg, fmt.Sprintf("groupingKey %v", metric.Name), name, err.Error())
+		}
+		metric.GroupTemplates = append(metric.GroupTemplates, tmplt)
+	}
 
 	if len(metric.Value) > 0 {
 		metric.ValueTemplate, err = templates.New("__value__", metric.Value)
