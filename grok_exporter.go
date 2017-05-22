@@ -21,7 +21,12 @@ import (
 	"github.com/fstab/grok_exporter/config/v2"
 	"github.com/fstab/grok_exporter/exporter"
 	"github.com/fstab/grok_exporter/tailer"
+	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/push"
+	"strings"
+	"net/url"
 	"net/http"
 	"os"
 	"time"
@@ -81,16 +86,30 @@ func main() {
 			matched := false
 			for _, metric := range metrics {
 				start := time.Now()
-				match, err := metric.Process(line)
+				match, delete_match, groupingKey, err := metric.Process(line)
+				
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "WARNING: Skipping log line: %v\n", err.Error())
 					fmt.Fprintf(os.Stderr, "%v\n", line)
 					nErrorsByMetric.WithLabelValues(metric.Name()).Inc()
 				}
 				if match {
+					if metric.push() {
+						err := pushMetric(metric, cfg.PushgatewayAddr, groupingKey)
+						if err != nil {
+							fmt.Errorf("Error pushing metric %v to pushgateway.", metric.Name())
+						}
+					}
+
 					nMatchesByMetric.WithLabelValues(metric.Name()).Inc()
 					procTimeMicrosecondsByMetric.WithLabelValues(metric.Name()).Add(float64(time.Since(start).Nanoseconds() / int64(1000)))
 					matched = true
+				}
+				if delete_match {
+					err := deleteMetric(metric, cfg.PushgatewayAddr, groupingKey)
+					if err != nil {
+						fmt.Errorf("Error deleting metric %v from pushgateway.", metric.Name())
+					}
 				}
 			}
 			if matched {
@@ -100,6 +119,51 @@ func main() {
 			}
 		}
 	}
+}
+
+func pushMetric(m exporter.Metric, url string, groupingKey map[string]string) error {
+	err := push.Collectors(m.getJobName(), groupingKey, url, m.Collector())
+	return err
+}
+
+func deleteMetric(m exporter.Metric, url string, groupingKey map[string]string) error {
+	if (!strings.Contains(url, "://")) {
+		url = "http://" + url
+	}
+	if strings.HasSuffix(url, "/") {
+		url = url[:len(url) - 1]
+	}
+
+	if strings.Contains(m.getJobName(), "/") {
+		return fmt.Errorf("job contains '/' : %s", m.getJobName())
+	}
+	urlComponents := []string{url.QueryEscape(m.getJobName())}
+	for ln, lv := range groupingKey {
+		if !model.LabelName(ln).IsValid() {
+			return fmt.Errorf("groupingKey label has invalid name: %s", ln)
+		}
+		if strings.Contains(lv, "/") {
+			return fmt.Errorf("value of groupingKey label %s contains '/': %s", ln, lv)
+		}
+		urlComponents = append(urlComponents, ln, lv)
+	}
+
+	url = fmt.Sprintf("%s/metrics/job/%s", url, strings.Join(urlComponents, "/"))
+
+	request, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Content-Type", string(expfmt.FmtProtoDelim))
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != 202 {
+		return fmt.Errorf("unexpected status code %d while deleting metric from %s", response.StatusCode, url)
+	}
+	return nil
 }
 
 func startMsg(cfg *v2.Config) string {
@@ -161,18 +225,31 @@ func createMetrics(cfg *v2.Config, patterns *exporter.Patterns, libonig *exporte
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
 		}
+
+		var delete_regex *OnigurumaRegexp
+		delete_regex, err = exporter.Compile(m.DeleteMatch, patterns, libonig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
+		}
+		err = exporter.VerifyFieldNames(m, delete_regex)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
+		}
+
 		switch m.Type {
 		case "counter":
-			result = append(result, exporter.NewCounterMetric(m, regex))
+			result = append(result, exporter.NewCounterMetric(m, regex, delete_regex))
 		case "gauge":
-			result = append(result, exporter.NewGaugeMetric(m, regex))
+			result = append(result, exporter.NewGaugeMetric(m, regex, delete_regex))
 		case "histogram":
-			result = append(result, exporter.NewHistogramMetric(m, regex))
+			result = append(result, exporter.NewHistogramMetric(m, regex, delete_regex))
 		case "summary":
-			result = append(result, exporter.NewSummaryMetric(m, regex))
+			result = append(result, exporter.NewSummaryMetric(m, regex, delete_regex))
 		default:
 			return nil, fmt.Errorf("Failed to initialize metrics: Metric type %v is not supported.", m.Type)
 		}
+
+	
 	}
 	return result, nil
 }

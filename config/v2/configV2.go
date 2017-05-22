@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/fstab/grok_exporter/templates"
 	"gopkg.in/yaml.v2"
+	"regexp"
 )
 
 func Unmarshal(config []byte) (*Config, error) {
@@ -43,6 +44,7 @@ func (cfg *Config) String() string {
 
 type GlobalConfig struct {
 	ConfigVersion int `yaml:"config_version,omitempty"`
+	PushgatewayAddr string `yaml:"pushgateway_addr,omitempty"` // add pushgateway address <ip>:<port>
 }
 
 type InputConfig struct {
@@ -61,6 +63,15 @@ type MetricConfig struct {
 	Name           string               `yaml:",omitempty"`
 	Help           string               `yaml:",omitempty"`
 	Match          string               `yaml:",omitempty"`
+
+	/**************pushgateway related configs*******************/
+	Pushgateway    bool					`yaml:",omitempty"` //flag for if push metric to pushgateway or not 
+	JobName		   string 				`yaml:"job_name,omitempty"` //job name used to push metric to pushgateway
+	DeleteMatch    string               `yaml:"delete_match,omitempty"` //if match, metric will be deleted from pushgateway
+	GroupingKey    map[string]string 	`yaml:"grouping_key,omitempty"` //grouping key used to push and delete metric from pushgateway
+    GroupTemplates []templates.Template `yaml:"-"`
+	/**************end of pushgateway related configs************/
+
 	Value          string               `yaml:",omitempty"`
 	Cumulative     bool                 `yaml:",omitempty"`
 	Buckets        []float64            `yaml:",flow,omitempty"`
@@ -126,7 +137,12 @@ func (c *InputConfig) addDefaults() {
 
 func (c *GrokConfig) addDefaults() {}
 
-func (c *MetricsConfig) addDefaults() {}
+//add default job name
+func (c *MetricsConfig) addDefaults() {
+	if c.JobName == "" {
+		c.JobName = "grok_exporter"
+	}
+}
 
 func (c *ServerConfig) addDefaults() {
 	if c.Protocol == "" {
@@ -138,7 +154,11 @@ func (c *ServerConfig) addDefaults() {
 }
 
 func (cfg *Config) validate() error {
-	err := cfg.Input.validate()
+	err := cfg.Global.validate()
+	if err != nil {
+		return err
+	}
+	err = cfg.Input.validate()
 	if err != nil {
 		return err
 	}
@@ -157,6 +177,17 @@ func (cfg *Config) validate() error {
 	return nil
 }
 
+func (c *GrokConfig) validate() error {
+	//ignore version validation
+	if len(c.PushgatewayAddr) > 0 {
+			reg := regexp.MustCompile("\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}:[0-9]{1,5}")
+			result := reg.FindString(c.PushgatewayAddr)
+			if result == "" {
+				return fmt.Errorf("Not valid pushgateway address, usage: <ip>>:<port>.")
+			}
+	}
+	return nil
+}
 func (c *InputConfig) validate() error {
 	switch {
 	case c.Type == "stdin":
@@ -236,6 +267,11 @@ func (c *MetricConfig) validate() error {
 		return fmt.Errorf("Invalid metric configuration: 'metrics.buckets' cannot be used for %v metrics.", c.Type)
 	}
 	// Labels and value are validated in InitTemplates()
+	//validate pushgateway related configs
+	if len(c.DeleteMatch) > 0 && !c.Pushgateway {
+		return fmt.Errorf("Invalid metric configuration: 'delete_match' can only be defined when 'pushgateway = true'.")
+	}
+	//grouping key is validated in InitTemplates()
 	return nil
 }
 
@@ -289,6 +325,16 @@ func (metric *MetricConfig) InitTemplates() error {
 		}
 		metric.LabelTemplates = append(metric.LabelTemplates, tmplt)
 	}
+	// validate grouping key
+	metric.GroupTemplates = make([]templates.Template, 0, len(metric.GroupingKey))
+    for name, templateString := range metric.GroupingKey {
+        tmplt, err = templates.New(name, templateString)
+        if err != nil {
+            return fmt.Errorf(msg, fmt.Sprintf("groupingKey %v", metric.Name), name, err.Error())
+        }
+        metric.GroupTemplates = append(metric.GroupingKey, tmplt)
+    }
+
 	if len(metric.Value) > 0 {
 		metric.ValueTemplate, err = templates.New("__value__", metric.Value)
 		if err != nil {
