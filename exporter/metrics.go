@@ -276,7 +276,11 @@ func (m *incMetric) Process(line string) (bool, bool, map[string]string, error) 
 		return true, deleteMatched, groupingKey, err
 
 	} else {
-		return false, deleteMatched, nil, nil
+		groupingKey, e := evalGroupingKey(matchResult, m.groupingKey)
+		if e != nil {
+			return false, deleteMatched, nil, fmt.Errorf("error while getting grouping key %v: %v", m.name, e.Error())
+		}
+		return false, deleteMatched, groupingKey, nil
 	}
 }
 
