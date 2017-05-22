@@ -98,7 +98,8 @@ func main() {
 					if metric.NeedPush() {
 						err := pushMetric(metric, cfg.Global.PushgatewayAddr, groupingKey)
 						if err != nil {
-							fmt.Println(fmt.Errorf("Error pushing metric %v to pushgateway.", metric.Name()))
+							fmt.Println(fmt.Sprintf("Push error: %s",err))
+							fmt.Errorf("Error pushing metric %v to pushgateway.", metric.Name())
 						}
 					}
 
