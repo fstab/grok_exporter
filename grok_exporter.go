@@ -87,7 +87,8 @@ func main() {
 			for _, metric := range metrics {
 				start := time.Now()
 				match, delete_match, groupingKey, err := metric.Process(line)
-
+				fmt.Println(fmt.Sprintf("Process result: match: %s, delete_match: %s, groupingKey: %s, err: %s", match, delete_match, groupingKey, err))
+				
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "WARNING: Skipping log line: %v\n", err.Error())
 					fmt.Fprintf(os.Stderr, "%v\n", line)
@@ -152,7 +153,7 @@ func deleteMetric(m exporter.Metric, deleteUrl string, groupingKey map[string]st
 
 	deleteUrl = fmt.Sprintf("%s/metrics/job/%s", deleteUrl, strings.Join(urlComponents, "/"))
 	fmt.Println(deleteUrl)
-	
+
 	request, err := http.NewRequest("DELETE", deleteUrl, nil)
 	if err != nil {
 		return err
