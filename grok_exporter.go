@@ -128,7 +128,7 @@ func pushMetric(m exporter.Metric, pushUrl string, groupingKey map[string]string
 }
 
 func deleteMetric(m exporter.Metric, deleteUrl string, groupingKey map[string]string) error {
-	fmt.Println(fmt.Sprintf("Deleting metric %s with labels %s from pushgateway %s", m.Name(), groupingKey, pushUrl))
+	fmt.Println(fmt.Sprintf("Deleting metric %s with labels %s from pushgateway %s", m.Name(), groupingKey, deleteUrl))
 	if !strings.Contains(deleteUrl, "://") {
 		deleteUrl = "http://" + deleteUrl
 	}
