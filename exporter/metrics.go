@@ -253,14 +253,14 @@ func NewSummaryMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp, delete_regex
 }
 
 // Return: true if the line matched, false if it didn't match.
-func (m *incMetric) Process(line string) (bool, bool, map[string]string, error) {
+func (m *incMetric) Process(line string) (bool, bool, map[string]string, []string, error) {
 	matchResult, err := m.regex.Match(line)
 	deleteMatch, e := m.delete_regex.Match(line)
 	if err != nil {
-		return false, false, nil, fmt.Errorf("error while processing metric %v: %v", m.name, err.Error())
+		return false, false, nil, nil, fmt.Errorf("error while processing metric %v: %v", m.name, err.Error())
 	}
 	if e != nil {
-		return false, false, nil, fmt.Errorf("error while processing metric %v: %v", m.name, e.Error())
+		return false, false, nil, nil, fmt.Errorf("error while processing metric %v: %v", m.name, e.Error())
 	}
 
 	defer matchResult.Free()
@@ -269,33 +269,34 @@ func (m *incMetric) Process(line string) (bool, bool, map[string]string, error) 
 	//metric can either be pushed or deleted, CANNOT be both in single line processing
 	if matchResult.IsMatch() {
 		err = m.incFunc(matchResult)
+		metricLabelValues, err := labelValues(matchResult, m.labels)
 		groupingKey, e := evalGroupingKey(matchResult, m.groupingKey)
 		if e != nil {
-			return true, false, nil, fmt.Errorf("error while getting grouping key %v: %v", m.name, e.Error())
+			return true, false, nil, nil, fmt.Errorf("error while getting grouping key %v: %v", m.name, e.Error())
 		}
-		return true, false, groupingKey, err
+		return true, false, groupingKey, metricLabelValues, err
 
 	} else {
 		if deleteMatch.IsMatch() {
 			groupingKey, e := evalGroupingKey(deleteMatch, m.groupingKey)
 			if e != nil {
-				return false, true, nil, fmt.Errorf("error while getting grouping key %v: %v", m.name, e.Error())
+				return false, true, nil, nil, fmt.Errorf("error while getting grouping key %v: %v", m.name, e.Error())
 			}
-			return false, true, groupingKey, nil
+			return false, true, groupingKey, nil, nil
 		}
-		return false, false, nil, nil
+		return false, false, nil, nil, nil
 	}
 }
 
 // Return: true if the line matched, false if it didn't match.
-func (m *observeMetric) Process(line string) (bool, bool, map[string]string, error) {
+func (m *observeMetric) Process(line string) (bool, bool, map[string]string, []string, error) {
 	matchResult, err := m.regex.Match(line)
 	if err != nil {
-		return false, false, nil, fmt.Errorf("error while processing metric %v: %v", m.name, err.Error())
+		return false, false, nil, nil, fmt.Errorf("error while processing metric %v: %v", m.name, err.Error())
 	}
 	deleteMatch, e := m.delete_regex.Match(line)
 	if e != nil {
-		return false, false, nil, fmt.Errorf("error while processing metric %v: %v", m.name, e.Error())
+		return false, false, nil, nil, fmt.Errorf("error while processing metric %v: %v", m.name, e.Error())
 	}
 	defer matchResult.Free()
 	defer deleteMatch.Free()
@@ -303,27 +304,28 @@ func (m *observeMetric) Process(line string) (bool, bool, map[string]string, err
 	if matchResult.IsMatch() {
 		stringVal, err := evalTemplate(matchResult, m.value)
 		if err != nil {
-			return true, false, nil, fmt.Errorf("error while processing metric %v: %v", m.name, err.Error())
+			return true, false, nil, nil, fmt.Errorf("error while processing metric %v: %v", m.name, err.Error())
 		}
 		floatVal, err := strconv.ParseFloat(stringVal, 64)
 		if err != nil {
-			return true, false, nil, fmt.Errorf("error while processing metric %v: value '%v' matches '%v', which is not a valid number.", m.name, m.value, stringVal)
+			return true, false, nil, nil, fmt.Errorf("error while processing metric %v: value '%v' matches '%v', which is not a valid number.", m.name, m.value, stringVal)
 		}
 		err = m.observeFunc(matchResult, floatVal)
+		metricLabelValues, err := labelValues(matchResult, m.labels)
 		groupingKey, e := evalGroupingKey(matchResult, m.groupingKey)
 		if e != nil {
-			return true, false, nil, fmt.Errorf("error while getting grouping key %v: %v", m.name, e.Error())
+			return true, false, nil, nil, fmt.Errorf("error while getting grouping key %v: %v", m.name, e.Error())
 		}
-		return true, false, groupingKey, err
+		return true, false, groupingKey, metricLabelValues, err
 	} else {
 		if deleteMatch.IsMatch() {
 			groupingKey, err := evalGroupingKey(deleteMatch, m.groupingKey)
 			if err != nil {
-				return false, true, nil, fmt.Errorf("error while getting grouping key %v: %v", m.name, e.Error())
+				return false, true, nil, nil, fmt.Errorf("error while getting grouping key %v: %v", m.name, e.Error())
 			}
-			return false, true, groupingKey, nil
+			return false, true, groupingKey, nil, nil
 		}
-		return false, false, nil, nil
+		return false, false, nil, nil, nil
 	}
 }
 

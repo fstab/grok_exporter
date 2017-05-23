@@ -87,17 +87,19 @@ func main() {
 			matched := false
 			for _, metric := range metrics {
 				start := time.Now()
-				match, delete_match, groupingKey, err := metric.Process(line)
+				match, delete_match, groupingKey, labelValues, err := metric.Process(line)
 				fmt.Println(fmt.Sprintf("[DEBUG] Process result: match: %s, delete_match: %s, groupingKey: %s, err: %s", match, delete_match, groupingKey, err))
 
+				pushFlag := true
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "WARNING: Skipping log line: %v\n", err.Error())
 					fmt.Fprintf(os.Stderr, "%v\n", line)
 					nErrorsByMetric.WithLabelValues(metric.Name()).Inc()
+					pushFlag = false
 				}
 				if match {
-					if metric.NeedPush() {
-						err := pushMetric(metric, cfg.Global.PushgatewayAddr, groupingKey)
+					if metric.NeedPush() && pushFlag {
+						err := pushMetric(metric, cfg.Global.PushgatewayAddr, groupingKey, labelValues)
 						if err != nil {
 							fmt.Println(fmt.Sprintf("[DEBUG] Push error: %s", err))
 							fmt.Errorf("Error pushing metric %v to pushgateway.", metric.Name())
@@ -124,7 +126,7 @@ func main() {
 	}
 }
 
-func pushMetric(m exporter.Metric, pushUrl string, groupingKey map[string]string) error {
+func pushMetric(m exporter.Metric, pushUrl string, groupingKey map[string]string, labelValues []string) error {
 	fmt.Println(fmt.Sprintf("[DEBUG] Pushing metric %s with labels %s to pushgateway %s of job %s", m.Name(), groupingKey, pushUrl, m.JobName()))
 	r := prometheus.NewRegistry()
 	if err := r.Register(m.Collector()); err != nil {
@@ -134,11 +136,12 @@ func pushMetric(m exporter.Metric, pushUrl string, groupingKey map[string]string
 	if err != nil {
 		return err
 	}
-	//remove metric from registry
-	if r.Unregister(m.Collector()) {
-		fmt.Println(fmt.Sprintf("[DEBUG] Unregister collector %s from registry.", m.Collector()))
+	//remove metric from collector
+	deleted := m.Collector().DeleteLabelValues(labelValues...)
+	if deleted {
+		fmt.Println(fmt.Sprintf("[DEBUG] Deleted metric %s from collector %s.", m.Name(), m.Collector())
 	} else {
-		fmt.Println(fmt.Sprintf("[DEBUG] Failed to unregister collector %s from registry.", m.Collector()))
+		fmt.Println(fmt.Sprintf("[DEBUG] Failed to delete metric %s from collector %s.", m.Name(), m.Collector())
 	}
 	return nil
 }
