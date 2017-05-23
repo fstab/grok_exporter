@@ -338,11 +338,11 @@ func (m *observeMetric) Name() string {
 	return m.name
 }
 
-func (m *incMetric) Collector() prometheus.Collector {
+func (m *incMetric) Collector() interface{} {
 	return m.collector
 }
 
-func (m *observeMetric) Collector() prometheus.Collector {
+func (m *observeMetric) Collector() interface{} {
 	return m.collector
 }
 
