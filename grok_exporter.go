@@ -22,7 +22,7 @@ import (
 	"github.com/fstab/grok_exporter/exporter"
 	"github.com/fstab/grok_exporter/tailer"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/push"
+	//"github.com/prometheus/client_golang/prometheus/push"
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
 	"net/http"
@@ -138,7 +138,7 @@ func deleteMetric(m exporter.Metric, deleteUrl string, groupingKey map[string]st
 	
 }
 
-func doRequest(job string, targetUrl string, groupingKey map[string]string, g prometheus.Gatherer, method string) error {
+func doRequest(job string, groupingKey map[string]string, targetUrl string, g prometheus.Gatherer, method string) error {
 	if !strings.Contains(targetUrl, "://") {
 		targetUrl = "http://" + targetUrl
 	}
@@ -146,10 +146,10 @@ func doRequest(job string, targetUrl string, groupingKey map[string]string, g pr
 		targetUrl = targetUrl[:len(targetUrl)-1]
 	}
 
-	if strings.Contains(m.JobName(), "/") {
-		return fmt.Errorf("job contains '/' : %s", m.JobName())
+	if strings.Contains(job, "/") {
+		return fmt.Errorf("job contains '/' : %s", job)
 	}
-	urlComponents := []string{url.QueryEscape(m.JobName())}
+	urlComponents := []string{url.QueryEscape(job}
 	for ln, lv := range groupingKey {
 		if !model.LabelName(ln).IsValid() {
 			return fmt.Errorf("groupingKey label has invalid name: %s", ln)
