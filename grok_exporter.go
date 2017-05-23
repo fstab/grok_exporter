@@ -17,6 +17,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"bytes"
 	"github.com/fstab/grok_exporter/config"
 	"github.com/fstab/grok_exporter/config/v2"
 	"github.com/fstab/grok_exporter/exporter"
