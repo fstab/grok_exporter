@@ -149,7 +149,7 @@ func doRequest(job string, groupingKey map[string]string, targetUrl string, g pr
 	if strings.Contains(job, "/") {
 		return fmt.Errorf("job contains '/' : %s", job)
 	}
-	urlComponents := []string{url.QueryEscape(job}
+	urlComponents := []string{url.QueryEscape(job)
 	for ln, lv := range groupingKey {
 		if !model.LabelName(ln).IsValid() {
 			return fmt.Errorf("groupingKey label has invalid name: %s", ln)
