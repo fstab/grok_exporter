@@ -38,7 +38,7 @@ type incMetric struct {
 	regex     *OnigurumaRegexp
 	labels    []templates.Template
 	collector prometheus.Collector
-	metricVec prometheus.MetricVec
+	metricVec *prometheus.MetricVec
 	//pushgateway related configs
 	delete_regex *OnigurumaRegexp
 	pushgateway  bool
@@ -61,7 +61,7 @@ type observeMetric struct {
 	groupingKey  []templates.Template
 
 	collector   prometheus.Collector
-	metricVec   prometheus.MetricVec
+	metricVec   *prometheus.MetricVec
 	observeFunc func(m *OnigurumaMatchResult, val float64) error
 }
 
