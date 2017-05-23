@@ -38,7 +38,7 @@ type incMetric struct {
 	regex     *OnigurumaRegexp
 	labels    []templates.Template
 	collector prometheus.Collector
-	metricVec *prometheus.MetricVec
+
 	//pushgateway related configs
 	delete_regex *OnigurumaRegexp
 	pushgateway  bool
@@ -61,7 +61,6 @@ type observeMetric struct {
 	groupingKey  []templates.Template
 
 	collector   prometheus.Collector
-	metricVec   *prometheus.MetricVec
 	observeFunc func(m *OnigurumaMatchResult, val float64) error
 }
 
@@ -92,7 +91,6 @@ func NewCounterMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp, delete_regex
 			regex:        regex,
 			labels:       cfg.LabelTemplates,
 			collector:    counterVec,
-			metricVec:	  counterVec,
 			delete_regex: delete_regex,
 			pushgateway:  cfg.Pushgateway,
 			job_name:     cfg.JobName,
@@ -141,7 +139,6 @@ func NewGaugeMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp, delete_regex *
 			regex:        regex,
 			value:        cfg.ValueTemplate,
 			collector:    gaugeVec,
-			metricVec:	  gaugeVec,
 			labels:       cfg.LabelTemplates,
 			delete_regex: delete_regex,
 			pushgateway:  cfg.Pushgateway,
@@ -193,7 +190,6 @@ func NewHistogramMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp, delete_reg
 			regex:        regex,
 			value:        cfg.ValueTemplate,
 			collector:    histogramVec,
-			metricVec:    histogramVec,
 			labels:       cfg.LabelTemplates,
 			delete_regex: delete_regex,
 			pushgateway:  cfg.Pushgateway,
@@ -241,7 +237,6 @@ func NewSummaryMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp, delete_regex
 			regex:        regex,
 			value:        cfg.ValueTemplate,
 			collector:    summaryVec,
-			metricVec:    summaryVec,
 			labels:       cfg.LabelTemplates,
 			delete_regex: delete_regex,
 			pushgateway:  cfg.Pushgateway,
