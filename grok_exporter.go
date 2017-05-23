@@ -145,7 +145,7 @@ func pushMetric(m exporter.Metric, pushUrl string, groupingKey map[string]string
 	if deleted {
 		fmt.Println(fmt.Sprintf("[DEBUG] Deleted metric %s from collector %s.", m.Name(), m.Collector()))
 	} else {
-		if m.metricVec == nil {
+		if m.MetricVec() == nil {
 			fmt.Println("[DEBUG] Detected metric instead of metric vector.")
 		}
 		fmt.Println(fmt.Sprintf("[DEBUG] Failed to delete metric %s from collector %s.", m.Name(), m.Collector()))	
