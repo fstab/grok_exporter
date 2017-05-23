@@ -125,17 +125,25 @@ func main() {
 
 func pushMetric(m exporter.Metric, pushUrl string, groupingKey map[string]string) error {
 	fmt.Println(fmt.Sprintf("[DEBUG] Pushing metric %s with labels %s to pushgateway %s of job %s", m.Name(), groupingKey, pushUrl, m.JobName()))
-	err := push.AddCollectors(m.JobName(), groupingKey, pushUrl, m.Collector())
-	return err
+	r := prometheus.NewRegistry()
+	if err := r.Register(m.Collector()); err != nil {
+		return err
+	}
+	return doRequest(m.JobName(), groupingKey, pushUrl, r, "POST")
 }
 
 func deleteMetric(m exporter.Metric, deleteUrl string, groupingKey map[string]string) error {
 	fmt.Println(fmt.Sprintf("[DEBUG] Deleting metric %s with labels %s from pushgateway %s of job %s", m.Name(), groupingKey, deleteUrl, m.JobName()))
-	if !strings.Contains(deleteUrl, "://") {
-		deleteUrl = "http://" + deleteUrl
+	return doRequest(m.JobName(), groupingKey, deleteUrl, nil, "DELETE")
+	
+}
+
+func doRequest(job string, targetUrl string, groupingKey map[string]string, g prometheus.Gatherer, method string) error {
+	if !strings.Contains(targetUrl, "://") {
+		targetUrl = "http://" + targetUrl
 	}
-	if strings.HasSuffix(deleteUrl, "/") {
-		deleteUrl = deleteUrl[:len(deleteUrl)-1]
+	if strings.HasSuffix(targetUrl, "/") {
+		targetUrl = targetUrl[:len(targetUrl)-1]
 	}
 
 	if strings.Contains(m.JobName(), "/") {
@@ -152,9 +160,25 @@ func deleteMetric(m exporter.Metric, deleteUrl string, groupingKey map[string]st
 		urlComponents = append(urlComponents, ln, lv)
 	}
 
-	deleteUrl = fmt.Sprintf("%s/metrics/job/%s", deleteUrl, strings.Join(urlComponents, "/"))
+	targetUrl = fmt.Sprintf("%s/metrics/job/%s", targetUrl, strings.Join(urlComponents, "/"))
 
-	request, err := http.NewRequest("DELETE", deleteUrl, nil)
+	buf := &bytes.Buffer()
+	enc := expfmt.NewEncoder(buf, expfmt.FmtProtoDelim)
+	if g != nil {
+		mfs, err := g.Gather()
+		if err != nil {
+			return err
+		}
+		for _, mf := range mfs {
+			//ignore checking for pre-existing labels
+			enc.Encode(mf)
+		}
+	}
+
+	if method == "DELETE" {
+		buf = nil
+	}
+	request, err := http.NewRequest(method, targetUrl, buf)
 	if err != nil {
 		return err
 	}
@@ -165,7 +189,7 @@ func deleteMetric(m exporter.Metric, deleteUrl string, groupingKey map[string]st
 	}
 	defer response.Body.Close()
 	if response.StatusCode != 202 {
-		return fmt.Errorf("unexpected status code %d while deleting metric from %s", response.StatusCode, deleteUrl)
+		return fmt.Errorf("unexpected status code %d, method %s", response.StatusCode, method)
 	}
 	return nil
 }
