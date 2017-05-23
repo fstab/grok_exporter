@@ -263,7 +263,7 @@ func createMetrics(cfg *v2.Config, patterns *exporter.Patterns, libonig *exporte
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
 		}
-		err = exporter.VerifyFieldNames(m, delete_regex)
+		err = exporter.VerifyGroupingKeyField(m, delete_regex)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
 		}

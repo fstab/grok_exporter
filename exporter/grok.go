@@ -52,6 +52,19 @@ func VerifyFieldNames(m *v2.MetricConfig, regex *OnigurumaRegexp) error {
 	return nil
 }
 
+func VerifyGroupingKeyField(m *v2.MetricConfig, regex *OnigurumaRegexp) error {
+	for _, template := range m.LabelTemplates {
+		for _, grokFieldName := range template.ReferencedGrokFields() {
+			if !regex.HasCaptureGroup(grokFieldName) {
+				return fmt.Errorf("%v: error in label %v: grok field %v not found in match pattern", m.Name, template.Name(), grokFieldName)
+			}
+		}
+	}
+	
+	return nil
+}
+
+
 // PATTERN_RE matches the %{..} patterns. There are three possibilities:
 // 1) %{USER}               - grok pattern
 // 2) %{IP:clientip}        - grok pattern with name
