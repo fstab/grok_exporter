@@ -130,7 +130,13 @@ func pushMetric(m exporter.Metric, pushUrl string, groupingKey map[string]string
 	if err := r.Register(m.Collector()); err != nil {
 		return err
 	}
-	return doRequest(m.JobName(), groupingKey, pushUrl, r, "POST")
+	err := doRequest(m.JobName(), groupingKey, pushUrl, r, "POST")
+	if err != nil {
+		return err
+	}
+	//remove metric from registry
+	r.Unregister(m.Collector())
+	return nil
 }
 
 func deleteMetric(m exporter.Metric, deleteUrl string, groupingKey map[string]string) error {
