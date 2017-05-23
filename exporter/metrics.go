@@ -27,7 +27,7 @@ type Metric interface {
 	Collector() prometheus.Collector
 
 	// Returns true if the line matched, and false if the line didn't match.
-	Process(line string) (bool, bool, map[string]string, error)
+	Process(line string) (bool, bool, map[string]string, []string, error)
 	NeedPush() bool
 	JobName() string
 }
