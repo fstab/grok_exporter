@@ -88,7 +88,7 @@ func main() {
 			for _, metric := range metrics {
 				start := time.Now()
 				match, delete_match, groupingKey, err := metric.Process(line)
-				fmt.Println(fmt.Sprintf("Process result: match: %s, delete_match: %s, groupingKey: %s, err: %s", match, delete_match, groupingKey, err))
+				fmt.Println(fmt.Sprintf("[DEBUG] Process result: match: %s, delete_match: %s, groupingKey: %s, err: %s", match, delete_match, groupingKey, err))
 
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "WARNING: Skipping log line: %v\n", err.Error())
@@ -135,7 +135,11 @@ func pushMetric(m exporter.Metric, pushUrl string, groupingKey map[string]string
 		return err
 	}
 	//remove metric from registry
-	r.Unregister(m.Collector())
+	if r.Unregister(m.Collector()) {
+		fmt.Println(fmt.Sprintf("[DEBUG] Unregister collector %s from registry.", m.Collector())
+	} else {
+		fmt.Println(fmt.Sprintf("[DEBUG] Failed to unregister collector %s from registry.", m.Collector())
+	}
 	return nil
 }
 
