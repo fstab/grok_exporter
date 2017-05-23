@@ -138,8 +138,8 @@ func pushMetric(m exporter.Metric, pushUrl string, groupingKey map[string]string
 	}
 	//remove metric from collector
 	deleted := false
-	if m.metricVec != nil {
-		deleted = m.metricVec.DeleteLabelValues(labelValues...)
+	if m.MetricVec() != nil {
+		deleted = m.MetricVec().DeleteLabelValues(labelValues...)
 	}
 
 	if deleted {

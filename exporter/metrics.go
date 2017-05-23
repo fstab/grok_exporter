@@ -25,6 +25,7 @@ import (
 type Metric interface {
 	Name() string
 	Collector() prometheus.Collector
+	MetricVec() *prometheus.MetricVec
 
 	// Returns true if the line matched, and false if the line didn't match.
 	Process(line string) (bool, bool, map[string]string, []string, error)
@@ -349,6 +350,14 @@ func (m *incMetric) Collector() prometheus.Collector {
 
 func (m *observeMetric) Collector() prometheus.Collector {
 	return m.collector
+}
+
+func (m *incMetric) MetricVec() *prometheus.MetricVec {
+	return m.metricVec
+}
+
+func (m *observeMetric) MetricVec() *prometheus.MetricVec {
+	return m.metricVec
 }
 
 func (m *incMetric) NeedPush() bool {
