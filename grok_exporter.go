@@ -162,7 +162,7 @@ func doRequest(job string, groupingKey map[string]string, targetUrl string, g pr
 
 	targetUrl = fmt.Sprintf("%s/metrics/job/%s", targetUrl, strings.Join(urlComponents, "/"))
 
-	buf := &bytes.Buffer()
+	buf := &bytes.Buffer{}
 	enc := expfmt.NewEncoder(buf, expfmt.FmtProtoDelim)
 	if g != nil {
 		mfs, err := g.Gather()
