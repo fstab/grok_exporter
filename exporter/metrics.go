@@ -24,7 +24,7 @@ import (
 
 type Metric interface {
 	Name() string
-	Collector() prometheus.Collector
+	Collector() interface{}
 
 	// Returns true if the line matched, and false if the line didn't match.
 	Process(line string) (bool, bool, map[string]string, []string, error)
@@ -37,7 +37,7 @@ type incMetric struct {
 	name      string
 	regex     *OnigurumaRegexp
 	labels    []templates.Template
-	collector prometheus.Collector
+	collector interface{}
 
 	//pushgateway related configs
 	delete_regex *OnigurumaRegexp
@@ -60,7 +60,7 @@ type observeMetric struct {
 	job_name     string
 	groupingKey  []templates.Template
 
-	collector   prometheus.Collector
+	collector   interface{}
 	observeFunc func(m *OnigurumaMatchResult, val float64) error
 }
 
