@@ -179,8 +179,7 @@ func doRequest(job string, groupingKey map[string]string, targetUrl string, g pr
 	var request *Request
 	if method == "DELETE" {
 		request, err := http.NewRequest(method, targetUrl, nil)	
-	}
-	else {
+	} else {
 		request, err := http.NewRequest(method, targetUrl, buf)
 	}
 	
