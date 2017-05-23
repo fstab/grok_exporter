@@ -137,11 +137,19 @@ func pushMetric(m exporter.Metric, pushUrl string, groupingKey map[string]string
 		return err
 	}
 	//remove metric from collector
-	deleted := *prometheus.MetricVec(m.Collector()).DeleteLabelValues(labelValues...)
+	deleted := false
+	if m.metricVec != nil {
+		deleted = m.metricVec.DeleteLabelValues(labelValues...)
+	}
+
 	if deleted {
 		fmt.Println(fmt.Sprintf("[DEBUG] Deleted metric %s from collector %s.", m.Name(), m.Collector()))
 	} else {
-		fmt.Println(fmt.Sprintf("[DEBUG] Failed to delete metric %s from collector %s.", m.Name(), m.Collector()))
+		if m.metricVec == nil {
+			fmt.Println("[DEBUG] Detected metric instead of metric vector.")	
+		} else {
+			fmt.Println(fmt.Sprintf("[DEBUG] Failed to delete metric %s from collector %s.", m.Name(), m.Collector()))	
+		}
 	}
 	return nil
 }
