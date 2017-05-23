@@ -136,9 +136,9 @@ func pushMetric(m exporter.Metric, pushUrl string, groupingKey map[string]string
 	}
 	//remove metric from registry
 	if r.Unregister(m.Collector()) {
-		fmt.Println(fmt.Sprintf("[DEBUG] Unregister collector %s from registry.", m.Collector())
+		fmt.Println(fmt.Sprintf("[DEBUG] Unregister collector %s from registry.", m.Collector()))
 	} else {
-		fmt.Println(fmt.Sprintf("[DEBUG] Failed to unregister collector %s from registry.", m.Collector())
+		fmt.Println(fmt.Sprintf("[DEBUG] Failed to unregister collector %s from registry.", m.Collector()))
 	}
 	return nil
 }
