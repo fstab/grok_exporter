@@ -140,10 +140,10 @@ func (c *GrokConfig) addDefaults() {}
 //add default job name
 func (c *MetricsConfig) addDefaults() {
 	for _, metric := range *c {
-        if len(metric.JobName) == 0 {
-            metric.JobName = "grok_exporter"    
-        }
-		
+		if len(metric.JobName) == 0 {
+			metric.JobName = "grok_exporter"
+		}
+
 	}
 }
 

@@ -15,9 +15,9 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
-	"bytes"
 	"github.com/fstab/grok_exporter/config"
 	"github.com/fstab/grok_exporter/config/v2"
 	"github.com/fstab/grok_exporter/exporter"
@@ -99,7 +99,7 @@ func main() {
 					if metric.NeedPush() {
 						err := pushMetric(metric, cfg.Global.PushgatewayAddr, groupingKey)
 						if err != nil {
-							fmt.Println(fmt.Sprintf("[DEBUG] Push error: %s",err))
+							fmt.Println(fmt.Sprintf("[DEBUG] Push error: %s", err))
 							fmt.Errorf("Error pushing metric %v to pushgateway.", metric.Name())
 						}
 					}
@@ -136,7 +136,7 @@ func pushMetric(m exporter.Metric, pushUrl string, groupingKey map[string]string
 func deleteMetric(m exporter.Metric, deleteUrl string, groupingKey map[string]string) error {
 	fmt.Println(fmt.Sprintf("[DEBUG] Deleting metric %s with labels %s from pushgateway %s of job %s", m.Name(), groupingKey, deleteUrl, m.JobName()))
 	return doRequest(m.JobName(), groupingKey, deleteUrl, nil, "DELETE")
-	
+
 }
 
 func doRequest(job string, groupingKey map[string]string, targetUrl string, g prometheus.Gatherer, method string) error {
@@ -179,11 +179,11 @@ func doRequest(job string, groupingKey map[string]string, targetUrl string, g pr
 	var request *http.Request
 	var err error
 	if method == "DELETE" {
-		request, err = http.NewRequest(method, targetUrl, nil)	
+		request, err = http.NewRequest(method, targetUrl, nil)
 	} else {
 		request, err = http.NewRequest(method, targetUrl, buf)
 	}
-	
+
 	if err != nil {
 		return err
 	}
