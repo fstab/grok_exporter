@@ -98,7 +98,7 @@ func main() {
 					if metric.NeedPush() {
 						err := pushMetric(metric, cfg.Global.PushgatewayAddr, groupingKey)
 						if err != nil {
-							fmt.Println(fmt.Sprintf("Push error: %s",err))
+							fmt.Println(fmt.Sprintf("[DEBUG] Push error: %s",err))
 							fmt.Errorf("Error pushing metric %v to pushgateway.", metric.Name())
 						}
 					}
@@ -124,13 +124,13 @@ func main() {
 }
 
 func pushMetric(m exporter.Metric, pushUrl string, groupingKey map[string]string) error {
-	fmt.Println(fmt.Sprintf("Pushing metric %s with labels %s to pushgateway %s of job %s", m.Name(), groupingKey, pushUrl, m.JobName()))
+	fmt.Println(fmt.Sprintf("[DEBUG] Pushing metric %s with labels %s to pushgateway %s of job %s", m.Name(), groupingKey, pushUrl, m.JobName()))
 	err := push.AddCollectors(m.JobName(), groupingKey, pushUrl, m.Collector())
 	return err
 }
 
 func deleteMetric(m exporter.Metric, deleteUrl string, groupingKey map[string]string) error {
-	fmt.Println(fmt.Sprintf("Deleting metric %s with labels %s from pushgateway %s of job %s", m.Name(), groupingKey, deleteUrl, m.JobName()))
+	fmt.Println(fmt.Sprintf("[DEBUG] Deleting metric %s with labels %s from pushgateway %s of job %s", m.Name(), groupingKey, deleteUrl, m.JobName()))
 	if !strings.Contains(deleteUrl, "://") {
 		deleteUrl = "http://" + deleteUrl
 	}
@@ -153,7 +153,6 @@ func deleteMetric(m exporter.Metric, deleteUrl string, groupingKey map[string]st
 	}
 
 	deleteUrl = fmt.Sprintf("%s/metrics/job/%s", deleteUrl, strings.Join(urlComponents, "/"))
-	fmt.Println(deleteUrl)
 
 	request, err := http.NewRequest("DELETE", deleteUrl, nil)
 	if err != nil {
