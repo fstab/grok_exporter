@@ -139,9 +139,9 @@ func pushMetric(m exporter.Metric, pushUrl string, groupingKey map[string]string
 	//remove metric from collector
 	deleted := m.Collector().DeleteLabelValues(labelValues...)
 	if deleted {
-		fmt.Println(fmt.Sprintf("[DEBUG] Deleted metric %s from collector %s.", m.Name(), m.Collector())
+		fmt.Println(fmt.Sprintf("[DEBUG] Deleted metric %s from collector %s.", m.Name(), m.Collector()))
 	} else {
-		fmt.Println(fmt.Sprintf("[DEBUG] Failed to delete metric %s from collector %s.", m.Name(), m.Collector())
+		fmt.Println(fmt.Sprintf("[DEBUG] Failed to delete metric %s from collector %s.", m.Name(), m.Collector()))
 	}
 	return nil
 }
