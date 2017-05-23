@@ -179,9 +179,9 @@ func doRequest(job string, groupingKey map[string]string, targetUrl string, g pr
 	var request *http.Request
 	var err error
 	if method == "DELETE" {
-		request, err := http.NewRequest(method, targetUrl, nil)	
+		request, err = http.NewRequest(method, targetUrl, nil)	
 	} else {
-		request, err := http.NewRequest(method, targetUrl, buf)
+		request, err = http.NewRequest(method, targetUrl, buf)
 	}
 	
 	if err != nil {
