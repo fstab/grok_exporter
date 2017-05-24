@@ -39,7 +39,7 @@ type incMetric struct {
 	regex     *OnigurumaRegexp
 	labels    []templates.Template
 	collector prometheus.Collector
-    metricVec *prometheus.MetricVec
+	metricVec *prometheus.MetricVec
 	//pushgateway related configs
 	delete_regex *OnigurumaRegexp
 	pushgateway  bool
@@ -268,7 +268,7 @@ func (m *incMetric) Process(line string) (bool, bool, map[string]string, []strin
 	var deleteMatch *OnigurumaMatchResult = nil
 	var e error
 	if m.delete_regex != nil {
-		deleteMatch, e = m.delete_regex.Match(line)	
+		deleteMatch, e = m.delete_regex.Match(line)
 		if e != nil {
 			return false, false, nil, nil, fmt.Errorf("error while processing metric %v: %v", m.name, e.Error())
 		}
@@ -276,9 +276,8 @@ func (m *incMetric) Process(line string) (bool, bool, map[string]string, []strin
 
 	defer matchResult.Free()
 	if deleteMatch != nil {
-		defer deleteMatch.Free()	
+		defer deleteMatch.Free()
 	}
-	
 
 	//metric can either be pushed or deleted, CANNOT be both in single line processing
 	if matchResult.IsMatch() {
@@ -311,14 +310,14 @@ func (m *observeMetric) Process(line string) (bool, bool, map[string]string, []s
 	var deleteMatch *OnigurumaMatchResult = nil
 	var e error
 	if m.delete_regex != nil {
-		deleteMatch, e = m.delete_regex.Match(line)	
+		deleteMatch, e = m.delete_regex.Match(line)
 		if e != nil {
 			return false, false, nil, nil, fmt.Errorf("error while processing metric %v: %v", m.name, e.Error())
 		}
 	}
 	defer matchResult.Free()
 	if deleteMatch != nil {
-		defer deleteMatch.Free()	
+		defer deleteMatch.Free()
 	}
 
 	if matchResult.IsMatch() {

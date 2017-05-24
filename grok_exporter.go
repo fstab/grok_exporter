@@ -148,8 +148,8 @@ func pushMetric(m exporter.Metric, pushUrl string, groupingKey map[string]string
 		if m.MetricVec() == nil {
 			fmt.Println("[DEBUG] Detected metric instead of metric vector.")
 		}
-		fmt.Println(fmt.Sprintf("[DEBUG] Failed to delete metric %s from collector %s.", m.Name(), m.Collector()))	
-	
+		fmt.Println(fmt.Sprintf("[DEBUG] Failed to delete metric %s from collector %s.", m.Name(), m.Collector()))
+
 	}
 	return nil
 }
@@ -281,7 +281,7 @@ func createMetrics(cfg *v2.Config, patterns *exporter.Patterns, libonig *exporte
 		}
 
 		var delete_regex *exporter.OnigurumaRegexp = nil
-		
+
 		if len(m.DeleteMatch) != 0 {
 			delete_regex, err = exporter.Compile(m.DeleteMatch, patterns, libonig)
 			if err != nil {
@@ -292,7 +292,6 @@ func createMetrics(cfg *v2.Config, patterns *exporter.Patterns, libonig *exporte
 				return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
 			}
 		}
-		
 
 		switch m.Type {
 		case "counter":

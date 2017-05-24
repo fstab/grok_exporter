@@ -60,10 +60,9 @@ func VerifyGroupingKeyField(m *v2.MetricConfig, regex *OnigurumaRegexp) error {
 			}
 		}
 	}
-	
+
 	return nil
 }
-
 
 // PATTERN_RE matches the %{..} patterns. There are three possibilities:
 // 1) %{USER}               - grok pattern
