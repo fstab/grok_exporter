@@ -280,14 +280,18 @@ func createMetrics(cfg *v2.Config, patterns *exporter.Patterns, libonig *exporte
 			return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
 		}
 
-		delete_regex, err := exporter.Compile(m.DeleteMatch, patterns, libonig)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
+		var delete_regex *OnigurumaRegexp = nil
+		if m.DeleteMatch != nil {
+			delete_regex, err := exporter.Compile(m.DeleteMatch, patterns, libonig)
+			if err != nil {
+				return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
+			}
+			err = exporter.VerifyGroupingKeyField(m, delete_regex)
+			if err != nil {
+				return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
+			}
 		}
-		err = exporter.VerifyGroupingKeyField(m, delete_regex)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
-		}
+		
 
 		switch m.Type {
 		case "counter":
