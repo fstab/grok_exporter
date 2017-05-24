@@ -339,7 +339,7 @@ func (m *observeMetric) Process(line string) (bool, bool, map[string]string, []s
 		if deleteMatch != nil && deleteMatch.IsMatch() {
 			groupingKey, err := evalGroupingKey(deleteMatch, m.groupingKey)
 			if err != nil {
-				return false, true, nil, nil, fmt.Errorf("error while getting grouping key %v: %v", m.name, e.Error())
+				return false, true, nil, nil, fmt.Errorf("error while getting grouping key %v: %v", m.name, err.Error())
 			}
 			return false, true, groupingKey, nil, nil
 		}
