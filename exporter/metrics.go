@@ -266,8 +266,9 @@ func (m *incMetric) Process(line string) (bool, bool, map[string]string, []strin
 		return false, false, nil, nil, fmt.Errorf("error while processing metric %v: %v", m.name, err.Error())
 	}
 	var deleteMatch *OnigurumaMatchResult = nil
+	var e error
 	if m.delete_regex != nil {
-		deleteMatch, e := m.delete_regex.Match(line)	
+		deleteMatch, e = m.delete_regex.Match(line)	
 		if e != nil {
 			return false, false, nil, nil, fmt.Errorf("error while processing metric %v: %v", m.name, e.Error())
 		}
@@ -308,8 +309,9 @@ func (m *observeMetric) Process(line string) (bool, bool, map[string]string, []s
 		return false, false, nil, nil, fmt.Errorf("error while processing metric %v: %v", m.name, err.Error())
 	}
 	var deleteMatch *OnigurumaMatchResult = nil
+	var e error
 	if m.delete_regex != nil {
-		deleteMatch, e := m.delete_regex.Match(line)	
+		deleteMatch, e = m.delete_regex.Match(line)	
 		if e != nil {
 			return false, false, nil, nil, fmt.Errorf("error while processing metric %v: %v", m.name, e.Error())
 		}
