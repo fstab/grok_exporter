@@ -281,8 +281,9 @@ func createMetrics(cfg *v2.Config, patterns *exporter.Patterns, libonig *exporte
 		}
 
 		var delete_regex *exporter.OnigurumaRegexp = nil
+		var err error
 		if len(m.DeleteMatch) != 0 {
-			delete_regex, err := exporter.Compile(m.DeleteMatch, patterns, libonig)
+			delete_regex, err = exporter.Compile(m.DeleteMatch, patterns, libonig)
 			if err != nil {
 				return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
 			}

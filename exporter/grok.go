@@ -53,7 +53,7 @@ func VerifyFieldNames(m *v2.MetricConfig, regex *OnigurumaRegexp) error {
 }
 
 func VerifyGroupingKeyField(m *v2.MetricConfig, regex *OnigurumaRegexp) error {
-	for _, template := range m.LabelTemplates {
+	for _, template := range m.GroupTemplates {
 		for _, grokFieldName := range template.ReferencedGrokFields() {
 			if !regex.HasCaptureGroup(grokFieldName) {
 				return fmt.Errorf("%v: error in label %v: grok field %v not found in match pattern", m.Name, template.Name(), grokFieldName)
