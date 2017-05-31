@@ -15,6 +15,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"github.com/fstab/grok_exporter/config"
@@ -22,8 +23,13 @@ import (
 	"github.com/fstab/grok_exporter/exporter"
 	"github.com/fstab/grok_exporter/tailer"
 	"github.com/prometheus/client_golang/prometheus"
+	//"github.com/prometheus/client_golang/prometheus/push"
+	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -68,7 +74,7 @@ func main() {
 
 	tail, err := startTailer(cfg)
 	exitOnError(err)
-	fmt.Print(startMsg(cfg))
+	fmt.Println(startMsg(cfg))
 	serverErrors := startServer(cfg, "/metrics", prometheus.Handler())
 
 	for {
@@ -81,16 +87,34 @@ func main() {
 			matched := false
 			for _, metric := range metrics {
 				start := time.Now()
-				match, err := metric.Process(line)
+				match, delete_match, groupingKey, labelValues, err := metric.Process(line)
+				//fmt.Println(fmt.Sprintf("[DEBUG] Process result: match: %s, delete_match: %s, groupingKey: %s, err: %s", match, delete_match, groupingKey, err))
+
+				pushFlag := true
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "WARNING: Skipping log line: %v\n", err.Error())
 					fmt.Fprintf(os.Stderr, "%v\n", line)
 					nErrorsByMetric.WithLabelValues(metric.Name()).Inc()
+					pushFlag = false
 				}
 				if match {
+					if metric.NeedPush() && pushFlag {
+						err := pushMetric(metric, cfg.Global.PushgatewayAddr, groupingKey, labelValues)
+						if err != nil {
+							//fmt.Println(fmt.Sprintf("[DEBUG] Push error: %s", err))
+							fmt.Errorf("Error pushing metric %v to pushgateway.", metric.Name())
+						}
+					}
+
 					nMatchesByMetric.WithLabelValues(metric.Name()).Inc()
 					procTimeMicrosecondsByMetric.WithLabelValues(metric.Name()).Add(float64(time.Since(start).Nanoseconds() / int64(1000)))
 					matched = true
+				}
+				if delete_match {
+					err := deleteMetric(metric, cfg.Global.PushgatewayAddr, groupingKey)
+					if err != nil {
+						fmt.Errorf("Error deleting metric %v from pushgateway.", metric.Name())
+					}
 				}
 			}
 			if matched {
@@ -100,6 +124,89 @@ func main() {
 			}
 		}
 	}
+}
+
+func pushMetric(m exporter.Metric, pushUrl string, groupingKey map[string]string, labelValues []string) error {
+	//fmt.Println(fmt.Sprintf("[DEBUG] Pushing metric %s with labels %s to pushgateway %s of job %s", m.Name(), groupingKey, pushUrl, m.JobName()))
+	r := prometheus.NewRegistry()
+	if err := r.Register(m.Collector()); err != nil {
+		return err
+	}
+	err := doRequest(m.JobName(), groupingKey, pushUrl, r, "POST")
+	if err != nil {
+		return err
+	}
+	//remove metric from collector
+	if m.MetricVec() != nil {
+		m.MetricVec().DeleteLabelValues(labelValues...)
+	}
+	return nil
+}
+
+func deleteMetric(m exporter.Metric, deleteUrl string, groupingKey map[string]string) error {
+	//fmt.Println(fmt.Sprintf("[DEBUG] Deleting metric %s with labels %s from pushgateway %s of job %s", m.Name(), groupingKey, deleteUrl, m.JobName()))
+	return doRequest(m.JobName(), groupingKey, deleteUrl, nil, "DELETE")
+
+}
+
+func doRequest(job string, groupingKey map[string]string, targetUrl string, g prometheus.Gatherer, method string) error {
+	if !strings.Contains(targetUrl, "://") {
+		targetUrl = "http://" + targetUrl
+	}
+	if strings.HasSuffix(targetUrl, "/") {
+		targetUrl = targetUrl[:len(targetUrl)-1]
+	}
+
+	if strings.Contains(job, "/") {
+		return fmt.Errorf("job contains '/' : %s", job)
+	}
+	urlComponents := []string{url.QueryEscape(job)}
+	for ln, lv := range groupingKey {
+		if !model.LabelName(ln).IsValid() {
+			return fmt.Errorf("groupingKey label has invalid name: %s", ln)
+		}
+		if strings.Contains(lv, "/") {
+			return fmt.Errorf("value of groupingKey label %s contains '/': %s", ln, lv)
+		}
+		urlComponents = append(urlComponents, ln, lv)
+	}
+
+	targetUrl = fmt.Sprintf("%s/metrics/job/%s", targetUrl, strings.Join(urlComponents, "/"))
+
+	buf := &bytes.Buffer{}
+	enc := expfmt.NewEncoder(buf, expfmt.FmtProtoDelim)
+	if g != nil {
+		mfs, err := g.Gather()
+		if err != nil {
+			return err
+		}
+		for _, mf := range mfs {
+			//ignore checking for pre-existing labels
+			enc.Encode(mf)
+		}
+	}
+
+	var request *http.Request
+	var err error
+	if method == "DELETE" {
+		request, err = http.NewRequest(method, targetUrl, nil)
+	} else {
+		request, err = http.NewRequest(method, targetUrl, buf)
+	}
+
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Content-Type", string(expfmt.FmtProtoDelim))
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != 202 {
+		return fmt.Errorf("unexpected status code %d, method %s", response.StatusCode, method)
+	}
+	return nil
 }
 
 func startMsg(cfg *v2.Config) string {
@@ -161,18 +268,33 @@ func createMetrics(cfg *v2.Config, patterns *exporter.Patterns, libonig *exporte
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
 		}
+
+		var delete_regex *exporter.OnigurumaRegexp = nil
+
+		if len(m.DeleteMatch) != 0 {
+			delete_regex, err = exporter.Compile(m.DeleteMatch, patterns, libonig)
+			if err != nil {
+				return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
+			}
+			err = exporter.VerifyGroupingKeyField(m, delete_regex)
+			if err != nil {
+				return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
+			}
+		}
+
 		switch m.Type {
 		case "counter":
-			result = append(result, exporter.NewCounterMetric(m, regex))
+			result = append(result, exporter.NewCounterMetric(m, regex, delete_regex))
 		case "gauge":
-			result = append(result, exporter.NewGaugeMetric(m, regex))
+			result = append(result, exporter.NewGaugeMetric(m, regex, delete_regex))
 		case "histogram":
-			result = append(result, exporter.NewHistogramMetric(m, regex))
+			result = append(result, exporter.NewHistogramMetric(m, regex, delete_regex))
 		case "summary":
-			result = append(result, exporter.NewSummaryMetric(m, regex))
+			result = append(result, exporter.NewSummaryMetric(m, regex, delete_regex))
 		default:
 			return nil, fmt.Errorf("Failed to initialize metrics: Metric type %v is not supported.", m.Type)
 		}
+
 	}
 	return result, nil
 }

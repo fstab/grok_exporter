@@ -30,7 +30,7 @@ func TestCounterVec(t *testing.T) {
 			"error_message": "{{.message}}",
 		},
 	})
-	counter := NewCounterMetric(counterCfg, regex)
+	counter := NewCounterMetric(counterCfg, regex, nil)
 	counter.Process("some unrelated line")
 	counter.Process("2016-04-26 10:19:57 H=(85.214.241.101) [36.224.138.227] F=<z2007tw@yahoo.com.tw> rejected RCPT <alan.a168@msa.hinet.net>: relay not permitted")
 	counter.Process("2016-04-26 12:31:39 H=(186-90-8-31.genericrev.cantv.net) [186.90.8.31] F=<Hans.Krause9@cantv.net> rejected RCPT <ug2seeng-admin@example.com>: Unrouteable address")
@@ -57,7 +57,7 @@ func TestCounter(t *testing.T) {
 	counterCfg := newMetricConfig(t, &v2.MetricConfig{
 		Name: "exim_rejected_rcpt_total",
 	})
-	counter := NewCounterMetric(counterCfg, regex)
+	counter := NewCounterMetric(counterCfg, regex, nil)
 
 	counter.Process("some unrelated line")
 	counter.Process("2016-04-26 10:19:57 H=(85.214.241.101) [36.224.138.227] F=<z2007tw@yahoo.com.tw> rejected RCPT <alan.a168@msa.hinet.net>: relay not permitted")
@@ -99,7 +99,7 @@ func TestGauge(t *testing.T) {
 		Name:  "temperature",
 		Value: "{{.temperature}}",
 	})
-	gauge := NewGaugeMetric(gaugeCfg, regex)
+	gauge := NewGaugeMetric(gaugeCfg, regex, nil)
 
 	gauge.Process("Temperature in Berlin: 32")
 	gauge.Process("Temperature in Moscow: -5")
@@ -123,7 +123,7 @@ func TestGaugeCumulative(t *testing.T) {
 		Value:      "{{.temperature}}",
 		Cumulative: true,
 	})
-	gauge := NewGaugeMetric(gaugeCfg, regex)
+	gauge := NewGaugeMetric(gaugeCfg, regex, nil)
 
 	gauge.Process("Temperature in Berlin: 32")
 	gauge.Process("Temperature in Moscow: -5")
@@ -149,7 +149,7 @@ func TestGaugeVec(t *testing.T) {
 			"city": "{{.city}}",
 		},
 	})
-	gauge := NewGaugeMetric(gaugeCfg, regex)
+	gauge := NewGaugeMetric(gaugeCfg, regex, nil)
 
 	gauge.Process("Temperature in Berlin: 32")
 	gauge.Process("Temperature in Moscow: -5")
