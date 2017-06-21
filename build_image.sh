@@ -6,7 +6,7 @@ cd $GOPATH/src/github.com/fstab/grok_exporter
 docker run --rm --net none -it -v $GOPATH/src/github.com/fstab/grok_exporter:/root/go/src/github.com/fstab/grok_exporter ubuntu:16.04 rm -rf /root/go/src/github.com/fstab/grok_exporter/dist
 mkdir dist
 
-export VERSION=0.2.2
+export VERSION=0.2.2.3
 export ARCH=linux-amd64
 export VERSION_FLAGS="\
         -X github.com/fstab/grok_exporter/exporter.Version=$VERSION                          \

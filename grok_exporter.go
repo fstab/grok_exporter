@@ -21,11 +21,9 @@ import (
 	"github.com/fstab/grok_exporter/config/v2"
 	"github.com/fstab/grok_exporter/exporter"
 	"github.com/fstab/grok_exporter/tailer"
-	"github.com/optiopay/kafka"
 	"github.com/prometheus/client_golang/prometheus"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -249,13 +247,7 @@ func startTailer(cfg *v2.Config) (tailer.Tailer, error) {
 	case cfg.Input.Type == "stdin":
 		tail = tailer.RunStdinTailer()
 	case cfg.Input.Type == "kafka":
-		conf := kafka.NewBrokerConf("grok-exporter-client")
-		broker, err := kafka.Dial(strings.Split(cfg.Input.Brokers, ","), conf)
-		if err != nil {
-			//	log.Fatalf("cannot connect to kafka cluster: %s", err)
-			fmt.Printf("cannot connect to kafka cluster: %s/n", err)
-		}
-		tail = tailer.RunKafkaTailer(broker, cfg)
+		tail = tailer.RunKafkaTailer(cfg)
 	default:
 		return nil, fmt.Errorf("Config error: Input type '%v' unknown.", cfg.Input.Type)
 	}

@@ -38,6 +38,7 @@ metrics:
           label_b: '{{.some_grok_field_b}}'
 server:
     protocol: https
+    host: 0.0.0.0
     port: 1111
 `
 
@@ -77,6 +78,7 @@ metrics:
       buckets: $BUCKETS
 server:
     protocol: http
+    host: 0.0.0.0
     port: 9144
 `
 
@@ -96,6 +98,7 @@ metrics:
       quantiles: $QUANTILES
 server:
     protocol: http
+    host: 0.0.0.0
     port: 9144
 `
 

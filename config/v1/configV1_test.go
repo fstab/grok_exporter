@@ -65,6 +65,7 @@ metrics:
             prometheus_label: user
 server:
     protocol: https
+    host: 0.0.0.0
     port: 1111
 `
 
@@ -111,6 +112,7 @@ metrics:
         user: '{{.user}}'
 server:
     protocol: https
+    host: 0.0.0.0
     port: 1111
 `
 

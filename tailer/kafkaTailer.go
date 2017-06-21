@@ -25,23 +25,28 @@ func (t *kafkaTailer) Close() {
 	// broker.Close()
 }
 
-func RunConsumer(broker kafka.Client, lineChan chan string, errorChan chan error, topic string, cfg *v2.Config) {
-	var data map[string]interface{}
-	var partition int32 = 0
+func RunConsumer(broker kafka.Client, lineChan chan string, errorChan chan error, topic string, partitions int32, cfg *v2.Config) {
+	fetchers := []kafka.Consumer{}
 	log.Printf("Creating consumer for topic %s", topic)
-	conf := kafka.NewConsumerConf(topic, partition)
-	conf.StartOffset = kafka.StartOffsetNewest
-	consumer, err := broker.Consumer(conf)
-	if err != nil {
-		log.Fatalf("cannot create kafka consumer for %s:%d: %s", topic, partition, err)
-		errorChan <- err
+	for partition := int32(0); partition < partitions; partition++ {
+		conf := kafka.NewConsumerConf(topic, partition)
+		conf.StartOffset = kafka.StartOffsetNewest
+		consumer, err := broker.Consumer(conf)
+		if err != nil {
+			log.Fatalf("cannot create kafka consumer for %s:%d: %s", topic, partition, err)
+			errorChan <- err
+		}
+		fetchers = append(fetchers, consumer)
 	}
+	mx := kafka.Merge(fetchers...)
+	defer mx.Close()
 	log.Printf("Consumer for topic %s is ready", topic)
 	for {
-		msg, err := consumer.Consume()
+		var data map[string]interface{}
+		msg, err := mx.Consume()
 		if err != nil {
-			if err != kafka.ErrNoData {
-				log.Printf("cannot consume %q topic message: %s", topic, err)
+			if err != kafka.ErrMxClosed {
+				log.Printf("All consumers stopped. Cannot consume %q topic message: %s", topic, err)
 			}
 			errorChan <- err
 			return
@@ -54,7 +59,9 @@ func RunConsumer(broker kafka.Client, lineChan chan string, errorChan chan error
 				log.Fatalf("Cannot unmarshal JSON message %s because of the error: %s", string(msg.Value), err)
 			}
 			for _, field := range strings.Split(cfg.Input.Jsonfields, ",") {
-				s = append(s, data[field].(string))
+				if data[field] != nil {
+					s = append(s, data[field].(string))
+				}
 			}
 		}
 		line := strings.Join(s, " ")
@@ -65,12 +72,23 @@ func RunConsumer(broker kafka.Client, lineChan chan string, errorChan chan error
 	}
 }
 
-func RunKafkaTailer(broker kafka.Client, cfg *v2.Config) Tailer {
+func RunKafkaTailer(cfg *v2.Config) Tailer {
 	lineChan := make(chan string)
 	errorChan := make(chan error)
 	topics := strings.Split(cfg.Input.Topics, ",")
+	brokerConf := kafka.NewBrokerConf("grok-exporter-client")
+	broker, err := kafka.Dial(strings.Split(cfg.Input.Brokers, ","), brokerConf)
+	if err != nil {
+		log.Fatalf("cannot connect to kafka cluster: %s", err)
+		errorChan <- err
+	}
 	for _, topic := range topics {
-		go RunConsumer(broker, lineChan, errorChan, topic, cfg)
+		partitions, err := broker.PartitionCount(topic)
+		if err != nil {
+			log.Fatalf("Unable to fetch partitions from broker for topis %s\n", topic)
+			errorChan <- err
+		}
+		go RunConsumer(broker, lineChan, errorChan, topic, partitions, cfg)
 	}
 	return &kafkaTailer{
 		lines:  lineChan,
