@@ -108,7 +108,7 @@ func expect(t *testing.T, regex *OnigurumaRegexp, config string, isErrorExpected
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = VerifyFieldNames(cfg, regex)
+	err = VerifyFieldNames(cfg, regex, nil)
 	if isErrorExpected && err == nil {
 		t.Fatal("Expected error, but got no error.")
 	}

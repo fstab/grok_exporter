@@ -22,113 +22,389 @@ import (
 	"strconv"
 )
 
+type Match struct {
+	Labels map[string]string
+	Value  float64
+}
+
 type Metric interface {
 	Name() string
 	Collector() prometheus.Collector
 
-	// Returns true if the line matched, and false if the line didn't match.
-	Process(line string) (bool, error)
+	// Returns the match if the line matched, and nil if the line didn't match.
+	ProcessMatch(line string) (*Match, error)
+	// Returns the match if the delete pattern matched, nil otherwise.
+	ProcessDelete(line string) (*Match, error)
 }
 
-// Represents a Prometheus Counter
-type incMetric struct {
-	name      string
-	regex     *OnigurumaRegexp
-	labels    []templates.Template
-	collector prometheus.Collector
-	incFunc   func(m *OnigurumaMatchResult) error
-}
-
-// Represents a Prometheus Gauge, Histogram, or Summary
-type observeMetric struct {
+// Common values for incMetric and observeMetric
+type metric struct {
 	name        string
 	regex       *OnigurumaRegexp
-	value       templates.Template
-	labels      []templates.Template
-	collector   prometheus.Collector
-	observeFunc func(m *OnigurumaMatchResult, val float64) error
+	deleteRegex *OnigurumaRegexp
 }
 
-func NewCounterMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp) Metric {
+type observeMetric struct {
+	metric
+	valueTemplate templates.Template
+}
+
+type metricWithLabels struct {
+	metric
+	labelTemplates       []templates.Template
+	deleteLabelTemplates []templates.Template
+	labelValueTracker    LabelValueTracker
+}
+
+type observeMetricWithLabels struct {
+	metricWithLabels
+	valueTemplate templates.Template
+}
+
+type counterMetric struct {
+	metric
+	counter prometheus.Counter
+}
+
+type counterVecMetric struct {
+	metricWithLabels
+	counterVec *prometheus.CounterVec
+}
+
+type gaugeMetric struct {
+	observeMetric
+	cumulative bool
+	gauge      prometheus.Gauge
+}
+
+type gaugeVecMetric struct {
+	observeMetricWithLabels
+	cumulative bool
+	gaugeVec   *prometheus.GaugeVec
+}
+
+type histogramMetric struct {
+	observeMetric
+	histogram prometheus.Histogram
+}
+
+type histogramVecMetric struct {
+	observeMetricWithLabels
+	histogramVec *prometheus.HistogramVec
+}
+
+type summaryMetric struct {
+	observeMetric
+	summary prometheus.Summary
+}
+
+type summaryVecMetric struct {
+	observeMetricWithLabels
+	summaryVec *prometheus.SummaryVec
+}
+
+type deleterMetric interface {
+	Delete(prometheus.Labels) bool
+}
+
+func (m *metric) Name() string {
+	return m.name
+}
+
+func (m *counterMetric) Collector() prometheus.Collector {
+	return m.counter
+}
+
+func (m *counterVecMetric) Collector() prometheus.Collector {
+	return m.counterVec
+}
+
+func (m *gaugeMetric) Collector() prometheus.Collector {
+	return m.gauge
+}
+
+func (m *gaugeVecMetric) Collector() prometheus.Collector {
+	return m.gaugeVec
+}
+
+func (m *histogramMetric) Collector() prometheus.Collector {
+	return m.histogram
+}
+
+func (m *histogramVecMetric) Collector() prometheus.Collector {
+	return m.histogramVec
+}
+
+func (m *summaryMetric) Collector() prometheus.Collector {
+	return m.summary
+}
+
+func (m *summaryVecMetric) Collector() prometheus.Collector {
+	return m.summaryVec
+}
+
+func (m *metric) processMatch(line string, cb func()) (*Match, error) {
+	matchResult, err := m.regex.Match(line)
+	if err != nil {
+		return nil, fmt.Errorf("error processing metric %v: %v", m.Name(), err.Error())
+	}
+	defer matchResult.Free()
+	if matchResult.IsMatch() {
+		cb()
+		return &Match{
+			Value: 1.0,
+		}, nil
+	} else {
+		return nil, nil
+	}
+}
+
+func (m *observeMetric) processMatch(line string, cb func(value float64)) (*Match, error) {
+	matchResult, err := m.regex.Match(line)
+	if err != nil {
+		return nil, fmt.Errorf("error processing metric %v: %v", m.Name(), err.Error())
+	}
+	defer matchResult.Free()
+	if matchResult.IsMatch() {
+		floatVal, err := floatValue(m.Name(), matchResult, m.valueTemplate)
+		if err != nil {
+			return nil, err
+		}
+		cb(floatVal)
+		return &Match{
+			Value: floatVal,
+		}, nil
+	} else {
+		return nil, nil
+	}
+}
+
+func (m *metricWithLabels) processMatch(line string, cb func(labels map[string]string)) (*Match, error) {
+	matchResult, err := m.regex.Match(line)
+	if err != nil {
+		return nil, fmt.Errorf("error while processing metric %v: %v", m.Name(), err.Error())
+	}
+	defer matchResult.Free()
+	if matchResult.IsMatch() {
+		labels, err := labelValues(m.Name(), matchResult, m.labelTemplates)
+		if err != nil {
+			return nil, err
+		}
+		m.labelValueTracker.Observe(labels)
+		cb(labels)
+		return &Match{
+			Value:  1.0,
+			Labels: labels,
+		}, nil
+	} else {
+		return nil, nil
+	}
+}
+
+func (m *observeMetricWithLabels) processMatch(line string, cb func(value float64, labels map[string]string)) (*Match, error) {
+	matchResult, err := m.regex.Match(line)
+	if err != nil {
+		return nil, fmt.Errorf("error processing metric %v: %v", m.Name(), err.Error())
+	}
+	defer matchResult.Free()
+	if matchResult.IsMatch() {
+		floatVal, err := floatValue(m.Name(), matchResult, m.valueTemplate)
+		if err != nil {
+			return nil, err
+		}
+		labels, err := labelValues(m.Name(), matchResult, m.labelTemplates)
+		if err != nil {
+			return nil, err
+		}
+		m.labelValueTracker.Observe(labels)
+		cb(floatVal, labels)
+		return &Match{
+			Value:  floatVal,
+			Labels: labels,
+		}, nil
+	} else {
+		return nil, nil
+	}
+}
+
+func (m *metric) ProcessDelete(line string) (*Match, error) {
+	if m.deleteRegex == nil {
+		return nil, nil
+	}
+	return nil, fmt.Errorf("error processing metric %v: delete_match is currently only supported for metrics with labels.", m.Name())
+}
+
+func (m *metricWithLabels) processDelete(line string, vec deleterMetric) (*Match, error) {
+	if m.deleteRegex == nil {
+		return nil, nil
+	}
+	matchResult, err := m.deleteRegex.Match(line)
+	if err != nil {
+		return nil, fmt.Errorf("error processing metric %v: %v", m.name, err.Error())
+	}
+	defer matchResult.Free()
+	if matchResult.IsMatch() {
+		deleteLabels, err := labelValues(m.Name(), matchResult, m.deleteLabelTemplates)
+		if err != nil {
+			return nil, err
+		}
+		matchingLabels, err := m.labelValueTracker.Delete(deleteLabels)
+		if err != nil {
+			return nil, err
+		}
+		for _, matchingLabel := range matchingLabels {
+			vec.Delete(matchingLabel)
+		}
+		return &Match{
+			Labels: deleteLabels,
+		}, nil
+	} else {
+		return nil, nil
+	}
+}
+
+func (m *counterMetric) ProcessMatch(line string) (*Match, error) {
+	return m.processMatch(line, func() {
+		m.counter.Inc()
+	})
+}
+
+func (m *counterVecMetric) ProcessMatch(line string) (*Match, error) {
+	return m.processMatch(line, func(labels map[string]string) {
+		m.counterVec.With(labels).Inc()
+	})
+}
+
+func (m *counterVecMetric) ProcessDelete(line string) (*Match, error) {
+	return m.processDelete(line, m.counterVec)
+}
+
+func (m *gaugeMetric) ProcessMatch(line string) (*Match, error) {
+	return m.processMatch(line, func(value float64) {
+		if m.cumulative {
+			m.gauge.Add(value)
+		} else {
+			m.gauge.Set(value)
+		}
+	})
+}
+
+func (m *gaugeVecMetric) ProcessMatch(line string) (*Match, error) {
+	return m.processMatch(line, func(value float64, labels map[string]string) {
+		if m.cumulative {
+			m.gaugeVec.With(labels).Add(value)
+		} else {
+			m.gaugeVec.With(labels).Set(value)
+		}
+	})
+}
+
+func (m *gaugeVecMetric) ProcessDelete(line string) (*Match, error) {
+	return m.processDelete(line, m.gaugeVec)
+}
+
+func (m *histogramMetric) ProcessMatch(line string) (*Match, error) {
+	return m.processMatch(line, func(value float64) {
+		m.histogram.Observe(value)
+	})
+}
+
+func (m *histogramVecMetric) ProcessMatch(line string) (*Match, error) {
+	return m.processMatch(line, func(value float64, labels map[string]string) {
+		m.histogramVec.With(labels).Observe(value)
+	})
+}
+
+func (m *histogramVecMetric) ProcessDelete(line string) (*Match, error) {
+	return m.processDelete(line, m.histogramVec)
+}
+
+func (m *summaryMetric) ProcessMatch(line string) (*Match, error) {
+	return m.processMatch(line, func(value float64) {
+		m.summary.Observe(value)
+	})
+}
+
+func (m *summaryVecMetric) ProcessMatch(line string) (*Match, error) {
+	return m.processMatch(line, func(value float64, labels map[string]string) {
+		m.summaryVec.With(labels).Observe(value)
+	})
+}
+
+func (m *summaryVecMetric) ProcessDelete(line string) (*Match, error) {
+	return m.processDelete(line, m.summaryVec)
+}
+
+func newMetric(cfg *v2.MetricConfig, regex, deleteRegex *OnigurumaRegexp) metric {
+	return metric{
+		name:        cfg.Name,
+		regex:       regex,
+		deleteRegex: deleteRegex,
+	}
+}
+
+func newMetricWithLabels(cfg *v2.MetricConfig, regex, deleteRegex *OnigurumaRegexp) metricWithLabels {
+	return metricWithLabels{
+		metric:               newMetric(cfg, regex, deleteRegex),
+		labelTemplates:       cfg.LabelTemplates,
+		deleteLabelTemplates: cfg.DeleteLabelTemplates,
+		labelValueTracker:    NewLabelValueTracker(prometheusLabels(cfg.LabelTemplates)),
+	}
+}
+
+func newObserveMetric(cfg *v2.MetricConfig, regex, deleteRegex *OnigurumaRegexp) observeMetric {
+	return observeMetric{
+		metric:        newMetric(cfg, regex, deleteRegex),
+		valueTemplate: cfg.ValueTemplate,
+	}
+}
+
+func newObserveMetricWithLabels(cfg *v2.MetricConfig, regex, deleteRegex *OnigurumaRegexp) observeMetricWithLabels {
+	return observeMetricWithLabels{
+		metricWithLabels: newMetricWithLabels(cfg, regex, deleteRegex),
+		valueTemplate:    cfg.ValueTemplate,
+	}
+}
+
+func NewCounterMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp, deleteRegex *OnigurumaRegexp) Metric {
 	counterOpts := prometheus.CounterOpts{
 		Name: cfg.Name,
 		Help: cfg.Help,
 	}
-	if len(cfg.Labels) == 0 { // regular counter
-		counter := prometheus.NewCounter(counterOpts)
-		return &incMetric{
-			name:      cfg.Name,
-			regex:     regex,
-			collector: counter,
-			incFunc: func(_ *OnigurumaMatchResult) error {
-				counter.Inc()
-				return nil
-			},
+	if len(cfg.Labels) == 0 {
+		return &counterMetric{
+			metric:  newMetric(cfg, regex, deleteRegex),
+			counter: prometheus.NewCounter(counterOpts),
 		}
-	} else { // counterVec
-		counterVec := prometheus.NewCounterVec(counterOpts, prometheusLabels(cfg.LabelTemplates))
-		result := &incMetric{
-			name:      cfg.Name,
-			regex:     regex,
-			labels:    cfg.LabelTemplates,
-			collector: counterVec,
-			incFunc: func(m *OnigurumaMatchResult) error {
-				vals, err := labelValues(m, cfg.LabelTemplates)
-				if err == nil {
-					counterVec.WithLabelValues(vals...).Inc()
-				}
-				return err
-			},
+	} else {
+		return &counterVecMetric{
+			metricWithLabels: newMetricWithLabels(cfg, regex, deleteRegex),
+			counterVec:       prometheus.NewCounterVec(counterOpts, prometheusLabels(cfg.LabelTemplates)),
 		}
-		return result
 	}
 }
 
-func NewGaugeMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp) Metric {
+func NewGaugeMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp, deleteRegex *OnigurumaRegexp) Metric {
 	gaugeOpts := prometheus.GaugeOpts{
 		Name: cfg.Name,
 		Help: cfg.Help,
 	}
-	if len(cfg.Labels) == 0 { // regular gauge
-		gauge := prometheus.NewGauge(gaugeOpts)
-		return &observeMetric{
-			name:      cfg.Name,
-			regex:     regex,
-			value:     cfg.ValueTemplate,
-			collector: gauge,
-			observeFunc: func(_ *OnigurumaMatchResult, val float64) error {
-				if cfg.Cumulative {
-					gauge.Add(val)
-				} else {
-					gauge.Set(val)
-				}
-				return nil
-			},
+	if len(cfg.Labels) == 0 {
+		return &gaugeMetric{
+			observeMetric: newObserveMetric(cfg, regex, deleteRegex),
+			cumulative:    cfg.Cumulative,
+			gauge:         prometheus.NewGauge(gaugeOpts),
 		}
-	} else { // gaugeVec
-		gaugeVec := prometheus.NewGaugeVec(gaugeOpts, prometheusLabels(cfg.LabelTemplates))
-		return &observeMetric{
-			name:      cfg.Name,
-			regex:     regex,
-			value:     cfg.ValueTemplate,
-			collector: gaugeVec,
-			labels:    cfg.LabelTemplates,
-			observeFunc: func(m *OnigurumaMatchResult, val float64) error {
-				vals, err := labelValues(m, cfg.LabelTemplates)
-				if err == nil {
-					if cfg.Cumulative {
-						gaugeVec.WithLabelValues(vals...).Add(val)
-					} else {
-						gaugeVec.WithLabelValues(vals...).Set(val)
-					}
-				}
-				return err
-			},
+	} else {
+		return &gaugeVecMetric{
+			observeMetricWithLabels: newObserveMetricWithLabels(cfg, regex, deleteRegex),
+			cumulative:              cfg.Cumulative,
+			gaugeVec:                prometheus.NewGaugeVec(gaugeOpts, prometheusLabels(cfg.LabelTemplates)),
 		}
 	}
 }
 
-func NewHistogramMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp) Metric {
+func NewHistogramMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp, deleteRegex *OnigurumaRegexp) Metric {
 	histogramOpts := prometheus.HistogramOpts{
 		Name: cfg.Name,
 		Help: cfg.Help,
@@ -136,38 +412,20 @@ func NewHistogramMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp) Metric {
 	if len(cfg.Buckets) > 0 {
 		histogramOpts.Buckets = cfg.Buckets
 	}
-	if len(cfg.Labels) == 0 { // regular histogram
-		histogram := prometheus.NewHistogram(histogramOpts)
-		return &observeMetric{
-			name:      cfg.Name,
-			regex:     regex,
-			value:     cfg.ValueTemplate,
-			collector: histogram,
-			observeFunc: func(_ *OnigurumaMatchResult, val float64) error {
-				histogram.Observe(val)
-				return nil
-			},
+	if len(cfg.Labels) == 0 {
+		return &histogramMetric{
+			observeMetric: newObserveMetric(cfg, regex, deleteRegex),
+			histogram:     prometheus.NewHistogram(histogramOpts),
 		}
-	} else { // histogramVec
-		histogramVec := prometheus.NewHistogramVec(histogramOpts, prometheusLabels(cfg.LabelTemplates))
-		return &observeMetric{
-			name:      cfg.Name,
-			regex:     regex,
-			value:     cfg.ValueTemplate,
-			collector: histogramVec,
-			labels:    cfg.LabelTemplates,
-			observeFunc: func(m *OnigurumaMatchResult, val float64) error {
-				vals, err := labelValues(m, cfg.LabelTemplates)
-				if err == nil {
-					histogramVec.WithLabelValues(vals...).Observe(val)
-				}
-				return err
-			},
+	} else {
+		return &histogramVecMetric{
+			observeMetricWithLabels: newObserveMetricWithLabels(cfg, regex, deleteRegex),
+			histogramVec:            prometheus.NewHistogramVec(histogramOpts, prometheusLabels(cfg.LabelTemplates)),
 		}
 	}
 }
 
-func NewSummaryMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp) Metric {
+func NewSummaryMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp, deleteRegex *OnigurumaRegexp) Metric {
 	summaryOpts := prometheus.SummaryOpts{
 		Name: cfg.Name,
 		Help: cfg.Help,
@@ -175,101 +433,41 @@ func NewSummaryMetric(cfg *v2.MetricConfig, regex *OnigurumaRegexp) Metric {
 	if len(cfg.Quantiles) > 0 {
 		summaryOpts.Objectives = cfg.Quantiles
 	}
-	if len(cfg.Labels) == 0 { // regular summary
-		summary := prometheus.NewSummary(summaryOpts)
-		return &observeMetric{
-			name:      cfg.Name,
-			regex:     regex,
-			value:     cfg.ValueTemplate,
-			collector: summary,
-			observeFunc: func(_ *OnigurumaMatchResult, val float64) error {
-				summary.Observe(val)
-				return nil
-			},
+	if len(cfg.Labels) == 0 {
+		return &summaryMetric{
+			observeMetric: newObserveMetric(cfg, regex, deleteRegex),
+			summary:       prometheus.NewSummary(summaryOpts),
 		}
-	} else { // summaryVec
-		summaryVec := prometheus.NewSummaryVec(summaryOpts, prometheusLabels(cfg.LabelTemplates))
-		return &observeMetric{
-			name:      cfg.Name,
-			regex:     regex,
-			value:     cfg.ValueTemplate,
-			collector: summaryVec,
-			labels:    cfg.LabelTemplates,
-			observeFunc: func(m *OnigurumaMatchResult, val float64) error {
-				vals, err := labelValues(m, cfg.LabelTemplates)
-				if err == nil {
-					summaryVec.WithLabelValues(vals...).Observe(val)
-				}
-				return err
-			},
-		}
-	}
-}
-
-// Return: true if the line matched, false if it didn't match.
-func (m *incMetric) Process(line string) (bool, error) {
-	matchResult, err := m.regex.Match(line)
-	if err != nil {
-		return false, fmt.Errorf("error while processing metric %v: %v", m.name, err.Error())
-	}
-	defer matchResult.Free()
-	if matchResult.IsMatch() {
-		err = m.incFunc(matchResult)
-		return true, err
 	} else {
-		return false, nil
-	}
-}
-
-// Return: true if the line matched, false if it didn't match.
-func (m *observeMetric) Process(line string) (bool, error) {
-	matchResult, err := m.regex.Match(line)
-	if err != nil {
-		return false, fmt.Errorf("error while processing metric %v: %v", m.name, err.Error())
-	}
-	defer matchResult.Free()
-	if matchResult.IsMatch() {
-		stringVal, err := evalTemplate(matchResult, m.value)
-		if err != nil {
-			return true, fmt.Errorf("error while processing metric %v: %v", m.name, err.Error())
+		return &summaryVecMetric{
+			observeMetricWithLabels: newObserveMetricWithLabels(cfg, regex, deleteRegex),
+			summaryVec:              prometheus.NewSummaryVec(summaryOpts, prometheusLabels(cfg.LabelTemplates)),
 		}
-		floatVal, err := strconv.ParseFloat(stringVal, 64)
-		if err != nil {
-			return true, fmt.Errorf("error while processing metric %v: value '%v' matches '%v', which is not a valid number.", m.name, m.value, stringVal)
-		}
-		err = m.observeFunc(matchResult, floatVal)
-		return true, err
-	} else {
-		return false, nil
 	}
 }
 
-func (m *incMetric) Name() string {
-	return m.name
-}
-
-func (m *observeMetric) Name() string {
-	return m.name
-}
-
-func (m *incMetric) Collector() prometheus.Collector {
-	return m.collector
-}
-
-func (m *observeMetric) Collector() prometheus.Collector {
-	return m.collector
-}
-
-func labelValues(matchResult *OnigurumaMatchResult, templates []templates.Template) ([]string, error) {
-	result := make([]string, 0, len(templates))
+func labelValues(metricName string, matchResult *OnigurumaMatchResult, templates []templates.Template) (map[string]string, error) {
+	result := make(map[string]string, len(templates))
 	for _, t := range templates {
 		value, err := evalTemplate(matchResult, t)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("error processing metric %v: %v", metricName, err.Error())
 		}
-		result = append(result, value)
+		result[t.Name()] = value
 	}
 	return result, nil
+}
+
+func floatValue(metricName string, matchResult *OnigurumaMatchResult, valueTemplate templates.Template) (float64, error) {
+	stringVal, err := evalTemplate(matchResult, valueTemplate)
+	if err != nil {
+		return 0, fmt.Errorf("error processing metric %v: %v", metricName, err.Error())
+	}
+	floatVal, err := strconv.ParseFloat(stringVal, 64)
+	if err != nil {
+		return 0, fmt.Errorf("error processing metric %v: value matches '%v', which is not a valid number.", metricName, stringVal)
+	}
+	return floatVal, nil
 }
 
 func evalTemplate(matchResult *OnigurumaMatchResult, t templates.Template) (string, error) {

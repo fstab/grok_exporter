@@ -160,6 +160,20 @@ The `match` stores whatever matches the `%{USER}` pattern under the Grok field n
 
 This simple example shows a one-to-one mapping of a Grok field to a Prometheus label. However, the label definition is pretty flexible: You can combine multiple Grok fields in one label, and you can define constant labels that don't use Grok fields at all.
 
+As of version 0.2.2, `grok_exporter` will support `delete_match` and `delete_labels` configuration:
+
+```yaml
+delete_match: '%{DATE} %{TIME} %{USER:user} logged out'
+delete_labels:
+    user: '{{.user}}'
+```
+
+Without `delete_match` and `delete_labels`, all labels are kept forever (until `grok_exporter` is restarted). However, it might sometimes be desirable to explicitly remove metrics with specific labels. For example, if a service shuts down, it might be desirable to remove metrics labeled with that service name.
+
+Using `delete_match` you can define a regular expression that will trigger removal of metrics. For example, `delete_match` could match a shutdown message in a log file.
+
+Using `delete_labels` you can restrict which labels are deleted if a line matches `delete_match`. If no `delete_labels` are specified, all labels for the given metric are deleted. If `delete_labels` are specified, only those metrics are deleted where the label values are equal to the delete label values.
+
 ### Counter Metric Type
 
 The [counter metric] counts the number of matching log lines.

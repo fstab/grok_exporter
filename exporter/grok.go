@@ -17,6 +17,7 @@ package exporter
 import (
 	"fmt"
 	"github.com/fstab/grok_exporter/config/v2"
+	"github.com/fstab/grok_exporter/templates"
 	"regexp"
 	"strings"
 )
@@ -34,18 +35,33 @@ func Compile(pattern string, patterns *Patterns, libonig *OnigurumaLib) (*Onigur
 	return result, nil
 }
 
-func VerifyFieldNames(m *v2.MetricConfig, regex *OnigurumaRegexp) error {
+func VerifyFieldNames(m *v2.MetricConfig, regex, deleteRegex *OnigurumaRegexp) error {
 	for _, template := range m.LabelTemplates {
-		for _, grokFieldName := range template.ReferencedGrokFields() {
-			if !regex.HasCaptureGroup(grokFieldName) {
-				return fmt.Errorf("%v: error in label %v: grok field %v not found in match pattern", m.Name, template.Name(), grokFieldName)
-			}
+		err := verifyFieldName(m.Name, template, regex)
+		if err != nil {
+			return err
 		}
 	}
-	if len(m.Value) > 0 {
-		for _, grokFieldName := range m.ValueTemplate.ReferencedGrokFields() {
+	for _, template := range m.DeleteLabelTemplates {
+		err := verifyFieldName(m.Name, template, deleteRegex)
+		if err != nil {
+			return err
+		}
+	}
+	if m.ValueTemplate != nil {
+		err := verifyFieldName(m.Name, m.ValueTemplate, regex)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func verifyFieldName(metricName string, template templates.Template, regex *OnigurumaRegexp) error {
+	if template != nil {
+		for _, grokFieldName := range template.ReferencedGrokFields() {
 			if !regex.HasCaptureGroup(grokFieldName) {
-				return fmt.Errorf("%v: grok field %v not found in match pattern", m.Name, grokFieldName)
+				return fmt.Errorf("%v: grok field %v not found in match pattern", metricName, grokFieldName)
 			}
 		}
 	}

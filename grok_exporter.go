@@ -81,17 +81,24 @@ func main() {
 			matched := false
 			for _, metric := range metrics {
 				start := time.Now()
-				match, err := metric.Process(line)
+				match, err := metric.ProcessMatch(line)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "WARNING: Skipping log line: %v\n", err.Error())
 					fmt.Fprintf(os.Stderr, "%v\n", line)
 					nErrorsByMetric.WithLabelValues(metric.Name()).Inc()
 				}
-				if match {
+				if match != nil {
 					nMatchesByMetric.WithLabelValues(metric.Name()).Inc()
 					procTimeMicrosecondsByMetric.WithLabelValues(metric.Name()).Add(float64(time.Since(start).Nanoseconds() / int64(1000)))
 					matched = true
 				}
+				_, err = metric.ProcessDelete(line)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "WARNING: Skipping log line: %v\n", err.Error())
+					fmt.Fprintf(os.Stderr, "%v\n", line)
+					nErrorsByMetric.WithLabelValues(metric.Name()).Inc()
+				}
+				// TODO: create metric to monitor number of matching delete_patterns
 			}
 			if matched {
 				nLinesTotal.WithLabelValues(number_of_lines_matched_label).Inc()
@@ -153,23 +160,33 @@ func initPatterns(cfg *v2.Config) (*exporter.Patterns, error) {
 func createMetrics(cfg *v2.Config, patterns *exporter.Patterns, libonig *exporter.OnigurumaLib) ([]exporter.Metric, error) {
 	result := make([]exporter.Metric, 0, len(*cfg.Metrics))
 	for _, m := range *cfg.Metrics {
-		regex, err := exporter.Compile(m.Match, patterns, libonig)
+		var (
+			regex, deleteRegex *exporter.OnigurumaRegexp
+			err                error
+		)
+		regex, err = exporter.Compile(m.Match, patterns, libonig)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
 		}
-		err = exporter.VerifyFieldNames(m, regex)
+		if len(m.DeleteMatch) > 0 {
+			deleteRegex, err = exporter.Compile(m.DeleteMatch, patterns, libonig)
+			if err != nil {
+				return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
+			}
+		}
+		err = exporter.VerifyFieldNames(m, regex, deleteRegex)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
 		}
 		switch m.Type {
 		case "counter":
-			result = append(result, exporter.NewCounterMetric(m, regex))
+			result = append(result, exporter.NewCounterMetric(m, regex, deleteRegex))
 		case "gauge":
-			result = append(result, exporter.NewGaugeMetric(m, regex))
+			result = append(result, exporter.NewGaugeMetric(m, regex, deleteRegex))
 		case "histogram":
-			result = append(result, exporter.NewHistogramMetric(m, regex))
+			result = append(result, exporter.NewHistogramMetric(m, regex, deleteRegex))
 		case "summary":
-			result = append(result, exporter.NewSummaryMetric(m, regex))
+			result = append(result, exporter.NewSummaryMetric(m, regex, deleteRegex))
 		default:
 			return nil, fmt.Errorf("Failed to initialize metrics: Metric type %v is not supported.", m.Type)
 		}

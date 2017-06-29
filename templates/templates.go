@@ -59,7 +59,7 @@ func (t *tmplate) Execute(grokValues map[string]string) (string, error) {
 	var buf bytes.Buffer
 	err := t.template.Execute(&buf, grokValues)
 	if err != nil {
-		return "", fmt.Errorf("unexpected error while evaluating %v template: %v", t.Name(), err.Error())
+		return "", fmt.Errorf("unexpected error while evaluating template %v: %v", t.Name(), err.Error())
 	}
 	return buf.String(), nil
 }

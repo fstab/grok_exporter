@@ -99,6 +99,29 @@ server:
     port: 9144
 `
 
+const delete_labels_config = `
+global:
+    config_version: 2
+input:
+    type: stdin
+grok:
+    patterns_dir: xxx
+metrics:
+    - type: counter
+      name: test_count_total
+      help: Dummy help message.
+      match: Some text here, then a %{DATE}.
+      labels:
+          label_a: '{{.some_grok_field_a}}'
+          label_b: '{{.some_grok_field_b}}'
+      delete_match: Some shutdown message
+      delete_labels:
+          label_a: '{{.some_grok_field_a}}'
+server:
+    protocol: http
+    port: 9144
+`
+
 func TestCounterValidConfig(t *testing.T) {
 	loadOrFail(t, counter_config)
 }
@@ -177,6 +200,20 @@ func TestValueInvalidTemplate(t *testing.T) {
 	_, err := Unmarshal([]byte(invalidCfg))
 	if err == nil {
 		t.Fatal("Expected error, because using {{val}} instead of {{.val}}.")
+	}
+}
+
+func TestDeleteLabelConfig(t *testing.T) {
+	cfg := loadOrFail(t, delete_labels_config)
+	if len(*cfg.Metrics) != 1 {
+		t.Fatalf("Expected 1 metric, but found %v.", len(*cfg.Metrics))
+	}
+	metric := (*cfg.Metrics)[0]
+	if len(metric.LabelTemplates) != 2 {
+		t.Fatalf("Expected 2 label templates, but found %v.", len(metric.LabelTemplates))
+	}
+	if len(metric.DeleteLabelTemplates) != 1 {
+		t.Fatalf("Expected 1 delete label template, but found %v.", len(metric.DeleteLabelTemplates))
 	}
 }
 
