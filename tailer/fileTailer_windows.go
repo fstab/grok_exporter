@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"golang.org/x/exp/winfsnotify"
+	"time"
 )
 
 func initWatcher(abspath string, _ *autoClosingFile) (*winfsnotify.Watcher, error) {
@@ -124,7 +125,7 @@ type autoClosingFile struct {
 }
 
 func open(path string) (*autoClosingFile, error) {
-	file, err := os.Open(path)
+	file, err := openWithBackoff(path)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +137,7 @@ func open(path string) (*autoClosingFile, error) {
 }
 
 func (f *autoClosingFile) Seek(offset int64, whence int) (int64, error) {
-	file, err := os.Open(f.path)
+	file, err := openWithBackoff(f.path)
 	if err != nil {
 		return 0, err
 	}
@@ -150,7 +151,7 @@ func (f *autoClosingFile) Seek(offset int64, whence int) (int64, error) {
 }
 
 func (f *autoClosingFile) Read(b []byte) (int, error) {
-	file, err := os.Open(f.path)
+	file, err := openWithBackoff(f.path)
 	if err != nil {
 		return 0, err
 	}
@@ -176,8 +177,26 @@ func (f *autoClosingFile) Close() error {
 	return nil
 }
 
+// If the file is currently opened by a logger or virus scanner, Open() will fail,
+// because on Windows a file cannot be opened by two processes.
+// Back off and try again, only if this error persists about 1 second give up.
+func openWithBackoff(name string) (*os.File, error) {
+	var (
+		file *os.File
+		err  error
+	)
+	for i := 1; i <= 3; i++ {
+		file, err = os.Open(name)
+		if err == nil {
+			return file, nil
+		}
+		time.Sleep(time.Duration(i*125) * time.Millisecond)
+	}
+	return nil, err
+}
+
 func checkTruncated(f *autoClosingFile) (bool, error) {
-	file, err := os.Open(f.path)
+	file, err := openWithBackoff(f.path)
 	if err != nil {
 		return false, err
 	}
