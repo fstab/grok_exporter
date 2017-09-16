@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"golang.org/x/exp/winfsnotify"
+	"syscall"
 	"time"
 )
 
@@ -119,6 +120,7 @@ func norm(path string) string {
 
 // On Windows, logrotate will not be able to delete or move the logfile if grok_exporter keeps the file open.
 // The AutoClosingFile has an API similar to os.File, but the underlying file is closed after each operation.
+// TODO: As we use the FILE_SHARE_DELETE flag now, is this still true or can we keep the file open?
 type autoClosingFile struct {
 	path       string
 	currentPos int64
@@ -177,22 +179,39 @@ func (f *autoClosingFile) Close() error {
 	return nil
 }
 
-// If the file is currently opened by a logger or virus scanner, Open() will fail,
-// because on Windows a file cannot be opened by two processes.
-// Back off and try again, only if this error persists about 1 second give up.
-func openWithBackoff(name string) (*os.File, error) {
+// The semantics of openWithBackoff() function is similar to os.Open().
+// If the file is currently locked by a logger or virus scanner,
+// CreateFile() might fail (the logfile is being used by another program).
+// We don't give up directly in that case, but back off and try again.
+// Only if this error persists about 1 second we give up.
+func openWithBackoff(fileName string) (*os.File, error) {
 	var (
-		file *os.File
-		err  error
+		fileNamePtr *uint16
+		fileHandle  syscall.Handle
+		err         error
 	)
+	fileNamePtr, err = syscall.UTF16PtrFromString(fileName)
+	if err != nil {
+		return nil, fmt.Errorf("%v: failed to open file: path contains an illegal character", fileName)
+	}
 	for i := 1; i <= 3; i++ {
-		file, err = os.Open(name)
+		// We cannot use os.Open(), because we must set FILE_SHARE_ flags to avoid
+		// "the file is being used by another program" errors.
+		// Despite its name, CreateFile() will not create a new file if called with the OPEN_EXISTING flag.
+		fileHandle, err = syscall.CreateFile(
+			fileNamePtr,
+			syscall.GENERIC_READ,
+			uint32(syscall.FILE_SHARE_READ|syscall.FILE_SHARE_WRITE|syscall.FILE_SHARE_DELETE),
+			nil,
+			syscall.OPEN_EXISTING,
+			syscall.FILE_ATTRIBUTE_NORMAL,
+			0)
 		if err == nil {
-			return file, nil
+			return os.NewFile(uintptr(fileHandle), fileName), nil
 		}
 		time.Sleep(time.Duration(i*125) * time.Millisecond)
 	}
-	return nil, err
+	return nil, fmt.Errorf("%v: failed to open file: %v", fileName, err)
 }
 
 func checkTruncated(f *autoClosingFile) (bool, error) {

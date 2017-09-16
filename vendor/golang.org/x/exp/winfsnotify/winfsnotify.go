@@ -178,6 +178,7 @@ func getIno(path string) (ino *inode, err error) {
 	if e != nil {
 		return nil, e
 	}
+	// https://qualapps.blogspot.de/2010/05/understanding-readdirectorychangesw_19.html
 	h, e := syscall.CreateFile(pathp,
 		syscall.FILE_LIST_DIRECTORY,
 		syscall.FILE_SHARE_READ|syscall.FILE_SHARE_WRITE|syscall.FILE_SHARE_DELETE,
