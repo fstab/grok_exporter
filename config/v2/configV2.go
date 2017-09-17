@@ -42,13 +42,17 @@ func (cfg *Config) String() string {
 }
 
 type GlobalConfig struct {
-	ConfigVersion int `yaml:"config_version,omitempty"`
+	ConfigVersion int  `yaml:"config_version,omitempty"`
+	Debug         bool `yaml:",omitempty"`
 }
 
 type InputConfig struct {
-	Type    string `yaml:",omitempty"`
-	Path    string `yaml:",omitempty"`
-	Readall bool   `yaml:",omitempty"`
+	Type       string `yaml:",omitempty"`
+	Path       string `yaml:",omitempty"`
+	Readall    bool   `yaml:",omitempty"`
+	Brokers    string `yaml:",omitempty"`
+	Topics     string `yaml:",omitempty"`
+	Jsonfields string `yaml:",omitempty"`
 }
 
 type GrokConfig struct {
@@ -119,6 +123,7 @@ func (c *GlobalConfig) addDefaults() {
 	if c.ConfigVersion == 0 {
 		c.ConfigVersion = 2
 	}
+	c.Debug = false
 }
 
 func (c *InputConfig) addDefaults() {
@@ -127,13 +132,20 @@ func (c *InputConfig) addDefaults() {
 	}
 }
 
-func (c *GrokConfig) addDefaults() {}
+func (c *GrokConfig) addDefaults() {
+	if c.PatternsDir == "" {
+		c.PatternsDir = "/patterns"
+	}
+}
 
 func (c *MetricsConfig) addDefaults() {}
 
 func (c *ServerConfig) addDefaults() {
 	if c.Protocol == "" {
 		c.Protocol = "http"
+	}
+	if c.Host == "" {
+		c.Host = "0.0.0.0"
 	}
 	if c.Port == 0 {
 		c.Port = 9144
@@ -170,6 +182,13 @@ func (c *InputConfig) validate() error {
 		if c.Path == "" {
 			return fmt.Errorf("Invalid input configuration: 'input.path' is required for input type \"file\".")
 		}
+	case c.Type == "kafka":
+		if c.Brokers == "" {
+			return fmt.Errorf("Invalid input configuration: 'input.brokers' is required for input type \"kafka\".")
+		}
+		if c.Topics == "" {
+			return fmt.Errorf("Invalid input configuration: 'input.topics' is required for input type \"kafka\".")
+		}
 	default:
 		return fmt.Errorf("Unsupported 'input.type': %v", c.Type)
 	}
@@ -177,9 +196,6 @@ func (c *InputConfig) validate() error {
 }
 
 func (c *GrokConfig) validate() error {
-	if c.PatternsDir == "" && len(c.AdditionalPatterns) == 0 {
-		return fmt.Errorf("Invalid grok configuration: no patterns defined: one of 'grok.patterns_dir' and 'grok.additional_patterns' must be configured.")
-	}
 	return nil
 }
 

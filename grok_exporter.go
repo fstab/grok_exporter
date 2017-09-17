@@ -31,6 +31,7 @@ var (
 	printVersion = flag.Bool("version", false, "Print the grok_exporter version.")
 	configPath   = flag.String("config", "", "Path to the config file. Try '-config ./example/config.yml' to get started.")
 	showConfig   = flag.Bool("showconfig", false, "Print the current configuration to the console. Example: 'grok_exporter -showconfig -config ./exemple/config.yml'")
+	debug        = flag.Bool("debug", false, "Print extra logs")
 )
 
 const (
@@ -46,6 +47,7 @@ func main() {
 	}
 	validateCommandLineOrExit()
 	cfg, warn, err := config.LoadConfigFile(*configPath)
+	cfg.Global.Debug = *debug
 	if len(warn) > 0 && !*showConfig {
 		// warning is suppressed when '-showconfig' is used
 		fmt.Fprintf(os.Stderr, "%v\n", warn)
@@ -261,6 +263,8 @@ func startTailer(cfg *v2.Config) (tailer.Tailer, error) {
 		tail = tailer.RunFileTailer(cfg.Input.Path, cfg.Input.Readall, nil)
 	case cfg.Input.Type == "stdin":
 		tail = tailer.RunStdinTailer()
+	case cfg.Input.Type == "kafka":
+		tail = tailer.RunKafkaTailer(cfg)
 	default:
 		return nil, fmt.Errorf("Config error: Input type '%v' unknown.", cfg.Input.Type)
 	}
