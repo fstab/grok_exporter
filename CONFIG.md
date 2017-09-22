@@ -43,10 +43,10 @@ The config file is versioned independently of the `grok_exporter` program. When 
 
 The following table shows which `grok_exporter` version uses which `config_version`:
 
-| grok_exporter | config_version           |
-| ------------- | ------------------------ |
-| ≤ 0.1.4       | 1 _(see [CONFIG_v1.md])_ |
-| 0.2.0, 0.2.1  | 2 _(current version)_    |
+| grok_exporter       | config_version           |
+| ------------------- | ------------------------ |
+| ≤ 0.1.4             | 1 _(see [CONFIG_v1.md])_ |
+| 0.2.0, 0.2.1, 0.2.2 | 2 _(current version)_    |
 
 Input Section
 -------------
@@ -79,6 +79,7 @@ change. There is no need for configuring a poll interval. However, there is one 
 notifications don't work: If the logging application keeps the logfile open and the underlying file system is NTFS
 (see [#17](https://github.com/fstab/grok_exporter/issues/17)). For this specific case you can configure a
 `poll_interval_seconds`. This will disable file system notifications and instead check the log file periodically.
+The `poll_interval_seconds` option was introduced with release 0.2.2.
 
 ### Stdin Input Type
 
@@ -170,7 +171,7 @@ The `match` stores whatever matches the `%{USER}` pattern under the Grok field n
 
 This simple example shows a one-to-one mapping of a Grok field to a Prometheus label. However, the label definition is pretty flexible: You can combine multiple Grok fields in one label, and you can define constant labels that don't use Grok fields at all.
 
-As of version 0.2.2, `grok_exporter` will support `delete_match` and `delete_labels` configuration:
+As of version 0.2.2, `grok_exporter` supports `delete_match` and `delete_labels` configuration:
 
 ```yaml
 delete_match: '%{DATE} %{TIME} %{USER:user} logged out'
