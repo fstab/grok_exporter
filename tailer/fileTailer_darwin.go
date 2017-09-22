@@ -22,16 +22,17 @@ import (
 	"syscall"
 )
 
-func open(abspath string) (*os.File, error) {
-	return os.Open(abspath)
-}
-
 type watcher struct {
 	dir *os.File
 	kq  int // file descriptor for the kevent queue
 }
 
-func initWatcher(abspath string, file *os.File) (*watcher, error) {
+type eventList struct {
+	events  []syscall.Kevent_t
+	watcher *watcher
+}
+
+func initWatcher(abspath string, file *File) (Watcher, error) {
 	dir, err := os.Open(filepath.Dir(abspath))
 	if err != nil {
 		return nil, err
@@ -43,7 +44,7 @@ func initWatcher(abspath string, file *os.File) (*watcher, error) {
 	}
 	zeroTimeout := syscall.NsecToTimespec(0) // timeout zero means non-blocking kevent() call
 	// Register for events on dir and file.
-	_, err = syscall.Kevent(kq, []syscall.Kevent_t{makeEvent(dir), makeEvent(file)}, nil, &zeroTimeout)
+	_, err = syscall.Kevent(kq, []syscall.Kevent_t{makeEvent(dir), makeEvent(file.File)}, nil, &zeroTimeout)
 	if err != nil {
 		dir.Close()
 		syscall.Close(kq)
@@ -71,13 +72,13 @@ func (w *watcher) Close() error {
 
 type eventLoop struct {
 	w      *watcher
-	events chan []syscall.Kevent_t
+	events chan Events
 	errors chan error
 	done   chan struct{}
 }
 
-func startEventLoop(w *watcher) *eventLoop {
-	events := make(chan []syscall.Kevent_t)
+func (w *watcher) StartEventLoop() EventLoop {
+	events := make(chan Events)
 	errors := make(chan error)
 	done := make(chan struct{})
 	go func() {
@@ -99,7 +100,10 @@ func startEventLoop(w *watcher) *eventLoop {
 				return
 			} else {
 				select {
-				case events <- eventBuf[:n]: // We cannot write a single event at a time, because sometimes MOVE and WRITE change order, and we need to process WRITE before MOVE if that happens.
+				case events <- &eventList{ // We cannot write a single event at a time, because sometimes MOVE and WRITE change order, and we need to process WRITE before MOVE if that happens.
+					events:  eventBuf[:n],
+					watcher: w,
+				}:
 				case <-done:
 					return
 				}
@@ -125,22 +129,22 @@ func (l *eventLoop) Errors() chan error {
 	return l.errors
 }
 
-func (l *eventLoop) Events() chan []syscall.Kevent_t {
+func (l *eventLoop) Events() chan Events {
 	return l.events
 }
 
-func processEvents(events []syscall.Kevent_t, w *watcher, fileBefore *os.File, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *os.File, lines []string, err error) {
+func (events *eventList) Process(fileBefore *File, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *File, lines []string, err error) {
 	file = fileBefore
 	lines = []string{}
 	var truncated bool
-	for _, event := range events {
-		logger.Debug("File system watcher received %v.\n", event2string(w.dir, file, event))
+	for _, event := range events.events {
+		logger.Debug("File system watcher received %v.\n", event2string(events.watcher.dir, file, event))
 	}
 
 	// Handle truncate events.
-	for _, event := range events {
+	for _, event := range events.events {
 		if file != nil && event.Ident == uint64(file.Fd()) && event.Fflags&syscall.NOTE_ATTRIB == syscall.NOTE_ATTRIB {
-			truncated, err = checkTruncated(file)
+			truncated, err = file.CheckTruncated()
 			if err != nil {
 				return
 			}
@@ -154,7 +158,7 @@ func processEvents(events []syscall.Kevent_t, w *watcher, fileBefore *os.File, r
 	}
 
 	// Handle write event.
-	for _, event := range events {
+	for _, event := range events.events {
 		if file != nil && event.Ident == uint64(file.Fd()) && event.Fflags&syscall.NOTE_WRITE == syscall.NOTE_WRITE {
 			var freshLines []string
 			freshLines, err = reader.ReadAvailableLines(file)
@@ -166,7 +170,7 @@ func processEvents(events []syscall.Kevent_t, w *watcher, fileBefore *os.File, r
 	}
 
 	// Handle move and delete events.
-	for _, event := range events {
+	for _, event := range events.events {
 		if file != nil && event.Ident == uint64(file.Fd()) && (event.Fflags&syscall.NOTE_DELETE == syscall.NOTE_DELETE || event.Fflags&syscall.NOTE_RENAME == syscall.NOTE_RENAME) {
 			file.Close() // closing the fd will automatically remove event from kq.
 			file = nil
@@ -175,12 +179,12 @@ func processEvents(events []syscall.Kevent_t, w *watcher, fileBefore *os.File, r
 	}
 
 	// Handle create events.
-	for _, event := range events {
-		if file == nil && event.Ident == uint64(w.dir.Fd()) && event.Fflags&syscall.NOTE_WRITE == syscall.NOTE_WRITE {
-			file, err = os.Open(abspath)
+	for _, event := range events.events {
+		if file == nil && event.Ident == uint64(events.watcher.dir.Fd()) && event.Fflags&syscall.NOTE_WRITE == syscall.NOTE_WRITE {
+			file, err = open(abspath)
 			if err == nil {
 				zeroTimeout := syscall.NsecToTimespec(0) // timeout zero means non-blocking kevent() call
-				_, err = syscall.Kevent(w.kq, []syscall.Kevent_t{makeEvent(file)}, nil, &zeroTimeout)
+				_, err = syscall.Kevent(events.watcher.kq, []syscall.Kevent_t{makeEvent(file.File)}, nil, &zeroTimeout)
 				if err != nil {
 					return
 				}
@@ -198,18 +202,6 @@ func processEvents(events []syscall.Kevent_t, w *watcher, fileBefore *os.File, r
 		}
 	}
 	return
-}
-
-func checkTruncated(file *os.File) (bool, error) {
-	currentPos, err := file.Seek(0, io.SeekCurrent)
-	if err != nil {
-		return false, fmt.Errorf("%v: Seek() failed: %v", file.Name(), err.Error())
-	}
-	fileInfo, err := file.Stat()
-	if err != nil {
-		return false, fmt.Errorf("%v: Stat() failed: %v", file.Name(), err.Error())
-	}
-	return currentPos > fileInfo.Size(), nil
 }
 
 func makeEvent(file *os.File) syscall.Kevent_t {
@@ -240,7 +232,7 @@ func makeEvent(file *os.File) syscall.Kevent_t {
 	}
 }
 
-func event2string(dir *os.File, file *os.File, event syscall.Kevent_t) string {
+func event2string(dir *os.File, file *File, event syscall.Kevent_t) string {
 	result := "event"
 	if dir != nil && event.Ident == uint64(dir.Fd()) {
 		result = fmt.Sprintf("%v for logdir with fflags", result)

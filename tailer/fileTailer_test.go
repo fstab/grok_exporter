@@ -503,7 +503,7 @@ func runTestShutdown(t *testing.T, mode string) {
 		t.Error(err)
 	}
 
-	eventLoop := startEventLoop(watcher)
+	eventLoop := watcher.StartEventLoop()
 
 	switch {
 	case mode == "shutdown while the watcher is hanging in the blocking kevent() or syscall.Read() call":

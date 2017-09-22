@@ -96,7 +96,7 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 			}
 		}
 
-		eventLoop := startEventLoop(watcher)
+		eventLoop := watcher.StartEventLoop()
 		defer closeUnlessNil(eventLoop)
 
 		for {
@@ -118,7 +118,7 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 				return
 			case evnts := <-eventLoop.Events():
 				var freshLines []string
-				file, freshLines, err = processEvents(evnts, watcher, file, reader, abspath, logger)
+				file, freshLines, err = evnts.Process(file, reader, abspath, logger)
 				if err != nil {
 					writeError(errors, done, "failed to watch %v: %v", abspath, err)
 					return

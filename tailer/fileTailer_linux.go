@@ -17,23 +17,18 @@ package tailer
 import (
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"unsafe"
 )
 
-func open(abspath string) (*os.File, error) {
-	return os.Open(abspath)
-}
-
 type watcher struct {
 	fd int // file descriptor for reading inotify events
 	wd int // watch descriptor for the log directory
 }
 
-func initWatcher(abspath string, _ *os.File) (*watcher, error) {
+func initWatcher(abspath string, _ *File) (Watcher, error) {
 	fd, err := syscall.InotifyInit1(syscall.IN_CLOEXEC)
 	if err != nil {
 		return nil, err
@@ -58,7 +53,7 @@ func (w *watcher) Close() error {
 
 type eventLoop struct {
 	w      *watcher
-	events chan []eventWithName
+	events chan Events
 	errors chan error
 	done   chan struct{}
 }
@@ -68,8 +63,10 @@ type eventWithName struct {
 	Name string
 }
 
-func startEventLoop(w *watcher) *eventLoop {
-	events := make(chan []eventWithName)
+type eventList []eventWithName
+
+func (w *watcher) StartEventLoop() EventLoop {
+	events := make(chan Events)
 	errors := make(chan error)
 	done := make(chan struct{})
 
@@ -90,7 +87,7 @@ func startEventLoop(w *watcher) *eventLoop {
 				}
 				return
 			} else {
-				eventList := make([]eventWithName, 0)
+				var eventsWithName eventList
 				for offset := 0; offset < n; {
 					if n-offset < syscall.SizeofInotifyEvent {
 						select {
@@ -108,12 +105,12 @@ func startEventLoop(w *watcher) *eventLoop {
 						// eventLoop.Close() was called.
 						return
 					}
-					eventList = append(eventList, event)
+					eventsWithName = append(eventsWithName, event)
 					offset += syscall.SizeofInotifyEvent + int(event.Len)
 				}
-				if len(eventList) > 0 {
+				if len(eventsWithName) > 0 {
 					select {
-					case events <- eventList:
+					case events <- eventsWithName:
 					case <-done:
 						return
 					}
@@ -139,11 +136,11 @@ func (l *eventLoop) Errors() chan error {
 	return l.errors
 }
 
-func (l *eventLoop) Events() chan []eventWithName {
+func (l *eventLoop) Events() chan Events {
 	return l.events
 }
 
-func processEvents(events []eventWithName, _ *watcher, fileBefore *os.File, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *os.File, lines []string, err error) {
+func (events eventList) Process(fileBefore *File, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *File, lines []string, err error) {
 	file = fileBefore
 	lines = []string{}
 	filename := filepath.Base(abspath)
@@ -155,7 +152,7 @@ func processEvents(events []eventWithName, _ *watcher, fileBefore *os.File, read
 	// WRITE or TRUNCATE
 	for _, event := range events {
 		if file != nil && event.Name == filename && event.Mask&syscall.IN_MODIFY == syscall.IN_MODIFY {
-			truncated, err = checkTruncated(file)
+			truncated, err = file.CheckTruncated()
 			if err != nil {
 				return
 			}
@@ -186,7 +183,7 @@ func processEvents(events []eventWithName, _ *watcher, fileBefore *os.File, read
 	// CREATE
 	for _, event := range events {
 		if file == nil && event.Name == filename && event.Mask&syscall.IN_CREATE == syscall.IN_CREATE {
-			file, err = os.Open(abspath)
+			file, err = open(abspath)
 			if err != nil {
 				return
 			}
@@ -200,18 +197,6 @@ func processEvents(events []eventWithName, _ *watcher, fileBefore *os.File, read
 		}
 	}
 	return
-}
-
-func checkTruncated(file *os.File) (bool, error) {
-	currentPos, err := file.Seek(0, io.SeekCurrent)
-	if err != nil {
-		return false, fmt.Errorf("%v: Seek() failed: %v", file.Name(), err.Error())
-	}
-	fileInfo, err := file.Stat()
-	if err != nil {
-		return false, fmt.Errorf("%v: Stat() failed: %v", file.Name(), err.Error())
-	}
-	return currentPos > fileInfo.Size(), nil
 }
 
 func event2string(event eventWithName) string {
