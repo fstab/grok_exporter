@@ -28,7 +28,8 @@ type watcher struct {
 	wd int // watch descriptor for the log directory
 }
 
-func initWatcher(abspath string, _ *File) (Watcher, error) {
+// File system event watcher, using Linux's inotify.
+func NewFseventWatcher(abspath string, _ *File) (Watcher, error) {
 	fd, err := syscall.InotifyInit1(syscall.IN_CLOEXEC)
 	if err != nil {
 		return nil, err

@@ -28,6 +28,7 @@ import (
 type logrotateOption int
 type logrotateMoveOption int
 type loggerOption int
+type watcherType int
 
 const ( // see 'man logrotate'
 	_copy         logrotateOption = iota // Don’t change the original logfile at all.
@@ -45,6 +46,11 @@ const (
 const (
 	closeFileAfterEachLine loggerOption = iota // Logger does not keep the file open.
 	keepOpen                                   // Logger keeps the file open.
+)
+
+const (
+	fsevent watcherType = iota
+	polling
 )
 
 func (opt logrotateOption) String() string {
@@ -88,23 +94,30 @@ func (opt loggerOption) String() string {
 
 func TestFileTailerCloseLogfileAfterEachLine(t *testing.T) {
 	testRunNumber := 0 // Helps to figure out which debug message belongs to which test run.
-	for _, mvOpt := range []logrotateMoveOption{mv, cp, rm} {
-		testRunNumber++
-		testLogrotate(t, NewTestRunLogger(testRunNumber), _create, mvOpt, closeFileAfterEachLine)
-		testRunNumber++
-		testLogrotate(t, NewTestRunLogger(testRunNumber), _nocreate, mvOpt, closeFileAfterEachLine)
+	for _, watcherOpt := range []watcherType{fsevent, polling} {
+		for _, logrotateOpt := range []logrotateOption{_create, _nocreate} {
+			for _, mvOpt := range []logrotateMoveOption{mv, cp, rm} {
+				testRunNumber++
+				testLogrotate(t, NewTestRunLogger(testRunNumber), watcherOpt, logrotateOpt, mvOpt, closeFileAfterEachLine)
+			}
+		}
+		for _, logrotateOpt := range []logrotateOption{_copy, _copytruncate} {
+			// For logrotate options 'copy' and 'copytruncate', only the mvOpt 'cp' makes sense.
+			testRunNumber++
+			testLogrotate(t, NewTestRunLogger(testRunNumber), watcherOpt, logrotateOpt, cp, closeFileAfterEachLine)
+		}
 	}
-	// For logrotate options 'copy' and 'copytruncate', only the mvOpt 'cp' makes sense.
-	testRunNumber++
-	testLogrotate(t, NewTestRunLogger(testRunNumber), _copy, cp, closeFileAfterEachLine)
-	testRunNumber++
-	testLogrotate(t, NewTestRunLogger(testRunNumber), _copytruncate, cp, closeFileAfterEachLine)
 }
 
 func TestFileTailerKeepLogfileOpen(t *testing.T) {
+	testRunNumber := 100
 	// When the logger keeps the file open, only the logrotate options 'copy' and 'copytruncate' make sense.
-	testLogrotate(t, NewTestRunLogger(100), _copy, cp, keepOpen)
-	testLogrotate(t, NewTestRunLogger(101), _copytruncate, cp, keepOpen)
+	for _, watcherOpt := range []watcherType{fsevent, polling} {
+		testLogrotate(t, NewTestRunLogger(testRunNumber), watcherOpt, _copy, cp, keepOpen) // 100, 102
+		testRunNumber++
+		testLogrotate(t, NewTestRunLogger(testRunNumber), watcherOpt, _copytruncate, cp, keepOpen) // 101, 103
+		testRunNumber++
+	}
 }
 
 // On Mac OS, we receive an additional NOTE_ATTRIB event for each change on the file unless
@@ -128,7 +141,7 @@ func TestVisibleInOSXFinder(t *testing.T) {
 	logFileWriter := newLogFileWriter(t, logfile, closeFileAfterEachLine)
 	defer logFileWriter.close(t)
 	logFileWriter.writeLine(t, log, "test line 1")
-	tail := RunFileTailer(logfile, false, log)
+	tail := RunFseventFileTailer(logfile, false, log)
 	defer tail.Close()
 	go func() {
 		for err := range tail.Errors() {
@@ -163,7 +176,7 @@ func TestShutdownDuringSendEvent(t *testing.T) {
 //	}
 //}
 
-func testLogrotate(t *testing.T, log simpleLogger, logrotateOpt logrotateOption, logrotateMoveOpt logrotateMoveOption, loggerOpt loggerOption) {
+func testLogrotate(t *testing.T, log simpleLogger, watcherOpt watcherType, logrotateOpt logrotateOption, logrotateMoveOpt logrotateMoveOption, loggerOpt loggerOption) {
 	log.Debug("Running test with logrotate option '%v', move option '%v', and logger option '%v'.\n", logrotateOpt, logrotateMoveOpt, loggerOpt)
 	tmpDir := mkTmpDirOrFail(t)
 	defer cleanUp(t, tmpDir)
@@ -174,7 +187,13 @@ func testLogrotate(t *testing.T, log simpleLogger, logrotateOpt logrotateOption,
 	logFileWriter.writeLine(t, log, "test line 1")
 	logFileWriter.writeLine(t, log, "test line 2")
 
-	tail := RunFileTailer(logfile, true, log)
+	var tail Tailer
+	switch watcherOpt {
+	case fsevent:
+		tail = RunFseventFileTailer(logfile, true, log)
+	case polling:
+		tail = RunPollingFileTailer(logfile, true, 10*time.Millisecond, log)
+	}
 	defer tail.Close()
 
 	// We don't expect errors. However, start a go-routine listening on
@@ -498,7 +517,7 @@ func runTestShutdown(t *testing.T, mode string) {
 	lines := make(chan string)
 	defer close(lines)
 
-	watcher, err := initWatcher(logfile, file)
+	watcher, err := NewFseventWatcher(logfile, file)
 	if err != nil {
 		t.Error(err)
 	}

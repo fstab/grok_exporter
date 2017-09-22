@@ -32,7 +32,8 @@ type eventList struct {
 	watcher *watcher
 }
 
-func initWatcher(abspath string, file *File) (Watcher, error) {
+// File system event watcher, using BSD's kevent
+func NewFseventWatcher(abspath string, file *File) (Watcher, error) {
 	dir, err := os.Open(filepath.Dir(abspath))
 	if err != nil {
 		return nil, err

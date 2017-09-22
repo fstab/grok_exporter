@@ -96,6 +96,12 @@ func (f *File) CheckTruncated() (bool, error) {
 	return f.currentPos > fileInfo.Size(), nil
 }
 
+func (f *File) CheckMoved() (bool, error) {
+	// As this implementation closes the file after each operation, we don't need special treatment for moved files.
+	// We can just pretend the file is never moved.
+	return false, nil
+}
+
 // The semantics of openWithBackoff() function is similar to os.Open().
 // If the file is currently locked by a logger or virus scanner,
 // CreateFile() might fail (the logfile is being used by another program).

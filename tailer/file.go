@@ -45,3 +45,15 @@ func (file *File) CheckTruncated() (bool, error) {
 	}
 	return currentPos > fileInfo.Size(), nil
 }
+
+func (file *File) CheckMoved() (bool, error) {
+	self, err := file.File.Stat()
+	if err != nil {
+		return false, err
+	}
+	onDisk, err := os.Stat(file.Name())
+	if err != nil {
+		return true, nil // probably file not found, which means it was moved.
+	}
+	return !os.SameFile(self, onDisk), nil
+}

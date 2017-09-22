@@ -21,7 +21,8 @@ import (
 	"strings"
 )
 
-func initWatcher(abspath string, _ *File) (Watcher, error) {
+// File system event watcher, using golang.org/x/exp/winfsnotify
+func NewFseventWatcher(abspath string, _ *File) (Watcher, error) {
 	w, err := winfsnotify.NewWatcher()
 	if err != nil {
 		return nil, err

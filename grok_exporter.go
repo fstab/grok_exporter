@@ -258,7 +258,7 @@ func startTailer(cfg *v2.Config) (tailer.Tailer, error) {
 	var tail tailer.Tailer
 	switch {
 	case cfg.Input.Type == "file":
-		tail = tailer.RunFileTailer(cfg.Input.Path, cfg.Input.Readall, nil)
+		tail = tailer.RunFseventFileTailer(cfg.Input.Path, cfg.Input.Readall, nil)
 	case cfg.Input.Type == "stdin":
 		tail = tailer.RunStdinTailer()
 	default:

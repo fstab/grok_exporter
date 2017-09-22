@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"time"
 )
 
 type fileTailer struct {
@@ -42,7 +43,18 @@ func (f *fileTailer) Errors() chan error {
 	return f.errors
 }
 
-func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
+func RunFseventFileTailer(path string, readall bool, logger simpleLogger) Tailer {
+	return runFileTailer(path, readall, logger, NewFseventWatcher)
+}
+
+func RunPollingFileTailer(path string, readall bool, pollIntervall time.Duration, logger simpleLogger) Tailer {
+	makeWatcher := func(abspath string, _ *File) (Watcher, error) {
+		return NewPollingWatcher(abspath, pollIntervall)
+	}
+	return runFileTailer(path, readall, logger, makeWatcher)
+}
+
+func runFileTailer(path string, readall bool, logger simpleLogger, makeWatcher func(abspath string, file *File) (Watcher, error)) Tailer {
 	if logger == nil {
 		logger = &nilLogger{}
 	}
@@ -76,7 +88,7 @@ func RunFileTailer(path string, readall bool, logger simpleLogger) Tailer {
 			writeError(errors, done, "Failed to initialize file system watcher for %v: %v", path, err.Error())
 			return
 		}
-		watcher, err := initWatcher(abspath, file)
+		watcher, err := makeWatcher(abspath, file)
 		defer closeUnlessNil(watcher)
 		if err != nil {
 			writeError(errors, done, "Failed to initialize file system watcher for %v: %v", path, err.Error())
