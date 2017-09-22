@@ -62,6 +62,7 @@ input:
     type: file
     path: /var/log/sample.log
     readall: false
+    poll_interval_seconds: 5 # should not be needed in most cases, see below
 ```
 
 The `readall` flag defines if `grok_exporter` starts reading from the beginning or the end of the file.
@@ -69,6 +70,15 @@ True means we read the whole file, false means we start at the end of the file a
 True is good for debugging, because we process all available log lines.
 False is good for production, because we avoid to process lines multiple times when `grok_exporter` is restarted.
 The default value for `readall` is `false`.
+
+On `poll_interval_seconds`: You probably don't need this. The internal implementation of `grok_exporter`'s
+file input is based on the operating system's file system notification mechanism, which is `inotify` on Linux,
+`kevent` on BSD (or macOS), and `ReadDirectoryChangesW` on Windows. These tools will inform `grok_exporter` as
+soon as a new log line is written to the log file, and let `grok_exporter` sleep as long as the log file doesn't
+change. There is no need for configuring a poll interval. However, there is one combination where the above
+notifications don't work: If the logging application keeps the logfile open and the underlying file system is NTFS
+(see [#17](https://github.com/fstab/grok_exporter/issues/17)). For this specific case you can configure a
+`poll_interval_seconds`. This will disable file system notifications and instead check the log file periodically.
 
 ### Stdin Input Type
 
