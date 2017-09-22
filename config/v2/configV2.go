@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"github.com/fstab/grok_exporter/templates"
 	"gopkg.in/yaml.v2"
+	"strconv"
+	"time"
 )
 
 func Unmarshal(config []byte) (*Config, error) {
@@ -46,9 +48,11 @@ type GlobalConfig struct {
 }
 
 type InputConfig struct {
-	Type    string `yaml:",omitempty"`
-	Path    string `yaml:",omitempty"`
-	Readall bool   `yaml:",omitempty"`
+	Type                string        `yaml:",omitempty"`
+	Path                string        `yaml:",omitempty"`
+	Readall             bool          `yaml:",omitempty"`
+	PollIntervalSeconds string        `yaml:"poll_interval_seconds,omitempty"`
+	PollInterval        time.Duration `yaml:"-"` // parsed version of PollIntervalSeconds
 }
 
 type GrokConfig struct {
@@ -166,9 +170,22 @@ func (c *InputConfig) validate() error {
 		if c.Path != "" {
 			return fmt.Errorf("Invalid input configuration: cannot use 'input.path' when 'input.type' is stdin.")
 		}
+		if c.Readall {
+			return fmt.Errorf("Invalid input configuration: cannot use 'input.readall' when 'input.type' is stdin.")
+		}
+		if c.PollIntervalSeconds != "" {
+			return fmt.Errorf("Invalid input configuration: cannot use 'input.poll_interval_seconds' when 'input.type' is stdin.")
+		}
 	case c.Type == "file":
 		if c.Path == "" {
 			return fmt.Errorf("Invalid input configuration: 'input.path' is required for input type \"file\".")
+		}
+		if c.PollIntervalSeconds != "" {
+			nSeconds, err := strconv.Atoi(c.PollIntervalSeconds)
+			if err != nil {
+				return fmt.Errorf("Invalid input configuration: '%v' is not a valid number in 'input.poll_interval_seconds'.", c.PollIntervalSeconds)
+			}
+			c.PollInterval = time.Duration(nSeconds) * time.Second
 		}
 	default:
 		return fmt.Errorf("Unsupported 'input.type': %v", c.Type)
