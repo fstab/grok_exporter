@@ -65,6 +65,7 @@ type MetricConfig struct {
 	Name                 string               `yaml:",omitempty"`
 	Help                 string               `yaml:",omitempty"`
 	Match                string               `yaml:",omitempty"`
+	Retention            time.Duration        `yaml:",omitempty"` // The yaml parser understands the format defined by time.ParseDuration(), which is good.
 	Value                string               `yaml:",omitempty"`
 	Cumulative           bool                 `yaml:",omitempty"`
 	Buckets              []float64            `yaml:",flow,omitempty"`
@@ -260,6 +261,9 @@ func (c *MetricConfig) validate() error {
 	}
 	if len(c.DeleteMatch) == 0 && len(c.DeleteLabelTemplates) > 0 {
 		return fmt.Errorf("Invalid metric configuration: 'metrics.delete_labels' can only be used when 'metrics.delete_match' is present.")
+	}
+	if c.Retention > 0 && len(c.Labels) == 0 {
+		return fmt.Errorf("Invalid metric configuration: 'metrics.retention' is only supported for metrics with labels.")
 	}
 	for _, deleteLabelTemplate := range c.DeleteLabelTemplates {
 		found := false

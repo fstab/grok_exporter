@@ -17,6 +17,7 @@ package v2
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 const counter_config = `
@@ -122,6 +123,26 @@ server:
     port: 9144
 `
 
+const retention_config = `
+global:
+    config_version: 2
+input:
+    type: stdin
+grok:
+    patterns_dir: b/c
+metrics:
+    - type: counter
+      name: test_count_total
+      help: Dummy help message.
+      match: Some text here, then a %{DATE:date}.
+      retention: 2h45m0s
+      labels:
+          date: '{{.date}}'
+server:
+    protocol: http
+    port: 9144
+`
+
 func TestCounterValidConfig(t *testing.T) {
 	loadOrFail(t, counter_config)
 }
@@ -214,6 +235,21 @@ func TestDeleteLabelConfig(t *testing.T) {
 	}
 	if len(metric.DeleteLabelTemplates) != 1 {
 		t.Fatalf("Expected 1 delete label template, but found %v.", len(metric.DeleteLabelTemplates))
+	}
+}
+
+func TestRetentionValidConfig(t *testing.T) {
+	cfg := loadOrFail(t, retention_config)
+	if (*cfg.Metrics)[0].Retention != 2*time.Hour+45*time.Minute {
+		t.Fatalf("Error parsing retention, got %v", (*cfg.Metrics)[0].Retention)
+	}
+}
+
+func TestRetentionInvalidConfig(t *testing.T) {
+	invalidCfg := strings.Replace(retention_config, "2h45m0s", "abc", 1)
+	_, err := Unmarshal([]byte(invalidCfg))
+	if err == nil || !strings.Contains(err.Error(), "abc") {
+		t.Fatal("Expected error saying that 'abc' is not a valid duration.")
 	}
 }
 

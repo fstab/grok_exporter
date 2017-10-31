@@ -71,19 +71,21 @@ func main() {
 	fmt.Print(startMsg(cfg))
 	serverErrors := startServer(cfg, "/metrics", prometheus.Handler())
 
+	retentionTicker := time.NewTicker(53 * time.Second) // Process retention every 53 seconds. Should that be configurable?
+
 	for {
 		select {
 		case err := <-serverErrors:
-			exitOnError(fmt.Errorf("Server error: %v", err.Error()))
+			exitOnError(fmt.Errorf("server error: %v", err.Error()))
 		case err := <-tail.Errors():
-			exitOnError(fmt.Errorf("Error reading log lines: %v", err.Error()))
+			exitOnError(fmt.Errorf("error reading log lines: %v", err.Error()))
 		case line := <-tail.Lines():
 			matched := false
 			for _, metric := range metrics {
 				start := time.Now()
 				match, err := metric.ProcessMatch(line)
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "WARNING: Skipping log line: %v\n", err.Error())
+					fmt.Fprintf(os.Stderr, "WARNING: skipping log line: %v\n", err.Error())
 					fmt.Fprintf(os.Stderr, "%v\n", line)
 					nErrorsByMetric.WithLabelValues(metric.Name()).Inc()
 				}
@@ -92,9 +94,9 @@ func main() {
 					procTimeMicrosecondsByMetric.WithLabelValues(metric.Name()).Add(float64(time.Since(start).Nanoseconds() / int64(1000)))
 					matched = true
 				}
-				_, err = metric.ProcessDelete(line)
+				_, err = metric.ProcessDeleteMatch(line)
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "WARNING: Skipping log line: %v\n", err.Error())
+					fmt.Fprintf(os.Stderr, "WARNING: skipping log line: %v\n", err.Error())
 					fmt.Fprintf(os.Stderr, "%v\n", line)
 					nErrorsByMetric.WithLabelValues(metric.Name()).Inc()
 				}
@@ -105,6 +107,15 @@ func main() {
 			} else {
 				nLinesTotal.WithLabelValues(number_of_lines_ignored_label).Inc()
 			}
+		case <-retentionTicker.C:
+			for _, metric := range metrics {
+				err = metric.ProcessRetention()
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "WARNING: error while processing retention on metric %v: %v", metric.Name(), err)
+					nErrorsByMetric.WithLabelValues(metric.Name()).Inc()
+				}
+			}
+			// TODO: create metric to monitor number of metrics cleaned up via retention
 		}
 	}
 }

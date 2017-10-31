@@ -20,6 +20,7 @@ import (
 	"github.com/fstab/grok_exporter/templates"
 	"github.com/prometheus/client_golang/prometheus"
 	"strconv"
+	"time"
 )
 
 type Match struct {
@@ -34,7 +35,9 @@ type Metric interface {
 	// Returns the match if the line matched, and nil if the line didn't match.
 	ProcessMatch(line string) (*Match, error)
 	// Returns the match if the delete pattern matched, nil otherwise.
-	ProcessDelete(line string) (*Match, error)
+	ProcessDeleteMatch(line string) (*Match, error)
+	// Remove old metrics
+	ProcessRetention() error
 }
 
 // Common values for incMetric and observeMetric
@@ -42,6 +45,7 @@ type metric struct {
 	name        string
 	regex       *OnigurumaRegexp
 	deleteRegex *OnigurumaRegexp
+	retention   time.Duration
 }
 
 type observeMetric struct {
@@ -227,14 +231,21 @@ func (m *observeMetricWithLabels) processMatch(line string, cb func(value float6
 	}
 }
 
-func (m *metric) ProcessDelete(line string) (*Match, error) {
+func (m *metric) ProcessDeleteMatch(line string) (*Match, error) {
 	if m.deleteRegex == nil {
 		return nil, nil
 	}
 	return nil, fmt.Errorf("error processing metric %v: delete_match is currently only supported for metrics with labels.", m.Name())
 }
 
-func (m *metricWithLabels) processDelete(line string, vec deleterMetric) (*Match, error) {
+func (m *metric) ProcessRetention() error {
+	if m.retention == 0 {
+		return nil
+	}
+	return fmt.Errorf("error processing metric %v: retention is currently only supported for metrics with labels.", m.Name())
+}
+
+func (m *metricWithLabels) processDeleteMatch(line string, vec deleterMetric) (*Match, error) {
 	if m.deleteRegex == nil {
 		return nil, nil
 	}
@@ -248,7 +259,7 @@ func (m *metricWithLabels) processDelete(line string, vec deleterMetric) (*Match
 		if err != nil {
 			return nil, err
 		}
-		matchingLabels, err := m.labelValueTracker.Delete(deleteLabels)
+		matchingLabels, err := m.labelValueTracker.DeleteByLabels(deleteLabels)
 		if err != nil {
 			return nil, err
 		}
@@ -263,6 +274,15 @@ func (m *metricWithLabels) processDelete(line string, vec deleterMetric) (*Match
 	}
 }
 
+func (m *metricWithLabels) processRetention(vec deleterMetric) error {
+	if m.retention != 0 {
+		for _, label := range m.labelValueTracker.DeleteByRetention(m.retention) {
+			vec.Delete(label)
+		}
+	}
+	return nil
+}
+
 func (m *counterMetric) ProcessMatch(line string) (*Match, error) {
 	return m.processMatch(line, func() {
 		m.counter.Inc()
@@ -275,8 +295,12 @@ func (m *counterVecMetric) ProcessMatch(line string) (*Match, error) {
 	})
 }
 
-func (m *counterVecMetric) ProcessDelete(line string) (*Match, error) {
-	return m.processDelete(line, m.counterVec)
+func (m *counterVecMetric) ProcessDeleteMatch(line string) (*Match, error) {
+	return m.processDeleteMatch(line, m.counterVec)
+}
+
+func (m *counterVecMetric) ProcessRetention() error {
+	return m.processRetention(m.counterVec)
 }
 
 func (m *gaugeMetric) ProcessMatch(line string) (*Match, error) {
@@ -299,8 +323,12 @@ func (m *gaugeVecMetric) ProcessMatch(line string) (*Match, error) {
 	})
 }
 
-func (m *gaugeVecMetric) ProcessDelete(line string) (*Match, error) {
-	return m.processDelete(line, m.gaugeVec)
+func (m *gaugeVecMetric) ProcessDeleteMatch(line string) (*Match, error) {
+	return m.processDeleteMatch(line, m.gaugeVec)
+}
+
+func (m *gaugeVecMetric) ProcessRetention() error {
+	return m.processRetention(m.gaugeVec)
 }
 
 func (m *histogramMetric) ProcessMatch(line string) (*Match, error) {
@@ -315,8 +343,12 @@ func (m *histogramVecMetric) ProcessMatch(line string) (*Match, error) {
 	})
 }
 
-func (m *histogramVecMetric) ProcessDelete(line string) (*Match, error) {
-	return m.processDelete(line, m.histogramVec)
+func (m *histogramVecMetric) ProcessDeleteMatch(line string) (*Match, error) {
+	return m.processDeleteMatch(line, m.histogramVec)
+}
+
+func (m *histogramVecMetric) ProcessRetention() error {
+	return m.processRetention(m.histogramVec)
 }
 
 func (m *summaryMetric) ProcessMatch(line string) (*Match, error) {
@@ -331,8 +363,12 @@ func (m *summaryVecMetric) ProcessMatch(line string) (*Match, error) {
 	})
 }
 
-func (m *summaryVecMetric) ProcessDelete(line string) (*Match, error) {
-	return m.processDelete(line, m.summaryVec)
+func (m *summaryVecMetric) ProcessDeleteMatch(line string) (*Match, error) {
+	return m.processDeleteMatch(line, m.summaryVec)
+}
+
+func (m *summaryVecMetric) ProcessRetention() error {
+	return m.processRetention(m.summaryVec)
 }
 
 func newMetric(cfg *v2.MetricConfig, regex, deleteRegex *OnigurumaRegexp) metric {
@@ -340,6 +376,7 @@ func newMetric(cfg *v2.MetricConfig, regex, deleteRegex *OnigurumaRegexp) metric
 		name:        cfg.Name,
 		regex:       regex,
 		deleteRegex: deleteRegex,
+		retention:   cfg.Retention,
 	}
 }
 

@@ -14,9 +14,12 @@
 
 package exporter
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
-func TestLabelValueTracker(t *testing.T) {
+func TestDeleteByLabels(t *testing.T) {
 	tracker := NewLabelValueTracker([]string{"service", "user", "hostname", "country"})
 	for _, labels := range []map[string]string{
 		{
@@ -52,7 +55,7 @@ func TestLabelValueTracker(t *testing.T) {
 	} {
 		tracker.Observe(labels)
 	}
-	empty, err := tracker.Delete(map[string]string{ // does not exist, should delete nothing
+	empty, err := tracker.DeleteByLabels(map[string]string{ // does not exist, should delete nothing
 		"service": "service a",
 		"user":    "bob",
 	})
@@ -66,18 +69,56 @@ func TestLabelValueTracker(t *testing.T) {
 	if nEntries(t, tracker) != 5 {
 		t.Fatalf("expected 5 entries, but got %v", nEntries(t, tracker))
 	}
-	deleted, err := tracker.Delete(map[string]string{
+	deleted, err := tracker.DeleteByLabels(map[string]string{ // should delete 3 entries
 		"service": "service a",
 		"user":    "alice",
 	})
 	verify(t, deleted, 3, tracker, 2, err)
-	deleted, err = tracker.Delete(map[string]string{}) // wildcard -> delete all
+	deleted, err = tracker.DeleteByLabels(map[string]string{}) // wildcard -> delete all
 	verify(t, deleted, 2, tracker, 0, err)
-	deleted, err = tracker.Delete(map[string]string{ // as the tracker is empty, this should do nothing
+	deleted, err = tracker.DeleteByLabels(map[string]string{ // as the tracker is empty, this should do nothing
 		"service": "service a",
 		"user":    "alice",
 	})
 	verify(t, deleted, 0, tracker, 0, err)
+}
+
+func TestDeleteByRetention(t *testing.T) {
+	tracker := NewLabelValueTracker([]string{"service", "user", "hostname", "country"})
+	for _, labels := range []map[string]string{
+		{
+			"service":  "service a",
+			"user":     "alice",
+			"hostname": "localhost",
+			"country":  "Finland",
+		},
+		{
+			"service":  "service a",
+			"user":     "alice",
+			"hostname": "localhost",
+			"country":  "Norway",
+		},
+		{
+			"service":  "service a",
+			"user":     "alice",
+			"hostname": "localhost",
+			"country":  "Sweden",
+		},
+	} {
+		tracker.Observe(labels)
+	}
+	time.Sleep(500 * time.Millisecond)
+	tracker.Observe(map[string]string{ // already known, should update the timestamp but not create a new entry
+		"service":  "service a",
+		"user":     "alice",
+		"hostname": "localhost",
+		"country":  "Norway",
+	})
+	verify(t, nil, 0, tracker, 3, nil)
+	deleted := tracker.DeleteByRetention(250 * time.Millisecond) // remove all but the updated entry
+	verify(t, deleted, 2, tracker, 1, nil)
+	deleted = tracker.DeleteByRetention(250 * time.Millisecond) // should do nothing, because the remaining entry is newer
+	verify(t, deleted, 0, tracker, 1, nil)
 }
 
 func verify(t *testing.T, deleted []map[string]string, nDeleted int, tracker LabelValueTracker, nRemaining int, err error) {
@@ -93,7 +134,7 @@ func verify(t *testing.T, deleted []map[string]string, nDeleted int, tracker Lab
 }
 
 func nEntries(t *testing.T, tracker LabelValueTracker) int {
-	trackerInternal, ok := tracker.(*observedLabelValues)
+	trackerInternal, ok := tracker.(*observedLabels)
 	if !ok {
 		t.Fatal("Cannot cast tracker to *observedLabelValues")
 		return 0
