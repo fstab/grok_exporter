@@ -34,7 +34,7 @@ func NewFseventWatcher(abspath string, _ *File) (Watcher, error) {
 	if err != nil {
 		return nil, err
 	}
-	wd, err := syscall.InotifyAddWatch(fd, filepath.Dir(abspath), syscall.IN_MODIFY|syscall.IN_MOVED_FROM|syscall.IN_DELETE|syscall.IN_CREATE)
+	wd, err := syscall.InotifyAddWatch(fd, filepath.Dir(abspath), syscall.IN_MODIFY|syscall.IN_MOVED_FROM|syscall.IN_MOVED_TO|syscall.IN_DELETE|syscall.IN_CREATE)
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +172,7 @@ func (events eventList) Process(fileBefore *File, reader *bufferedLineReader, ab
 		}
 	}
 
-	// MOVE or DELETE
+	// MOVED_FROM or DELETE
 	for _, event := range events {
 		if file != nil && event.Name == filename && (event.Mask&syscall.IN_MOVED_FROM == syscall.IN_MOVED_FROM || event.Mask&syscall.IN_DELETE == syscall.IN_DELETE) {
 			file.Close()
@@ -181,9 +181,9 @@ func (events eventList) Process(fileBefore *File, reader *bufferedLineReader, ab
 		}
 	}
 
-	// CREATE
+	// CREATE or MOVED_TO
 	for _, event := range events {
-		if file == nil && event.Name == filename && event.Mask&syscall.IN_CREATE == syscall.IN_CREATE {
+		if file == nil && event.Name == filename && (event.Mask&syscall.IN_CREATE == syscall.IN_CREATE || event.Mask&syscall.IN_MOVED_TO == syscall.IN_MOVED_TO) {
 			file, err = open(abspath)
 			if err != nil {
 				return

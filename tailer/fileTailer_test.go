@@ -98,7 +98,7 @@ func (opt loggerOption) String() string {
 func TestFileTailerCloseLogfileAfterEachLine(t *testing.T) {
 	testRunNumber := 0 // Helps to figure out which debug message belongs to which test run.
 	for _, watcherOpt := range []watcherType{fsevent, polling} {
-		for _, logrotateOpt := range []logrotateOption{_create, _nocreate} { //, _create_from_temp} {
+		for _, logrotateOpt := range []logrotateOption{_create, _nocreate, _create_from_temp} {
 			for _, mvOpt := range []logrotateMoveOption{mv, cp, rm} {
 				testRunNumber++
 				testLogrotate(t, NewTestRunLogger(testRunNumber), watcherOpt, logrotateOpt, mvOpt, closeFileAfterEachLine)
