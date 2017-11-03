@@ -31,10 +31,11 @@ type loggerOption int
 type watcherType int
 
 const ( // see 'man logrotate'
-	_copy         logrotateOption = iota // Don’t change the original logfile at all.
-	_copytruncate                        // Truncate the original log file in place instead of removing it.
-	_nocreate                            // Don't create a new logfile after rotation.
-	_create                              // Create a new empty logfile immediately after rotation.
+	_copy             logrotateOption = iota // Don’t change the original logfile at all.
+	_copytruncate                            // Truncate the original log file in place instead of removing it.
+	_nocreate                                // Don't create a new logfile after rotation.
+	_create                                  // Create a new empty logfile immediately after rotation.
+	_create_from_temp                        // Like _create, but instead of creating the new logfile directly, logrotate creates an empty tempfile and then moves it to the logfile (see https://github.com/fstab/grok_exporter/pull/21)
 )
 
 const (
@@ -63,6 +64,8 @@ func (opt logrotateOption) String() string {
 		return "nocreate"
 	case opt == _create:
 		return "create"
+	case opt == _create_from_temp:
+		return "create_from_temp"
 	default:
 		return "unknown"
 	}
@@ -95,7 +98,7 @@ func (opt loggerOption) String() string {
 func TestFileTailerCloseLogfileAfterEachLine(t *testing.T) {
 	testRunNumber := 0 // Helps to figure out which debug message belongs to which test run.
 	for _, watcherOpt := range []watcherType{fsevent, polling} {
-		for _, logrotateOpt := range []logrotateOption{_create, _nocreate} {
+		for _, logrotateOpt := range []logrotateOption{_create, _nocreate} { //, _create_from_temp} {
 			for _, mvOpt := range []logrotateMoveOption{mv, cp, rm} {
 				testRunNumber++
 				testLogrotate(t, NewTestRunLogger(testRunNumber), watcherOpt, logrotateOpt, mvOpt, closeFileAfterEachLine)
@@ -375,6 +378,9 @@ func rotate(t *testing.T, log simpleLogger, logfile string, opt logrotateOption,
 	case opt == _create:
 		moveOrFail(t, mvOpt, logfile)
 		createOrFail(t, logfile)
+	case opt == _create_from_temp:
+		moveOrFail(t, mvOpt, logfile)
+		createFromTemp(t, logfile)
 	case opt == _copytruncate:
 		if mvOpt != cp {
 			t.Fatalf("Rotating with '%v' does not make sense when moving the logfile with '%v'", opt, mvOpt)
@@ -449,6 +455,32 @@ func createOrFail(t *testing.T, logfile string) {
 	err = f.Close()
 	if err != nil {
 		t.Fatalf("%v: Failed to close file: %v", filename, err.Error())
+	}
+	filesAfterCreate := ls(t, dir)
+	if !containsFile(filesAfterCreate, filename) {
+		t.Fatalf("%v does not contain %v after create.", dir, filename)
+	}
+}
+
+func createFromTemp(t *testing.T, logfile string) {
+	dir := filepath.Dir(logfile)
+	filename := filepath.Base(logfile)
+	filesBeforeCreate := ls(t, dir)
+	if containsFile(filesBeforeCreate, filename) {
+		t.Fatalf("%v contains file %v before create.", dir, filename)
+	}
+	tmpFile, err := ioutil.TempFile(dir, "logrotate_temp.")
+	if err != nil {
+		t.Fatalf("failed to create temporary log file in %v: %v", dir, err.Error())
+	}
+	tmpFilename := tmpFile.Name()
+	err = tmpFile.Close()
+	if err != nil {
+		t.Fatalf("failed to close temporary log file %v: %v", tmpFile.Name(), err.Error())
+	}
+	err = os.Rename(tmpFilename, logfile)
+	if err != nil {
+		t.Fatalf("Failed to mv \"%v\" \"%v\": %v", tmpFilename, logfile, err.Error())
 	}
 	filesAfterCreate := ls(t, dir)
 	if !containsFile(filesAfterCreate, filename) {
