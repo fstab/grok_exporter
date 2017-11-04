@@ -131,14 +131,14 @@ func (event *event) Process(fileBefore *File, reader *bufferedLineReader, abspat
 		lines = append(lines, freshLines...)
 	}
 
-	// MOVE or DELETE
+	// MOVED_FROM or DELETE
 	if file != nil && norm(event.Name) == norm(abspath) && (event.Mask&winfsnotify.FS_MOVED_FROM == winfsnotify.FS_MOVED_FROM || event.Mask&winfsnotify.FS_DELETE == winfsnotify.FS_DELETE) {
 		file = nil
 		reader.Clear()
 	}
 
-	// CREATE
-	if file == nil && norm(event.Name) == norm(abspath) && event.Mask&winfsnotify.FS_CREATE == winfsnotify.FS_CREATE {
+	// MOVED_TO or CREATE
+	if file == nil && norm(event.Name) == norm(abspath) && (event.Mask&winfsnotify.FS_MOVED_TO == winfsnotify.FS_MOVED_TO || event.Mask&winfsnotify.FS_CREATE == winfsnotify.FS_CREATE) {
 		file, err = open(abspath)
 		if err != nil {
 			return

@@ -138,8 +138,9 @@ func (events *eventList) Process(fileBefore *File, reader *bufferedLineReader, a
 	file = fileBefore
 	lines = []string{}
 	var truncated bool
-	for _, event := range events.events {
-		logger.Debug("File system watcher received %v.\n", event2string(events.watcher.dir, file, event))
+	logger.Debug("File system watcher received %v event(s):\n", len(events.events))
+	for i, event := range events.events {
+		logger.Debug("%v/%v: %v.\n", i+1, len(events.events), event2string(events.watcher.dir, file, event))
 	}
 
 	// Handle truncate events.
@@ -170,7 +171,7 @@ func (events *eventList) Process(fileBefore *File, reader *bufferedLineReader, a
 		}
 	}
 
-	// Handle move and delete events.
+	// Handle move and delete events (NOTE_RENAME on the file's fd means the file was moved away, like in inotify's IN_MOVED_FROM).
 	for _, event := range events.events {
 		if file != nil && event.Ident == uint64(file.Fd()) && (event.Fflags&syscall.NOTE_DELETE == syscall.NOTE_DELETE || event.Fflags&syscall.NOTE_RENAME == syscall.NOTE_RENAME) {
 			file.Close() // closing the fd will automatically remove event from kq.
@@ -179,7 +180,7 @@ func (events *eventList) Process(fileBefore *File, reader *bufferedLineReader, a
 		}
 	}
 
-	// Handle create events.
+	// Handle move_to and create events (NOTE_WRITE on the directory's fd means a file was created or moved, so this covers inotify's MOVED_TO).
 	for _, event := range events.events {
 		if file == nil && event.Ident == uint64(events.watcher.dir.Fd()) && event.Fflags&syscall.NOTE_WRITE == syscall.NOTE_WRITE {
 			file, err = open(abspath)
