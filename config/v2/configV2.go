@@ -22,6 +22,10 @@ import (
 	"time"
 )
 
+const (
+	defaultRetentionCheckInterval = 53 * time.Second
+)
+
 func Unmarshal(config []byte) (*Config, error) {
 	cfg := &Config{}
 	err := yaml.Unmarshal(config, cfg)
@@ -35,24 +39,25 @@ func Unmarshal(config []byte) (*Config, error) {
 	return cfg, nil
 }
 
-func (cfg *Config) String() string {
-	out, err := yaml.Marshal(cfg)
-	if err != nil {
-		return fmt.Sprintf("ERROR: Failed to marshal config: %v", err.Error())
-	}
-	return string(out)
+type Config struct {
+	Global  GlobalConfig  `yaml:",omitempty"`
+	Input   InputConfig   `yaml:",omitempty"`
+	Grok    GrokConfig    `yaml:",omitempty"`
+	Metrics MetricsConfig `yaml:",omitempty"`
+	Server  ServerConfig  `yaml:",omitempty"`
 }
 
 type GlobalConfig struct {
-	ConfigVersion int `yaml:"config_version,omitempty"`
+	ConfigVersion          int           `yaml:"config_version,omitempty"`
+	RetentionCheckInterval time.Duration `yaml:"retention_check_interval,omitempty"` // implicitly parsed with time.ParseDuration()
 }
 
 type InputConfig struct {
 	Type                string        `yaml:",omitempty"`
 	Path                string        `yaml:",omitempty"`
 	Readall             bool          `yaml:",omitempty"`
-	PollIntervalSeconds string        `yaml:"poll_interval_seconds,omitempty"`
-	PollInterval        time.Duration `yaml:"-"` // parsed version of PollIntervalSeconds
+	PollIntervalSeconds string        `yaml:"poll_interval_seconds,omitempty"` // TODO: Use time.Duration directly
+	PollInterval        time.Duration `yaml:"-"`                               // parsed version of PollIntervalSeconds
 }
 
 type GrokConfig struct {
@@ -65,7 +70,7 @@ type MetricConfig struct {
 	Name                 string               `yaml:",omitempty"`
 	Help                 string               `yaml:",omitempty"`
 	Match                string               `yaml:",omitempty"`
-	Retention            time.Duration        `yaml:",omitempty"` // The yaml parser understands the format defined by time.ParseDuration(), which is good.
+	Retention            time.Duration        `yaml:",omitempty"` // implicitly parsed with time.ParseDuration()
 	Value                string               `yaml:",omitempty"`
 	Cumulative           bool                 `yaml:",omitempty"`
 	Buckets              []float64            `yaml:",flow,omitempty"`
@@ -78,7 +83,7 @@ type MetricConfig struct {
 	DeleteLabelTemplates []templates.Template `yaml:"-"`                       // parsed version of DeleteLabels, will not be serialized to yaml.
 }
 
-type MetricsConfig []*MetricConfig
+type MetricsConfig []MetricConfig
 
 type ServerConfig struct {
 	Protocol string `yaml:",omitempty"`
@@ -88,41 +93,23 @@ type ServerConfig struct {
 	Key      string `yaml:",omitempty"`
 }
 
-type Config struct {
-	Global  *GlobalConfig  `yaml:",omitempty"`
-	Input   *InputConfig   `yaml:",omitempty"`
-	Grok    *GrokConfig    `yaml:",omitempty"`
-	Metrics *MetricsConfig `yaml:",omitempty"`
-	Server  *ServerConfig  `yaml:",omitempty"`
-}
-
 func (cfg *Config) addDefaults() {
-	if cfg.Global == nil {
-		cfg.Global = &GlobalConfig{}
-	}
 	cfg.Global.addDefaults()
-	if cfg.Input == nil {
-		cfg.Input = &InputConfig{}
-	}
 	cfg.Input.addDefaults()
-	if cfg.Grok == nil {
-		cfg.Grok = &GrokConfig{}
-	}
 	cfg.Grok.addDefaults()
 	if cfg.Metrics == nil {
-		metrics := MetricsConfig(make([]*MetricConfig, 0))
-		cfg.Metrics = &metrics
+		cfg.Metrics = MetricsConfig(make([]MetricConfig, 0))
 	}
 	cfg.Metrics.addDefaults()
-	if cfg.Server == nil {
-		cfg.Server = &ServerConfig{}
-	}
 	cfg.Server.addDefaults()
 }
 
 func (c *GlobalConfig) addDefaults() {
 	if c.ConfigVersion == 0 {
 		c.ConfigVersion = 2
+	}
+	if c.RetentionCheckInterval == 0 {
+		c.RetentionCheckInterval = defaultRetentionCheckInterval
 	}
 }
 
@@ -306,8 +293,8 @@ func (c *ServerConfig) validate() error {
 func AddDefaultsAndValidate(cfg *Config) error {
 	var err error
 	cfg.addDefaults()
-	for _, metric := range []*MetricConfig(*cfg.Metrics) {
-		err = metric.InitTemplates()
+	for i := range []MetricConfig(cfg.Metrics) {
+		err = cfg.Metrics[i].InitTemplates()
 		if err != nil {
 			return err
 		}
@@ -329,11 +316,11 @@ func (metric *MetricConfig) InitTemplates() error {
 	}{
 		{
 			src:  metric.Labels,
-			dest: &metric.LabelTemplates,
+			dest: &(metric.LabelTemplates),
 		},
 		{
 			src:  metric.DeleteLabels,
-			dest: &metric.DeleteLabelTemplates,
+			dest: &(metric.DeleteLabelTemplates),
 		},
 	} {
 		*t.dest = make([]templates.Template, 0, len(t.src))
@@ -352,4 +339,26 @@ func (metric *MetricConfig) InitTemplates() error {
 		}
 	}
 	return nil
+}
+
+// YAML representation, does not include default values.
+func (cfg *Config) String() string {
+	stripped := cfg.copy()
+	if stripped.Global.RetentionCheckInterval == defaultRetentionCheckInterval {
+		stripped.Global.RetentionCheckInterval = 0
+	}
+	return stripped.marshalToString()
+}
+
+func (cfg *Config) copy() *Config {
+	result, _ := Unmarshal([]byte(cfg.marshalToString()))
+	return result
+}
+
+func (cfg *Config) marshalToString() string {
+	out, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Sprintf("ERROR: Failed to marshal config: %v", err.Error())
+	}
+	return string(out)
 }

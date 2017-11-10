@@ -15,7 +15,7 @@
 package exporter
 
 import (
-	"github.com/fstab/grok_exporter/config/v2"
+	configuration "github.com/fstab/grok_exporter/config/v2"
 	"gopkg.in/yaml.v2"
 	"strings"
 	"testing"
@@ -99,7 +99,7 @@ func expectError(t *testing.T, regex *OnigurumaRegexp, config string) {
 }
 
 func expect(t *testing.T, regex *OnigurumaRegexp, config string, isErrorExpected bool) {
-	cfg := &v2.MetricConfig{}
+	cfg := &configuration.MetricConfig{}
 	err := yaml.Unmarshal([]byte(config), cfg)
 	if err != nil {
 		t.Fatal(err)

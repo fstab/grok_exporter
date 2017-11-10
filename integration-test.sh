@@ -28,6 +28,7 @@ trap cleanup_temp_files EXIT
 cat <<EOF > $config_file
 global:
     config_version: 2
+    retention_check_interval: 100ms
 input:
     type: file
     path: $(cygpath -w $log_file)
@@ -45,6 +46,13 @@ metrics:
       name: grok_test_counter_labels
       help: Counter metric with labels.
       match: '%{DATE} %{TIME} %{SERVICE:service} %{USER:user} %{NUMBER:val}'
+      labels:
+          user: '{{.user}}'
+    - type: counter
+      name: grok_test_counter_retention
+      help: Counter metric with retention
+      match: '%{DATE} %{TIME} %{SERVICE:service} %{USER:user} retention_test %{NUMBER:val}'
+      retention: 1s
       labels:
           user: '{{.user}}'
     - type: gauge
@@ -131,10 +139,21 @@ function checkMetric() {
     echo $val | grep "$1 $2" > /dev/null || ( echo "FAILED: Expected '$1 $2', but got '$val'." >&2 && exit -1 )
 }
 
+function assertMetricDoesNotExist() {
+    set +e
+    curl -s http://localhost:9144/metrics | grep -v '#' | grep "$1 " > /dev/null
+    if [ $? -eq 0 ] # if metric was found we should fail (we expect the metric to not exist)
+    then
+        echo "FAILED: Metric '$1' should not exist." >&2
+        exit -1
+    fi
+    set -e
+}
+
 echo "Checking metrics..."
 
-#curl -s http://localhost:9144/metrics
-#exit
+# curl -s http://localhost:9144/metrics
+# exit
 
 checkMetric 'grok_test_counter_nolabels' 5
 checkMetric 'grok_test_counter_labels{user="alice"}' 4
@@ -184,6 +203,7 @@ checkMetric 'grok_exporter_lines_total{status="matched"}' 5
 
 checkMetric 'grok_exporter_lines_matching_total{metric="grok_test_counter_labels"}' 5
 checkMetric 'grok_exporter_lines_matching_total{metric="grok_test_counter_nolabels"}' 5
+checkMetric 'grok_exporter_lines_matching_total{metric="grok_test_counter_retention"}' 0
 checkMetric 'grok_exporter_lines_matching_total{metric="grok_test_gauge_labels"}' 5
 checkMetric 'grok_exporter_lines_matching_total{metric="grok_test_gauge_nolabels"}' 5
 checkMetric 'grok_exporter_lines_matching_total{metric="grok_test_histogram_labels"}' 5
@@ -193,6 +213,7 @@ checkMetric 'grok_exporter_lines_matching_total{metric="grok_test_summary_nolabe
 
 checkMetric 'grok_exporter_line_processing_errors_total{metric="grok_test_counter_labels"}' 0
 checkMetric 'grok_exporter_line_processing_errors_total{metric="grok_test_counter_nolabels"}' 0
+checkMetric 'grok_exporter_line_processing_errors_total{metric="grok_test_counter_retention"}' 0
 checkMetric 'grok_exporter_line_processing_errors_total{metric="grok_test_gauge_labels"}' 0
 checkMetric 'grok_exporter_line_processing_errors_total{metric="grok_test_gauge_nolabels"}' 0
 checkMetric 'grok_exporter_line_processing_errors_total{metric="grok_test_histogram_labels"}' 0
@@ -242,5 +263,25 @@ then
 fi
 set -e
 
+# -----------------------
+# Test metric retention
+# -----------------------
+
+echo '30.07.2016 14:37:33 service_a alice retention_test 2.5' >> $log_file
+echo '30.07.2016 14:37:33 service_a bob retention_test 2.5' >> $log_file
+
+checkMetric 'grok_test_counter_retention{user="alice"}' 1
+checkMetric 'grok_test_counter_retention{user="bob"}' 1
+
+sleep .7
+
+# Update 'bob' so this metric will not be deleted
+echo '30.07.2016 14:37:33 service_a bob retention_test 2.5' >> $log_file
+
+sleep .7
+
+# 'alice' should have been deleted after 1 second, 'bob' is still there because it was updated within the last second
+assertMetricDoesNotExist 'grok_test_counter_retention{user="alice"}'
+checkMetric 'grok_test_counter_retention{user="bob"}' 2
 
 echo SUCCESS

@@ -161,7 +161,7 @@ func TestGaugeInvalidConfig(t *testing.T) {
 
 func TestGaugeCumulativeConfig(t *testing.T) {
 	cfg := loadOrFail(t, gauge_config)
-	if (*cfg.Metrics)[0].Cumulative != true {
+	if cfg.Metrics[0].Cumulative != true {
 		t.Fatal("Expected 'true' as gauge cumulative option.")
 	}
 }
@@ -169,7 +169,7 @@ func TestGaugeCumulativeConfig(t *testing.T) {
 func TestGaugeDefaultCumulativeConfig(t *testing.T) {
 	cfgString := strings.Replace(gauge_config, "      cumulative: true\n", "", 1)
 	cfg := loadOrFail(t, cfgString)
-	if (*cfg.Metrics)[0].Cumulative != false {
+	if cfg.Metrics[0].Cumulative != false {
 		t.Fatal("Expected 'false' as default for gauge cumulative option.")
 	}
 }
@@ -185,7 +185,7 @@ func TestGaugeInvalidCumulativeConfig(t *testing.T) {
 func TestHistogramValidConfig(t *testing.T) {
 	validCfg := strings.Replace(histogram_config, "$BUCKETS", "[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]", 1)
 	cfg := loadOrFail(t, validCfg)
-	metric := (*(cfg.Metrics))[0]
+	metric := cfg.Metrics[0]
 	if len(metric.Buckets) != 11 || metric.Buckets[0] != 0.005 || metric.Buckets[10] != 10 {
 		t.Fatalf("Error parsing bucket list: Got %v", metric.Buckets)
 	}
@@ -202,7 +202,7 @@ func TestHistogramInvalidConfig(t *testing.T) {
 func TestSummaryValidConfig(t *testing.T) {
 	validCfg := strings.Replace(summary_config, "$QUANTILES", "{0.5: 0.05, 0.9: 0.01, 0.99: 0.001}", 1)
 	cfg := loadOrFail(t, validCfg)
-	metric := (*(cfg.Metrics))[0]
+	metric := cfg.Metrics[0]
 	if len(metric.Quantiles) != 3 || metric.Quantiles[0.5] != 0.05 || metric.Quantiles[0.99] != 0.001 {
 		t.Fatalf("Error parsing bucket list: Got %v", metric.Buckets)
 	}
@@ -226,10 +226,10 @@ func TestValueInvalidTemplate(t *testing.T) {
 
 func TestDeleteLabelConfig(t *testing.T) {
 	cfg := loadOrFail(t, delete_labels_config)
-	if len(*cfg.Metrics) != 1 {
-		t.Fatalf("Expected 1 metric, but found %v.", len(*cfg.Metrics))
+	if len(cfg.Metrics) != 1 {
+		t.Fatalf("Expected 1 metric, but found %v.", len(cfg.Metrics))
 	}
-	metric := (*cfg.Metrics)[0]
+	metric := cfg.Metrics[0]
 	if len(metric.LabelTemplates) != 2 {
 		t.Fatalf("Expected 2 label templates, but found %v.", len(metric.LabelTemplates))
 	}
@@ -240,8 +240,8 @@ func TestDeleteLabelConfig(t *testing.T) {
 
 func TestRetentionValidConfig(t *testing.T) {
 	cfg := loadOrFail(t, retention_config)
-	if (*cfg.Metrics)[0].Retention != 2*time.Hour+45*time.Minute {
-		t.Fatalf("Error parsing retention, got %v", (*cfg.Metrics)[0].Retention)
+	if cfg.Metrics[0].Retention != 2*time.Hour+45*time.Minute {
+		t.Fatalf("Error parsing retention, got %v", (cfg.Metrics)[0].Retention)
 	}
 }
 

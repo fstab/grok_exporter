@@ -15,7 +15,7 @@
 package exporter
 
 import (
-	"github.com/fstab/grok_exporter/config/v2"
+	configuration "github.com/fstab/grok_exporter/config/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_model/go"
 	"reflect"
@@ -24,7 +24,7 @@ import (
 
 func TestCounterVec(t *testing.T) {
 	regex := initCounterRegex(t)
-	counterCfg := newMetricConfig(t, &v2.MetricConfig{
+	counterCfg := newMetricConfig(t, &configuration.MetricConfig{
 		Name: "exim_rejected_rcpt_total",
 		Labels: map[string]string{
 			"error_message": "{{.message}}",
@@ -54,7 +54,7 @@ func TestCounterVec(t *testing.T) {
 
 func TestCounter(t *testing.T) {
 	regex := initCounterRegex(t)
-	counterCfg := newMetricConfig(t, &v2.MetricConfig{
+	counterCfg := newMetricConfig(t, &configuration.MetricConfig{
 		Name: "exim_rejected_rcpt_total",
 	})
 	counter := NewCounterMetric(counterCfg, regex, nil)
@@ -95,7 +95,7 @@ func initCounterRegex(t *testing.T) *OnigurumaRegexp {
 
 func TestGauge(t *testing.T) {
 	regex := initGaugeRegex(t)
-	gaugeCfg := newMetricConfig(t, &v2.MetricConfig{
+	gaugeCfg := newMetricConfig(t, &configuration.MetricConfig{
 		Name:  "temperature",
 		Value: "{{.temperature}}",
 	})
@@ -118,7 +118,7 @@ func TestGauge(t *testing.T) {
 
 func TestGaugeCumulative(t *testing.T) {
 	regex := initGaugeRegex(t)
-	gaugeCfg := newMetricConfig(t, &v2.MetricConfig{
+	gaugeCfg := newMetricConfig(t, &configuration.MetricConfig{
 		Name:       "temperature",
 		Value:      "{{.temperature}}",
 		Cumulative: true,
@@ -142,7 +142,7 @@ func TestGaugeCumulative(t *testing.T) {
 
 func TestGaugeVec(t *testing.T) {
 	regex := initGaugeRegex(t)
-	gaugeCfg := newMetricConfig(t, &v2.MetricConfig{
+	gaugeCfg := newMetricConfig(t, &configuration.MetricConfig{
 		Name:  "temperature",
 		Value: "{{.temperature}}",
 		Labels: map[string]string{
@@ -184,7 +184,7 @@ func initGaugeRegex(t *testing.T) *OnigurumaRegexp {
 	return regex
 }
 
-func newMetricConfig(t *testing.T, cfg *v2.MetricConfig) *v2.MetricConfig {
+func newMetricConfig(t *testing.T, cfg *configuration.MetricConfig) *configuration.MetricConfig {
 	err := cfg.InitTemplates()
 	if err != nil {
 		t.Fatal(err)

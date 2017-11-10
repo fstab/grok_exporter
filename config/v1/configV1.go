@@ -29,7 +29,7 @@ func Unmarshal(config []byte) (*v2.Config, error) {
 	v2cfg := &v2.Config{
 		Input:   v1cfg.Input,
 		Grok:    v1cfg.Grok,
-		Metrics: convertMetrics(*v1cfg.Metrics),
+		Metrics: v2.MetricsConfig(convertMetrics(v1cfg.Metrics)),
 		Server:  v1cfg.Server,
 	}
 	err = v2.AddDefaultsAndValidate(v2cfg)
@@ -39,13 +39,13 @@ func Unmarshal(config []byte) (*v2.Config, error) {
 	return v2cfg, nil
 }
 
-func convertMetrics(v1metrics []*MetricConfig) *v2.MetricsConfig {
+func convertMetrics(v1metrics []MetricConfig) []v2.MetricConfig {
 	if len(v1metrics) == 0 {
 		return nil
 	}
-	v2metrics := make([]*v2.MetricConfig, len(v1metrics))
+	v2metrics := make([]v2.MetricConfig, len(v1metrics))
 	for i, v1metric := range v1metrics {
-		v2metrics[i] = &v2.MetricConfig{
+		v2metrics[i] = v2.MetricConfig{
 			Type:       v1metric.Type,
 			Name:       v1metric.Name,
 			Help:       v1metric.Help,
@@ -62,8 +62,7 @@ func convertMetrics(v1metrics []*MetricConfig) *v2.MetricsConfig {
 			}
 		}
 	}
-	result := v2.MetricsConfig(v2metrics)
-	return &result
+	return v2metrics
 }
 
 func makeTemplate(grokFieldName string) string {
@@ -76,13 +75,13 @@ func makeTemplate(grokFieldName string) string {
 
 type Config struct {
 	// For sections that don't differ between v1 and v2, we reference v2 directly here.
-	Input   *v2.InputConfig  `yaml:",omitempty"`
-	Grok    *v2.GrokConfig   `yaml:",omitempty"`
-	Metrics *MetricsConfig   `yaml:",omitempty"`
-	Server  *v2.ServerConfig `yaml:",omitempty"`
+	Input   v2.InputConfig  `yaml:",omitempty"`
+	Grok    v2.GrokConfig   `yaml:",omitempty"`
+	Metrics MetricsConfig   `yaml:",omitempty"`
+	Server  v2.ServerConfig `yaml:",omitempty"`
 }
 
-type MetricsConfig []*MetricConfig
+type MetricsConfig []MetricConfig
 
 type MetricConfig struct {
 	Type       string              `yaml:",omitempty"`

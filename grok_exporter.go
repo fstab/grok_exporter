@@ -71,7 +71,7 @@ func main() {
 	fmt.Print(startMsg(cfg))
 	serverErrors := startServer(cfg, "/metrics", prometheus.Handler())
 
-	retentionTicker := time.NewTicker(53 * time.Second) // Process retention every 53 seconds. Should that be configurable?
+	retentionTicker := time.NewTicker(cfg.Global.RetentionCheckInterval)
 
 	for {
 		select {
@@ -169,8 +169,8 @@ func initPatterns(cfg *v2.Config) (*exporter.Patterns, error) {
 }
 
 func createMetrics(cfg *v2.Config, patterns *exporter.Patterns, libonig *exporter.OnigurumaLib) ([]exporter.Metric, error) {
-	result := make([]exporter.Metric, 0, len(*cfg.Metrics))
-	for _, m := range *cfg.Metrics {
+	result := make([]exporter.Metric, 0, len(cfg.Metrics))
+	for _, m := range cfg.Metrics {
 		var (
 			regex, deleteRegex *exporter.OnigurumaRegexp
 			err                error
@@ -185,19 +185,19 @@ func createMetrics(cfg *v2.Config, patterns *exporter.Patterns, libonig *exporte
 				return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
 			}
 		}
-		err = exporter.VerifyFieldNames(m, regex, deleteRegex)
+		err = exporter.VerifyFieldNames(&m, regex, deleteRegex)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
 		}
 		switch m.Type {
 		case "counter":
-			result = append(result, exporter.NewCounterMetric(m, regex, deleteRegex))
+			result = append(result, exporter.NewCounterMetric(&m, regex, deleteRegex))
 		case "gauge":
-			result = append(result, exporter.NewGaugeMetric(m, regex, deleteRegex))
+			result = append(result, exporter.NewGaugeMetric(&m, regex, deleteRegex))
 		case "histogram":
-			result = append(result, exporter.NewHistogramMetric(m, regex, deleteRegex))
+			result = append(result, exporter.NewHistogramMetric(&m, regex, deleteRegex))
 		case "summary":
-			result = append(result, exporter.NewSummaryMetric(m, regex, deleteRegex))
+			result = append(result, exporter.NewSummaryMetric(&m, regex, deleteRegex))
 		default:
 			return nil, fmt.Errorf("Failed to initialize metrics: Metric type %v is not supported.", m.Type)
 		}
