@@ -19,6 +19,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/user"
+	"path"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -101,13 +102,17 @@ func TestFileTailerCloseLogfileAfterEachLine(t *testing.T) {
 		for _, logrotateOpt := range []logrotateOption{_create, _nocreate, _create_from_temp} {
 			for _, mvOpt := range []logrotateMoveOption{mv, cp, rm} {
 				testRunNumber++
-				testLogrotate(t, NewTestRunLogger(testRunNumber), watcherOpt, logrotateOpt, mvOpt, closeFileAfterEachLine)
+				t.Run(fmt.Sprintf("[%v]", testRunNumber), func(t *testing.T) {
+					testLogrotate(t, NewTestRunLogger(testRunNumber), watcherOpt, logrotateOpt, mvOpt, closeFileAfterEachLine)
+				})
 			}
 		}
 		for _, logrotateOpt := range []logrotateOption{_copy, _copytruncate} {
 			// For logrotate options 'copy' and 'copytruncate', only the mvOpt 'cp' makes sense.
 			testRunNumber++
-			testLogrotate(t, NewTestRunLogger(testRunNumber), watcherOpt, logrotateOpt, cp, closeFileAfterEachLine)
+			t.Run(fmt.Sprintf("[%v]", testRunNumber), func(t *testing.T) {
+				testLogrotate(t, NewTestRunLogger(testRunNumber), watcherOpt, logrotateOpt, cp, closeFileAfterEachLine)
+			})
 		}
 	}
 }
@@ -180,12 +185,13 @@ func TestShutdownDuringSendEvent(t *testing.T) {
 //}
 
 func testLogrotate(t *testing.T, log simpleLogger, watcherOpt watcherType, logrotateOpt logrotateOption, logrotateMoveOpt logrotateMoveOption, loggerOpt loggerOption) {
-	log.Debug("Running test with logrotate option '%v', move option '%v', and logger option '%v'.\n", logrotateOpt, logrotateMoveOpt, loggerOpt)
 	tmpDir := mkTmpDirOrFail(t)
 	defer cleanUp(t, tmpDir)
 	logfile := mkTmpFileOrFail(t, tmpDir)
 	logFileWriter := newLogFileWriter(t, logfile, loggerOpt)
 	defer logFileWriter.close(t)
+
+	log.Debug("Running test using logfile %v with logrotate option '%v', move option '%v', and logger option '%v'.\n", path.Base(logfile), logrotateOpt, logrotateMoveOpt, loggerOpt)
 
 	logFileWriter.writeLine(t, log, "test line 1")
 	logFileWriter.writeLine(t, log, "test line 2")
@@ -326,7 +332,7 @@ func cleanUp(t *testing.T, dir string) {
 	}
 	err := os.RemoveAll(dir)
 	if err != nil {
-		t.Errorf("%v: Failed to remove the test directory after running the tests: %v", dir, err.Error())
+		t.Fatalf("%v: Failed to remove the test directory after running the tests: %v", dir, err.Error())
 	}
 }
 
@@ -499,19 +505,18 @@ func expect(t *testing.T, log simpleLogger, c chan string, line string, timeout 
 	timeoutChan := make(chan bool, 1)
 	go func() {
 		time.Sleep(timeout)
-		timeoutChan <- true
 		close(timeoutChan)
 	}()
 	select {
 	case result := <-c:
 		if result != line {
-			t.Errorf("Expected '%v', but got '%v'.", line, result)
+			t.Fatalf("Expected '%v', but got '%v'.", line, result)
 		} else {
 			log.Debug("Read expected line '%v'\n", line)
 		}
 	case <-timeoutChan:
-		log.Debug("Timeout while waiting for line '%v'\n", line)
-		t.Errorf("Timeout while waiting for line '%v'", line)
+		log.Debug("Timeout after %v while waiting for line '%v'\n", timeout, line)
+		t.Fatalf("Timeout after %v while waiting for line '%v'", timeout, line)
 	}
 }
 
@@ -551,7 +556,7 @@ func runTestShutdown(t *testing.T, mode string) {
 
 	watcher, err := NewFseventWatcher(logfile, file)
 	if err != nil {
-		t.Error(err)
+		t.Fatalf("%v", err)
 	}
 
 	eventLoop := watcher.StartEventLoop()
@@ -564,20 +569,20 @@ func runTestShutdown(t *testing.T, mode string) {
 		file.Close()
 		err = os.Remove(logfile) // trigger file system event so kevent() or syscall.Read() returns.
 		if err != nil {
-			t.Errorf("Failed to remove logfile: %v", err)
+			t.Fatalf("Failed to remove logfile: %v", err)
 		}
 		// The watcher is now waiting until we read the event from the event channel.
 		// However, we shut down and abort the event.
 		eventLoop.Close()
 	default:
-		t.Errorf("Unknown mode: %v", mode)
+		t.Fatalf("Unknown mode: %v", mode)
 	}
 	_, ok := <-eventLoop.Errors()
 	if ok {
-		t.Error("error channel not closed")
+		t.Fatalf("error channel not closed")
 	}
 	_, ok = <-eventLoop.Events()
 	if ok {
-		t.Error("events channel not closed")
+		t.Fatalf("events channel not closed")
 	}
 }
