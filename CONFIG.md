@@ -305,6 +305,8 @@ The configuration is as follows:
 * `name`, `help`, `match`, `labels`, and `value` have the same meaning as for `gauge` metrics.
 * `quantiles` is a list of quantiles to be observed. `grok_exporter` does not provide exact values for the quantiles, but only estimations. For each quantile, you also specify an uncertainty that is tolerated for the estimation. In the example, we measure the median (0.5 quantile) with uncertainty 5%, the 90% quantile with uncertainty 1%, and the 99% quantile with uncertainty 0.1%. `quantiles` is optional, the default value is `{0.5: 0.05, 0.9: 0.01, 0.99: 0.001}`.
 
+Summaries represent a sliding time window of 10 minutes, i.e. if you observe a 0.5 quantile (median) of _x_, the value _x_ represents the median within the last 10 minutes. The time window is moved forward every 2 minutes.
+
 Output for the example log lines above::
 ```
 # HELP grok_example_values Example summary metric with labels.
