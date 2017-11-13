@@ -220,7 +220,7 @@ func testLogrotate(t *testing.T, log simpleLogger, watcherOpt watcherType, logro
 
 	// Append a line and see if the event is processed.
 	logFileWriter.writeLine(t, log, "test line 3")
-	expect(t, log, tail.Lines(), "test line 3", 1*time.Second)
+	expect(t, log, tail.Lines(), "test line 3", 5*time.Second) // test on Travis CI fails sometimes here although the write event is processed correctly. maybe a timing problem? increase to 5s and see if error persists.
 
 	rotate(t, log, logfile, logrotateOpt, logrotateMoveOpt)
 
