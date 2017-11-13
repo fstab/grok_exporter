@@ -94,6 +94,10 @@ func runFileTailer(path string, readall bool, logger simpleLogger, makeWatcher f
 			writeError(errors, done, "Failed to initialize file system watcher for %v: %v", path, err.Error())
 			return
 		}
+		eventLoop := watcher.StartEventLoop()
+		defer closeUnlessNil(eventLoop)
+
+		// process all pre-existing lines before listening to new events
 		reader := NewBufferedLineReader()
 		freshLines, err := reader.ReadAvailableLines(file)
 		if err != nil {
@@ -107,9 +111,6 @@ func runFileTailer(path string, readall bool, logger simpleLogger, makeWatcher f
 			case lines <- line:
 			}
 		}
-
-		eventLoop := watcher.StartEventLoop()
-		defer closeUnlessNil(eventLoop)
 
 		for {
 			select {

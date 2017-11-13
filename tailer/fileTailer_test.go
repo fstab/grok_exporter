@@ -209,7 +209,7 @@ func testLogrotate(t *testing.T, log simpleLogger, watcherOpt watcherType, logro
 	// the tailer's errorChannel in case something goes wrong.
 	go func() {
 		for err := range tail.Errors() {
-			t.Fatalf("Tailer failed: %v", err.Error())
+			t.Errorf("Tailer failed: %v", err.Error()) // Cannot call t.Fatalf() in other goroutine.
 		}
 	}()
 
@@ -220,7 +220,7 @@ func testLogrotate(t *testing.T, log simpleLogger, watcherOpt watcherType, logro
 
 	// Append a line and see if the event is processed.
 	logFileWriter.writeLine(t, log, "test line 3")
-	expect(t, log, tail.Lines(), "test line 3", 5*time.Second) // test on Travis CI fails sometimes here although the write event is processed correctly. maybe a timing problem? increase to 5s and see if error persists.
+	expect(t, log, tail.Lines(), "test line 3", 1*time.Second)
 
 	rotate(t, log, logfile, logrotateOpt, logrotateMoveOpt)
 
