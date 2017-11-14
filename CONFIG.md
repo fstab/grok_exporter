@@ -32,21 +32,26 @@ The following shows the configuration options for each of these sections.
 Global Section
 --------------
 
-The `global:` section contains only one property, which is the `config_version`. The current `config_version` is `2`.
+The `global` section is as follows:
 
 ```yaml
 global:
     config_version: 2
+    retention_check_interval: 53s
 ```
 
-The config file is versioned independently of the `grok_exporter` program. When a new version of `grok_exporter` keeps using the same config file, the `config_version` will remain the same.
+The `config_version` specifies the version of the config file format. Specifying the `config_version` is mandatory, it has to be included in every configuration file. The current `config_version` is `2`.
+
+The config file format is versioned independently of the `grok_exporter` program. When a new version of `grok_exporter` keeps using the same config file, the `config_version` will remain the same.
 
 The following table shows which `grok_exporter` version uses which `config_version`:
 
-| grok_exporter       | config_version           |
-| ------------------- | ------------------------ |
-| ≤ 0.1.4             | 1 _(see [CONFIG_v1.md])_ |
-| 0.2.0, 0.2.1, 0.2.2 | 2 _(current version)_    |
+| grok_exporter              | config_version           |
+| -------------------------- | ------------------------ |
+| ≤ 0.1.4                    | 1 _(see [CONFIG_v1.md])_ |
+| 0.2.0, 0.2.1, 0.2.2, 0.2.3 | 2 _(current version)_    |
+
+The `retention_check_interval` is the interval at which `grok_exporter` checks for expired metrics. By default, metrics don't expire so this is relevant only if `retention` is configured explicitly with a metric. The `retention_check_interval` is optional, the value defaults to `53s`. The default value is reasonable for production and should not be changed. This property is intended to be used in tests, where you might not want to wait 53 seconds until an expired metric is cleaned up. The format is described in [How to Configure Durations] below.
 
 Input Section
 -------------
@@ -171,6 +176,12 @@ The `match` stores whatever matches the `%{USER}` pattern under the Grok field n
 
 This simple example shows a one-to-one mapping of a Grok field to a Prometheus label. However, the label definition is pretty flexible: You can combine multiple Grok fields in one label, and you can define constant labels that don't use Grok fields at all.
 
+### Expiring Old Labels
+
+By default, metrics are kept forever. However, sometimes you might want metrics with old labels to expire. There are two ways to do this in `grok_exporter`:
+
+#### `delete_labels`
+
 As of version 0.2.2, `grok_exporter` supports `delete_match` and `delete_labels` configuration:
 
 ```yaml
@@ -184,6 +195,25 @@ Without `delete_match` and `delete_labels`, all labels are kept forever (until `
 Using `delete_match` you can define a regular expression that will trigger removal of metrics. For example, `delete_match` could match a shutdown message in a log file.
 
 Using `delete_labels` you can restrict which labels are deleted if a line matches `delete_match`. If no `delete_labels` are specified, all labels for the given metric are deleted. If `delete_labels` are specified, only those metrics are deleted where the label values are equal to the delete label values.
+
+#### `retention`
+
+As of version 0.2.3, `grok_exporter` supports `retention` configuration for metrics:
+
+```yaml
+metrics:
+    - type: ...
+      name: retention_example
+      help: ...
+      match: ...
+      labels:
+          ...
+      retention: 2h30m
+```
+
+The example above means that if label values for the metrics named `retention_example` have not been observed for 2 hours and 30 minutes, the `retention_example` metrics with these label values will be removed.
+For the format of the `retention` value, see [How to Configure Durations] below.
+Note that `grok_exporter` checks the `retention` every 53 seconds by default, so it may take 53 seconds until the metric is actually removed after the retention time is reached, see `retention_check_interval` above.
 
 ### Counter Metric Type
 
@@ -343,8 +373,19 @@ server:
 * `cert` is the path to the SSL certificate file for protocol `https`. It is optional. If omitted, a hard-coded default certificate will be used.
 * `key` is the path to the SSL key file for protocol `https`. It is optional. If omitted, a hard-coded default key will be used.
 
+How to Configure Durations
+--------------------------
+
+`grok_exporter` uses the format from golang's [time.ParseDuration()] for configuring time intervals. Some examples are:
+
+* `2h30m`: 2 hours and 30 minutes
+* `100ms`: 100 milliseconds
+* `1m30s`: 1 minute and 30 seconds
+* `5m`: 5 minutes
+
 [example/config.yml]: example/config.yml
 [CONFIG_v1.md]: CONFIG_v1.md
+[How to Configure Durations]: #how-to-configure-durations
 [logstash-patterns-core repository]: https://github.com/logstash-plugins/logstash-patterns-core
 [pre-defined patterns]: https://github.com/logstash-plugins/logstash-patterns-core/tree/master/patterns
 [Grok documentation]: https://www.elastic.co/guide/en/logstash/current/plugins-filters-grok.html
@@ -360,3 +401,4 @@ server:
 [Prometheus metric types]: https://prometheus.io/docs/concepts/metric_types
 [Grok documentation]: https://www.elastic.co/guide/en/logstash/current/plugins-filters-grok.html
 [histograms and summaries]: https://prometheus.io/docs/practices/histograms/
+[time.ParseDuration()]: https://golang.org/pkg/time/#ParseDuration
