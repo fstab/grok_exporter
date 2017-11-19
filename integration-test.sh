@@ -284,4 +284,10 @@ sleep .7
 assertMetricDoesNotExist 'grok_test_counter_retention{user="alice"}'
 checkMetric 'grok_test_counter_retention{user="bob"}' 2
 
+# Update 'alice', now the metric should re-appear
+echo '30.07.2016 14:37:33 service_a alice retention_test 2.5' >> $log_file
+sleep 0.1
+checkMetric 'grok_test_counter_retention{user="alice"}' 1
+checkMetric 'grok_test_counter_retention{user="bob"}' 2
+
 echo SUCCESS
