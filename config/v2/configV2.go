@@ -19,11 +19,14 @@ import (
 	"github.com/fstab/grok_exporter/templates"
 	"gopkg.in/yaml.v2"
 	"strconv"
+	"strings"
 	"time"
 )
 
 const (
 	defaultRetentionCheckInterval = 53 * time.Second
+	inputTypeStdin                = "stdin"
+	inputTypeFile                 = "file"
 )
 
 func Unmarshal(config []byte) (*Config, error) {
@@ -53,11 +56,13 @@ type GlobalConfig struct {
 }
 
 type InputConfig struct {
-	Type                string        `yaml:",omitempty"`
-	Path                string        `yaml:",omitempty"`
-	Readall             bool          `yaml:",omitempty"`
-	PollIntervalSeconds string        `yaml:"poll_interval_seconds,omitempty"` // TODO: Use time.Duration directly
-	PollInterval        time.Duration `yaml:"-"`                               // parsed version of PollIntervalSeconds
+	Type                       string        `yaml:",omitempty"`
+	Path                       string        `yaml:",omitempty"`
+	FailOnMissingLogfileString string        `yaml:"fail_on_missing_logfile,omitempty"` // cannot use bool directly, because yaml.v2 doesn't support true as default value.
+	FailOnMissingLogfile       bool          `yaml:"-"`
+	Readall                    bool          `yaml:",omitempty"`
+	PollIntervalSeconds        string        `yaml:"poll_interval_seconds,omitempty"` // TODO: Use time.Duration directly
+	PollInterval               time.Duration `yaml:"-"`                               // parsed version of PollIntervalSeconds
 }
 
 type GrokConfig struct {
@@ -115,7 +120,10 @@ func (c *GlobalConfig) addDefaults() {
 
 func (c *InputConfig) addDefaults() {
 	if c.Type == "" {
-		c.Type = "stdin"
+		c.Type = inputTypeStdin
+	}
+	if c.Type == inputTypeFile && len(c.FailOnMissingLogfileString) == 0 {
+		c.FailOnMissingLogfileString = "true"
 	}
 }
 
@@ -153,30 +161,37 @@ func (cfg *Config) validate() error {
 }
 
 func (c *InputConfig) validate() error {
+	var err error
 	switch {
-	case c.Type == "stdin":
+	case c.Type == inputTypeStdin:
 		if c.Path != "" {
-			return fmt.Errorf("Invalid input configuration: cannot use 'input.path' when 'input.type' is stdin.")
+			return fmt.Errorf("invalid input configuration: cannot use 'input.path' when 'input.type' is stdin")
 		}
 		if c.Readall {
-			return fmt.Errorf("Invalid input configuration: cannot use 'input.readall' when 'input.type' is stdin.")
+			return fmt.Errorf("invalid input configuration: cannot use 'input.readall' when 'input.type' is stdin")
 		}
 		if c.PollIntervalSeconds != "" {
-			return fmt.Errorf("Invalid input configuration: cannot use 'input.poll_interval_seconds' when 'input.type' is stdin.")
+			return fmt.Errorf("invalid input configuration: cannot use 'input.poll_interval_seconds' when 'input.type' is stdin")
 		}
-	case c.Type == "file":
+	case c.Type == inputTypeFile:
 		if c.Path == "" {
-			return fmt.Errorf("Invalid input configuration: 'input.path' is required for input type \"file\".")
+			return fmt.Errorf("invalid input configuration: 'input.path' is required for input type \"file\"")
 		}
-		if c.PollIntervalSeconds != "" {
+		if len(c.PollIntervalSeconds) > 0 { // TODO: Use duration directly, as with other durations in the config file
 			nSeconds, err := strconv.Atoi(c.PollIntervalSeconds)
 			if err != nil {
-				return fmt.Errorf("Invalid input configuration: '%v' is not a valid number in 'input.poll_interval_seconds'.", c.PollIntervalSeconds)
+				return fmt.Errorf("invalid input configuration: '%v' is not a valid number in 'input.poll_interval_seconds'", c.PollIntervalSeconds)
 			}
 			c.PollInterval = time.Duration(nSeconds) * time.Second
 		}
+		if len(c.FailOnMissingLogfileString) > 0 {
+			c.FailOnMissingLogfile, err = strconv.ParseBool(c.FailOnMissingLogfileString)
+			if err != nil {
+				return fmt.Errorf("invalid input configuration: '%v' is not a valid boolean value in 'input.fail_on_missing_logfile'", c.FailOnMissingLogfileString)
+			}
+		}
 	default:
-		return fmt.Errorf("Unsupported 'input.type': %v", c.Type)
+		return fmt.Errorf("unsupported 'input.type': %v", c.Type)
 	}
 	return nil
 }
@@ -347,6 +362,9 @@ func (cfg *Config) String() string {
 	if stripped.Global.RetentionCheckInterval == defaultRetentionCheckInterval {
 		stripped.Global.RetentionCheckInterval = 0
 	}
+	if stripped.Input.FailOnMissingLogfileString == "true" {
+		stripped.Input.FailOnMissingLogfileString = ""
+	}
 	return stripped.marshalToString()
 }
 
@@ -360,5 +378,9 @@ func (cfg *Config) marshalToString() string {
 	if err != nil {
 		return fmt.Sprintf("ERROR: Failed to marshal config: %v", err.Error())
 	}
-	return string(out)
+	result := string(out)
+	// Pretend fail_on_missing_logfile is a boolean, remove quotes
+	result = strings.Replace(result, "fail_on_missing_logfile: \"false\"", "fail_on_missing_logfile: false", -1)
+	result = strings.Replace(result, "fail_on_missing_logfile: \"true\"", "fail_on_missing_logfile: true", -1)
+	return result
 }

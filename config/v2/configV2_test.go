@@ -26,6 +26,7 @@ global:
 input:
     type: file
     path: x/x/x
+    fail_on_missing_logfile: false
     readall: true
 grok:
     patterns_dir: b/c
@@ -46,7 +47,8 @@ const gauge_config = `
 global:
     config_version: 2
 input:
-    type: stdin
+    type: file
+    path: x/x/x
 grok:
     patterns_dir: b/c
 metrics:

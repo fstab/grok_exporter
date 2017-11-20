@@ -270,9 +270,9 @@ func startTailer(cfg *v2.Config) (tailer.Tailer, error) {
 	switch {
 	case cfg.Input.Type == "file":
 		if cfg.Input.PollInterval == 0 {
-			tail = tailer.RunFseventFileTailer(cfg.Input.Path, cfg.Input.Readall, nil)
+			tail = tailer.RunFseventFileTailer(cfg.Input.Path, cfg.Input.Readall, cfg.Input.FailOnMissingLogfile, nil)
 		} else {
-			tail = tailer.RunPollingFileTailer(cfg.Input.Path, cfg.Input.Readall, cfg.Input.PollInterval, nil)
+			tail = tailer.RunPollingFileTailer(cfg.Input.Path, cfg.Input.Readall, cfg.Input.FailOnMissingLogfile, cfg.Input.PollInterval, nil)
 		}
 	case cfg.Input.Type == "stdin":
 		tail = tailer.RunStdinTailer()

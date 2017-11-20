@@ -149,7 +149,7 @@ func TestVisibleInOSXFinder(t *testing.T) {
 	logFileWriter := newLogFileWriter(t, logfile, closeFileAfterEachLine)
 	defer logFileWriter.close(t)
 	logFileWriter.writeLine(t, log, "test line 1")
-	tail := RunFseventFileTailer(logfile, false, log)
+	tail := RunFseventFileTailer(logfile, false, true, log)
 	defer tail.Close()
 	go func() {
 		for err := range tail.Errors() {
@@ -167,6 +167,37 @@ func TestVisibleInOSXFinder(t *testing.T) {
 	// If we wrongly interpret NOTE_ATTRIB as truncate, we read 'test line 1' again. If we correctly ignore
 	// NOTE_ATTRIB here, we will read 'test line 3'.
 	expect(t, log, tail.Lines(), "test line 3", 1*time.Second)
+}
+
+// test the "fail_on_missing_logfile: false" configuration
+func TestFileMissingOnStartup(t *testing.T) {
+	const logfileName = "grok_exporter_test_logfile.log"
+	log := NewTestRunLogger(300)
+	tmpDir := mkTmpDirOrFail(t)
+	defer cleanUp(t, tmpDir)
+	var logfile = fmt.Sprintf("%s%c%s", tmpDir, os.PathSeparator, logfileName)
+	tail := RunFseventFileTailer(logfile, true, false, log)
+	defer tail.Close()
+
+	// We don't expect errors. However, start a go-routine listening on
+	// the tailer's errorChannel in case something goes wrong.
+	go func() {
+		for err := range tail.Errors() {
+			t.Errorf("Tailer failed: %v", err.Error()) // Cannot call t.Fatalf() in other goroutine.
+		}
+	}()
+
+	// Double check that file does not exist yet
+	_, err := os.Stat(logfile)
+	if err == nil || !os.IsNotExist(err) {
+		t.Fatalf("%v should not exist yet")
+	}
+
+	logFileWriter := newLogFileWriter(t, logfile, closeFileAfterEachLine)
+	logFileWriter.writeLine(t, log, "test line 1")
+	logFileWriter.writeLine(t, log, "test line 2")
+	expect(t, log, tail.Lines(), "test line 1", 1*time.Second)
+	expect(t, log, tail.Lines(), "test line 2", 1*time.Second)
 }
 
 func TestShutdownDuringSyscall(t *testing.T) {
@@ -199,9 +230,9 @@ func testLogrotate(t *testing.T, log simpleLogger, watcherOpt watcherType, logro
 	var tail Tailer
 	switch watcherOpt {
 	case fsevent:
-		tail = RunFseventFileTailer(logfile, true, log)
+		tail = RunFseventFileTailer(logfile, true, true, log)
 	case polling:
-		tail = RunPollingFileTailer(logfile, true, 10*time.Millisecond, log)
+		tail = RunPollingFileTailer(logfile, true, true, 10*time.Millisecond, log)
 	}
 	defer tail.Close()
 

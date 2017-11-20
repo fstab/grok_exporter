@@ -44,8 +44,13 @@ func NewFseventWatcher(abspath string, file *File) (Watcher, error) {
 		return nil, err
 	}
 	zeroTimeout := syscall.NsecToTimespec(0) // timeout zero means non-blocking kevent() call
-	// Register for events on dir and file.
-	_, err = syscall.Kevent(kq, []syscall.Kevent_t{makeEvent(dir), makeEvent(file.File)}, nil, &zeroTimeout)
+	if file != nil {
+		// logfile is already there, register for events on dir and file.
+		_, err = syscall.Kevent(kq, []syscall.Kevent_t{makeEvent(dir), makeEvent(file.File)}, nil, &zeroTimeout)
+	} else {
+		// logfile not created yet, register for events on dir.
+		_, err = syscall.Kevent(kq, []syscall.Kevent_t{makeEvent(dir)}, nil, &zeroTimeout)
+	}
 	if err != nil {
 		dir.Close()
 		syscall.Close(kq)

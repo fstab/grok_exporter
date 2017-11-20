@@ -17,6 +17,7 @@ package tailer
 import (
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"time"
 )
@@ -43,76 +44,88 @@ func (f *fileTailer) Errors() chan error {
 	return f.errors
 }
 
-func RunFseventFileTailer(path string, readall bool, logger simpleLogger) Tailer {
-	return runFileTailer(path, readall, logger, NewFseventWatcher)
+func RunFseventFileTailer(path string, readall bool, failOnMissingFile bool, logger simpleLogger) Tailer {
+	return runFileTailer(path, readall, failOnMissingFile, logger, NewFseventWatcher)
 }
 
-func RunPollingFileTailer(path string, readall bool, pollIntervall time.Duration, logger simpleLogger) Tailer {
+func RunPollingFileTailer(path string, readall bool, failOnMissingFile bool, pollIntervall time.Duration, logger simpleLogger) Tailer {
 	makeWatcher := func(abspath string, _ *File) (Watcher, error) {
 		return NewPollingWatcher(abspath, pollIntervall)
 	}
-	return runFileTailer(path, readall, logger, makeWatcher)
+	return runFileTailer(path, readall, failOnMissingFile, logger, makeWatcher)
 }
 
-func runFileTailer(path string, readall bool, logger simpleLogger, makeWatcher func(abspath string, file *File) (Watcher, error)) Tailer {
+func runFileTailer(path string, readall bool, failOnMissingFile bool, logger simpleLogger, makeWatcher func(string, *File) (Watcher, error)) Tailer {
 	if logger == nil {
 		logger = &nilLogger{}
 	}
+
 	lines := make(chan string)
 	done := make(chan struct{})
 	errors := make(chan error)
+
+	result := &fileTailer{
+		lines:  lines,
+		errors: errors,
+		done:   done,
+		closed: false,
+	}
+
+	file, abspath, err := openLogfile(path, readall, failOnMissingFile)
+	if err != nil {
+		go func(err error) {
+			writeError(errors, done, "failed to initialize file system watcher for %v: %v", path, err)
+			close(lines)
+			close(errors)
+		}(err)
+		return result
+	}
+	watcher, err := makeWatcher(abspath, file) // if file is nil the watcher assumes the file doesn't exist yet and waits for CREATE events.
+	if err != nil {
+		go func(err error) {
+			writeError(errors, done, "failed to initialize file system watcher for %v: %v", path, err)
+			if file != nil {
+				file.Close()
+			}
+			close(lines)
+			close(errors)
+		}(err)
+		return result
+	}
+
+	// The watcher is initialized now. Fork off the event loop goroutine.
 	go func() {
 		defer func() {
+			watcher.Close()
+			if file != nil {
+				file.Close()
+			}
 			close(lines)
 			close(errors)
 		}()
-		abspath, err := filepath.Abs(path)
-		if err != nil {
-			writeError(errors, done, "Failed to initialize file system watcher for %v: %v", path, err.Error())
-			return
+		eventLoop := watcher.StartEventLoop()
+		if eventLoop != nil {
+			defer eventLoop.Close()
 		}
-		file, err := open(abspath)
-		defer closeUnlessNil(file)
-		if err != nil {
-			writeError(errors, done, "Failed to initialize file system watcher for %v: %v", path, err.Error())
-			return
-		}
-		if !readall {
-			_, err = file.Seek(0, io.SeekEnd)
+		reader := NewBufferedLineReader()
+		if file != nil {
+			// process all pre-existing lines
+			freshLines, err := reader.ReadAvailableLines(file)
 			if err != nil {
-				writeError(errors, done, "Failed to initialize file system watcher for %v: %v", path, err.Error())
+				writeError(errors, done, "failed to initialize file system watcher for %v: %v", path, err.Error())
 				return
 			}
-		}
-		if err != nil {
-			writeError(errors, done, "Failed to initialize file system watcher for %v: %v", path, err.Error())
-			return
-		}
-		watcher, err := makeWatcher(abspath, file)
-		defer closeUnlessNil(watcher)
-		if err != nil {
-			writeError(errors, done, "Failed to initialize file system watcher for %v: %v", path, err.Error())
-			return
-		}
-		eventLoop := watcher.StartEventLoop()
-		defer closeUnlessNil(eventLoop)
-
-		// process all pre-existing lines before listening to new events
-		reader := NewBufferedLineReader()
-		freshLines, err := reader.ReadAvailableLines(file)
-		if err != nil {
-			writeError(errors, done, "Failed to initialize file system watcher for %v: %v", path, err.Error())
-			return
-		}
-		for _, line := range freshLines {
-			select {
-			case <-done:
-				return
-			case lines <- line:
+			for _, line := range freshLines {
+				select {
+				case <-done:
+					return
+				case lines <- line:
+				}
 			}
 		}
 
 		for {
+			// process events from event loop
 			select {
 			case <-done:
 				return
@@ -146,18 +159,34 @@ func runFileTailer(path string, readall bool, logger simpleLogger, makeWatcher f
 			}
 		}
 	}()
-	return &fileTailer{
-		lines:  lines,
-		errors: errors,
-		done:   done,
-		closed: false,
-	}
+	return result
 }
 
-func closeUnlessNil(c io.Closer) {
-	if c != nil {
-		c.Close()
+// may return *File == nil if the file does not exist and failOnMissingFile == false
+func openLogfile(path string, readall bool, failOnMissingFile bool) (*File, string, error) {
+	abspath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, "", err
 	}
+	file, err := open(abspath)
+	if err != nil {
+		if failOnMissingFile && os.IsNotExist(err) {
+			return nil, "", fmt.Errorf("%v. use 'fail_on_missing_logfile: false' in the input configuration if you want grok_exporter to start even though the logfile is missing", err)
+		}
+		if failOnMissingFile || !os.IsNotExist(err) {
+			return nil, "", err
+		}
+	}
+	if !readall && file != nil {
+		_, err = file.Seek(0, io.SeekEnd)
+		if err != nil {
+			if file != nil {
+				file.Close()
+			}
+			return nil, "", err
+		}
+	}
+	return file, abspath, nil
 }
 
 func writeError(errors chan error, done chan struct{}, format string, a ...interface{}) {
