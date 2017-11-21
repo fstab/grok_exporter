@@ -143,6 +143,16 @@ func runFileTailer(path string, readall bool, failOnMissingFile bool, logger sim
 				}
 				return
 			case evnts := <-eventLoop.Events():
+				if evnts == nil {
+					select {
+					case <-done:
+						// The tailer is shutting down and closed the 'done' and 'errors' channels. This is ok.
+					default:
+						// 'done' is still open, the tailer is not shutting down. This is a bug.
+						writeError(errors, done, "failed to watch %v: unknown error", abspath)
+					}
+					return
+				}
 				var freshLines []string
 				file, freshLines, err = evnts.Process(file, reader, abspath, logger)
 				if err != nil {

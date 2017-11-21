@@ -103,7 +103,7 @@ func (w *watcher) StartEventLoop() EventLoop {
 						event.Name = strings.TrimRight(string(bytes[0:event.Len]), "\000")
 					}
 					if event.Mask&syscall.IN_IGNORED == syscall.IN_IGNORED {
-						// eventLoop.Close() was called.
+						// eventLoop.Close() was called or log dir was deleted
 						return
 					}
 					eventsWithName = append(eventsWithName, event)

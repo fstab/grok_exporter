@@ -608,12 +608,20 @@ func runTestShutdown(t *testing.T, mode string) {
 	default:
 		t.Fatalf("Unknown mode: %v", mode)
 	}
-	_, ok := <-eventLoop.Errors()
-	if ok {
-		t.Fatalf("error channel not closed")
+	select {
+	case _, ok := <-eventLoop.Errors():
+		if ok {
+			t.Fatalf("error channel not closed")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("timeout while waiting for errors channel to be closed.")
 	}
-	_, ok = <-eventLoop.Events()
-	if ok {
-		t.Fatalf("events channel not closed")
+	select {
+	case _, ok := <-eventLoop.Events():
+		if ok {
+			t.Fatalf("events channel not closed")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("timeout while waiting for errors channel to be closed.")
 	}
 }
