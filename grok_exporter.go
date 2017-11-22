@@ -30,7 +30,7 @@ import (
 var (
 	printVersion = flag.Bool("version", false, "Print the grok_exporter version.")
 	configPath   = flag.String("config", "", "Path to the config file. Try '-config ./example/config.yml' to get started.")
-	showConfig   = flag.Bool("showconfig", false, "Print the current configuration to the console. Example: 'grok_exporter -showconfig -config ./exemple/config.yml'")
+	showConfig   = flag.Bool("showconfig", false, "Print the current configuration to the console. Example: 'grok_exporter -showconfig -config ./example/config.yml'")
 )
 
 const (
