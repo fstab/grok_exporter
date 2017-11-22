@@ -134,5 +134,17 @@ func openWithBackoff(fileName string) (*os.File, error) {
 		}
 		time.Sleep(time.Duration(i*125) * time.Millisecond)
 	}
-	return nil, fmt.Errorf("%v: failed to open file: %v", fileName, err)
+
+	// The fileTailer will check if the file exists using os.IsNotExists(err)
+	// Return an error that can be used with os.IsNotExists().
+	errno, ok := err.(syscall.Errno)
+	if ok {
+		return nil, &os.PathError{
+			Op:   "open",
+			Path: fileName,
+			Err:  errno,
+		}
+	} else {
+		return nil, fmt.Errorf("%v: failed to open file: %v", fileName, err)
+	}
 }
