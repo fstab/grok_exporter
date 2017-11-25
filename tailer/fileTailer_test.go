@@ -96,6 +96,17 @@ func (opt loggerOption) String() string {
 	}
 }
 
+func (opt watcherType) String() string {
+	switch {
+	case opt == fsevent:
+		return "fsevent"
+	case opt == polling:
+		return "polling"
+	default:
+		return "unknown"
+	}
+}
+
 func TestFileTailerCloseLogfileAfterEachLine(t *testing.T) {
 	testRunNumber := 0 // Helps to figure out which debug message belongs to which test run.
 	for _, watcherOpt := range []watcherType{fsevent, polling} {
@@ -222,7 +233,7 @@ func testLogrotate(t *testing.T, log simpleLogger, watcherOpt watcherType, logro
 	logFileWriter := newLogFileWriter(t, logfile, loggerOpt)
 	defer logFileWriter.close(t)
 
-	log.Debug("Running test using logfile %v with logrotate option '%v', move option '%v', and logger option '%v'.\n", path.Base(logfile), logrotateOpt, logrotateMoveOpt, loggerOpt)
+	log.Debug("Running test using logfile %v with watcher option '%v', logrotate option '%v', move option '%v', and logger option '%v'.\n", path.Base(logfile), watcherOpt, logrotateOpt, logrotateMoveOpt, loggerOpt)
 
 	logFileWriter.writeLine(t, log, "test line 1")
 	logFileWriter.writeLine(t, log, "test line 2")
@@ -257,7 +268,7 @@ func testLogrotate(t *testing.T, log simpleLogger, watcherOpt watcherType, logro
 
 	// Log two more lines and see if they are received.
 	logFileWriter.writeLine(t, log, "line 4")
-	expect(t, log, tail.Lines(), "line 4", 10*time.Second) // few seconds longer to get filesystem notifications for rotate()
+	expect(t, log, tail.Lines(), "line 4", 5*time.Second) // few seconds longer to get filesystem notifications for rotate()
 	logFileWriter.writeLine(t, log, "line 5")
 	expect(t, log, tail.Lines(), "line 5", 1*time.Second)
 }
