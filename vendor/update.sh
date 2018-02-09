@@ -5,7 +5,7 @@ set -e
 # patches are created with
 # diff -Naur proj_orig proj_patched
 
-export VENDOR=$GOPATH/src/github.com/yamingwa/grok_exporter/vendor
+export VENDOR=$GOPATH/src/github.com/fstab/grok_exporter/vendor
 
 cd $VENDOR
 # remove all subdirectories

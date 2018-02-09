@@ -16,8 +16,8 @@ package config
 
 import (
 	"fmt"
-	"github.com/yamingwa/grok_exporter/config/v1"
-	"github.com/yamingwa/grok_exporter/config/v2"
+	"github.com/fstab/grok_exporter/config/v1"
+	"github.com/fstab/grok_exporter/config/v2"
 	"io/ioutil"
 	"regexp"
 	"strconv"

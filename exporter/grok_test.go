@@ -15,7 +15,7 @@
 package exporter
 
 import (
-	"github.com/yamingwa/grok_exporter/config/v2"
+	"github.com/fstab/grok_exporter/config/v2"
 	"gopkg.in/yaml.v2"
 	"strings"
 	"testing"

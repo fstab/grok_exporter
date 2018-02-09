@@ -16,7 +16,7 @@ package exporter
 
 import (
 	"container/list"
-	"github.com/yamingwa/grok_exporter/tailer"
+	"github.com/fstab/grok_exporter/tailer"
 	"github.com/prometheus/client_golang/prometheus"
 	"log"
 	"sync"

@@ -16,7 +16,7 @@ package v1
 
 import (
 	"fmt"
-	"github.com/yamingwa/grok_exporter/config/v2"
+	"github.com/fstab/grok_exporter/config/v2"
 	"gopkg.in/yaml.v2"
 )
 
