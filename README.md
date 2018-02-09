@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/fstab/grok_exporter.svg?branch=master)](https://travis-ci.org/fstab/grok_exporter) [![Build status](https://ci.appveyor.com/api/projects/status/d8aq0pa3yfoapd69?svg=true)](https://ci.appveyor.com/project/fstab/grok-exporter) [![Coverage Status](https://coveralls.io/repos/github/fstab/grok_exporter/badge.svg?branch=master)](https://coveralls.io/github/fstab/grok_exporter?branch=master)
+[![Build Status](https://travis-ci.org/yamingwa/grok_exporter.svg?branch=master)](https://travis-ci.org/yamingwa/grok_exporter) [![Build status](https://ci.appveyor.com/api/projects/status/d8aq0pa3yfoapd69?svg=true)](https://ci.appveyor.com/project/yamingwa/grok-exporter) [![Coverage Status](https://coveralls.io/repos/github/yamingwa/grok_exporter/badge.svg?branch=master)](https://coveralls.io/github/yamingwa/grok_exporter?branch=master)
 
 grok_exporter
 =============
@@ -61,9 +61,9 @@ Status
 
 Operating system support:
 
-* Linux 64 Bit: [Supported](https://travis-ci.org/fstab/grok_exporter)
-* Windows 64 Bit: [Supported](https://ci.appveyor.com/project/fstab/grok-exporter)
-* mac OS 64 Bit: [Supported](https://travis-ci.org/fstab/grok_exporter)
+* Linux 64 Bit: [Supported](https://travis-ci.org/yamingwa/grok_exporter)
+* Windows 64 Bit: [Supported](https://ci.appveyor.com/project/yamingwa/grok-exporter)
+* mac OS 64 Bit: [Supported](https://travis-ci.org/yamingwa/grok_exporter)
 
 Grok pattern support:
 
@@ -86,7 +86,7 @@ In order to compile `grok_exporter` from source, you need [Go] installed and `$G
 The current version of `brew install oniguruma` will install Oniguruma 6.1.0. Because of [this bug](https://github.com/kkos/oniguruma/issues/23) version 6.1.0 will not work with grok_exporter. Use the following to install the stable 5.9.6 version:
 
 ```bash
-brew install fstab/oniguruma/oniguruma-5.9.6
+brew install yamingwa/oniguruma/oniguruma-5.9.6
 ```
 
 **Installing the Oniguruma library on Ubuntu Linux**
@@ -112,8 +112,8 @@ cd onig-5.9.6 && ./configure && make && make install
 With Oniguruma 5.9.6 installed, download and compile `grok_exporter` as follows:
 
 ```bash
-go get github.com/fstab/grok_exporter
-cd $GOPATH/src/github.com/fstab/grok_exporter
+go get github.com/yamingwa/grok_exporter
+cd $GOPATH/src/github.com/yamingwa/grok_exporter
 git submodule update --init --recursive
 ```
 
@@ -129,8 +129,8 @@ User documentation is included in the [GitHub repository]:
 
 Developer notes are available on the [GitHub Wiki pages]:
 
-* [tailer (tail -f)](https://github.com/fstab/grok_exporter/wiki/tailer-(tail-%E2%80%90f))
-* [About the Regular Expression Library](https://github.com/fstab/grok_exporter/wiki/About-the-Regular-Expression-Library)
+* [tailer (tail -f)](https://github.com/yamingwa/grok_exporter/wiki/tailer-(tail-%E2%80%90f))
+* [About the Regular Expression Library](https://github.com/yamingwa/grok_exporter/wiki/About-the-Regular-Expression-Library)
 
 External documentation:
 
@@ -143,7 +143,7 @@ Contact
 
 * For feature requests, bugs reports, etc: Please open a GitHub issue.
 * For bug fixes, contributions, etc: Create a pull request.
-* Questions? Contact me at fabian@fstab.de.
+* Questions? Contact me at fabian@yamingwa.de.
 
 Related Projects
 ----------------
@@ -165,7 +165,7 @@ You may obtain a copy of the License at [http://www.apache.org/licenses/LICENSE-
 [Go]: https://golang.org/
 [Oniguruma]: https://github.com/kkos/oniguruma
 [screenshot.png]: screenshot.png
-[releases]: https://github.com/fstab/grok_exporter/releases
+[releases]: https://github.com/yamingwa/grok_exporter/releases
 [http://localhost:9144/metrics]: http://localhost:9144/metrics
 [CONFIG.md]: CONFIG.md
 [BUILTIN.md]: BUILTIN.md
@@ -177,11 +177,11 @@ You may obtain a copy of the License at [http://www.apache.org/licenses/LICENSE-
 [libpcre]: http://www.pcre.org
 [rubex]: https://github.com/moovweb/rubex
 [http://www.apache.org/licenses/LICENSE-2.0]: http://www.apache.org/licenses/LICENSE-2.0
-[more CPU efficient]: https://github.com/fstab/grok_exporter/wiki/About-the-Regular-Expression-Library
+[more CPU efficient]: https://github.com/yamingwa/grok_exporter/wiki/About-the-Regular-Expression-Library
 [fsnotify]: https://github.com/fsnotify/fsnotify
-[might be an obstacle]: https://github.com/fstab/grok_exporter/wiki/tailer-(tail-%E2%80%90f)
-[GitHub Wiki pages]: https://github.com/fstab/grok_exporter/wiki
-[GitHub repository]: https://github.com/fstab/grok_exporter
+[might be an obstacle]: https://github.com/yamingwa/grok_exporter/wiki/tailer-(tail-%E2%80%90f)
+[GitHub Wiki pages]: https://github.com/yamingwa/grok_exporter/wiki
+[GitHub repository]: https://github.com/yamingwa/grok_exporter
 [Counter]: https://prometheus.io/docs/concepts/metric_types/#counter
 [Gauge]: https://prometheus.io/docs/concepts/metric_types/#gauge
 [Histogram]: https://prometheus.io/docs/concepts/metric_types/#histogram

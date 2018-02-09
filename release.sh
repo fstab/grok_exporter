@@ -7,16 +7,16 @@ set -e
 # The Darwin release is built natively, Linux and Windows are built in a Docker container
 #========================================================================================
 
-cd $GOPATH/src/github.com/fstab/grok_exporter
+cd $GOPATH/src/github.com/yamingwa/grok_exporter
 rm -rf dist
 
 export VERSION=0.2.2-SNAPSHOT
 
 export VERSION_FLAGS="\
-        -X github.com/fstab/grok_exporter/exporter.Version=$VERSION                          \
-        -X github.com/fstab/grok_exporter/exporter.BuildDate=$(date +%Y-%m-%d)               \
-        -X github.com/fstab/grok_exporter/exporter.Branch=$(git rev-parse --abbrev-ref HEAD) \
-        -X github.com/fstab/grok_exporter/exporter.Revision=$(git rev-parse --short HEAD)    \
+        -X github.com/yamingwa/grok_exporter/exporter.Version=$VERSION                          \
+        -X github.com/yamingwa/grok_exporter/exporter.BuildDate=$(date +%Y-%m-%d)               \
+        -X github.com/yamingwa/grok_exporter/exporter.Branch=$(git rev-parse --abbrev-ref HEAD) \
+        -X github.com/yamingwa/grok_exporter/exporter.Revision=$(git rev-parse --short HEAD)    \
 "
 
 #--------------------------------------------------------------
@@ -33,7 +33,7 @@ function make_release {
     echo "Building grok_exporter-$VERSION.$ARCH"
     mkdir -p dist/grok_exporter-$VERSION.$ARCH
     if [ $MACHINE = "docker" ] ; then
-        docker run -v $GOPATH/src/github.com/fstab/grok_exporter:/root/go/src/github.com/fstab/grok_exporter --net none --rm -ti fstab/grok_exporter-compiler compile-$ARCH.sh -ldflags "$VERSION_FLAGS" -o dist/grok_exporter-$VERSION.$ARCH/grok_exporter$EXTENSION
+        docker run -v $GOPATH/src/github.com/yamingwa/grok_exporter:/root/go/src/github.com/yamingwa/grok_exporter --net none --rm -ti yamingwa/grok_exporter-compiler compile-$ARCH.sh -ldflags "$VERSION_FLAGS" -o dist/grok_exporter-$VERSION.$ARCH/grok_exporter$EXTENSION
     else
         # export CGO_LDFLAGS=/usr/local/lib/libonig.a
         # TODO: For some reason CGO_LDFLAGS does not work on darwin. As a workaround, we set LDFLAGS directly in the header of oniguruma.go.

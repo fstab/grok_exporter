@@ -16,7 +16,7 @@ package v2
 
 import (
 	"fmt"
-	"github.com/fstab/grok_exporter/templates"
+	"github.com/yamingwa/grok_exporter/templates"
 	"gopkg.in/yaml.v2"
 	"regexp"
 )

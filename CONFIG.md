@@ -329,7 +329,7 @@ server:
 [gauge metric]: https://prometheus.io/docs/concepts/metric_types/#gauge
 [summary metric]: https://prometheus.io/docs/concepts/metric_types/#summary
 [histogram metric]: https://prometheus.io/docs/concepts/metric_types/#histogram
-[release]: https://github.com/fstab/grok_exporter/releases
+[release]: https://github.com/yamingwa/grok_exporter/releases
 [Prometheus metric types]: https://prometheus.io/docs/concepts/metric_types
 [Grok documentation]: https://www.elastic.co/guide/en/logstash/current/plugins-filters-grok.html
 [histograms and summaries]: https://prometheus.io/docs/practices/histograms/
