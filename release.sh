@@ -69,6 +69,16 @@ function run_docker_amd64 {
         "$COMPILE_SCRIPT" -ldflags "$VERSION_FLAGS" -o "dist/$OUTPUT_DIR/grok_exporter"
 }
 
+function run_docker_arm64v8 {
+    COMPILE_SCRIPT=$1
+    OUTPUT_DIR=$2
+    docker run \
+        -v $GOPATH/src/github.com/fstab/grok_exporter:/root/go/src/github.com/fstab/grok_exporter \
+        --net none \
+        --rm -ti fstab/grok_exporter-compiler-arm64v8 \
+        "$COMPILE_SCRIPT" -ldflags "$VERSION_FLAGS" -o "dist/$OUTPUT_DIR/grok_exporter"
+}
+
 #--------------------------------------------------------------
 # Release functions
 #--------------------------------------------------------------
@@ -79,6 +89,12 @@ function release_linux_amd64 {
     run_docker_amd64 ./compile-linux.sh grok_exporter-$VERSION.linux-amd64
     revert_legacy_static_linking
     create_zip_file grok_exporter-$VERSION.linux-amd64
+}
+
+function release_linux_arm64v8 {
+    echo "Building dist/grok_exporter-$VERSION.linux-arm64v8.zip"
+    run_docker_arm64v8 ./compile-linux.sh grok_exporter-$VERSION.linux-arm64v8
+    create_zip_file grok_exporter-$VERSION.linux-arm64v8
 }
 
 function release_windows_amd64 {
@@ -105,6 +121,11 @@ case $1 in
         run_tests
         release_linux_amd64
         ;;
+    linux-arm64v8)
+        rm -rf dist/*
+        run_tests
+        release_linux_arm64v8
+        ;;
     darwin-amd64)
         rm -rf dist/*
         run_tests
@@ -115,7 +136,7 @@ case $1 in
         run_tests
         release_windows_amd64
         ;;
-    all)
+    all-amd64)
         rm -rf dist/*
         run_tests
         release_linux_amd64
@@ -128,6 +149,7 @@ case $1 in
         echo '    - linux-amd64' >&2
         echo '    - darwin-amd64' >&2
         echo '    - windows-amd64' >&2
-        echo '    - all' >&2
+        echo '    - linux-arm64v8' >&2
+        echo '    - all-amd64' >&2
         exit -1
 esac
