@@ -71,7 +71,7 @@ func runFileTailer(path string, readall bool, failOnMissingFile bool, logger sim
 		closed: false,
 	}
 
-	file, abspath, err := openLogfile(path, readall, failOnMissingFile)
+	file, abspath, err := openLogfile(path, readall, failOnMissingFile) // file may be nil if failOnMissingFile is false and the file doesn't exist yet.
 	if err != nil {
 		go func(err error) {
 			writeError(errors, done, "failed to initialize file system watcher for %v: %v", path, err)

@@ -1,7 +1,7 @@
 language: go
 
 go:
-  - 1.x
+  - 1.9.3 # Cannot update to 1.9.4 until https://github.com/golang/go/issues/23739 is solved.
 
 os:
   - linux
@@ -17,6 +17,10 @@ before_install:
   - |
     set -e ;
     set -x ;
+    if [[ "$TRAVIS_OS_NAME" == "osx" ]] ; then
+        # Workaround for broken OS X build, see https://github.com/travis-ci/travis-ci/issues/8703
+        unset -f cd ;
+    fi
     case "$ONIG_VERSION" in
     "DEFAULT")
         if [[ "$TRAVIS_OS_NAME" == "osx" ]] ; then
