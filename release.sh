@@ -9,7 +9,7 @@ set -e
 
 cd $GOPATH/src/github.com/fstab/grok_exporter
 
-export VERSION=0.2.4-SNAPSHOT
+export VERSION=0.2.4
 
 export VERSION_FLAGS="\
         -X github.com/fstab/grok_exporter/exporter.Version=$VERSION
