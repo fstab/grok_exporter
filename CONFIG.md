@@ -67,6 +67,7 @@ input:
     type: file
     path: /var/log/sample.log
     readall: false
+    fail_on_missing_logfile: true
     poll_interval_seconds: 5 # should not be needed in most cases, see below
 ```
 
@@ -75,6 +76,11 @@ True means we read the whole file, false means we start at the end of the file a
 True is good for debugging, because we process all available log lines.
 False is good for production, because we avoid to process lines multiple times when `grok_exporter` is restarted.
 The default value for `readall` is `false`.
+
+If `fail_on_missing_logfile` is true, `grok_exporter` will not start if the `path` is not found.
+This is the default value, and it should be used in most cases because a missing logfile is likely a configuration error.
+However, in some scenarios you might want `grok_exporter` to start successfully even if the logfile is not found,
+because you know the file will be created later. In that case, set `fail_on_missing_logfile: false`.
 
 On `poll_interval_seconds`: You probably don't need this. The internal implementation of `grok_exporter`'s
 file input is based on the operating system's file system notification mechanism, which is `inotify` on Linux,
