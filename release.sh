@@ -59,24 +59,28 @@ function create_zip_file {
     cd ..
 }
 
-function run_docker_amd64 {
-    COMPILE_SCRIPT=$1
-    OUTPUT_DIR=$2
+function run_docker_linux_amd64 {
     docker run \
         -v $GOPATH/src/github.com/fstab/grok_exporter:/root/go/src/github.com/fstab/grok_exporter \
         --net none \
         --rm -ti fstab/grok_exporter-compiler-amd64 \
-        "$COMPILE_SCRIPT" -ldflags "$VERSION_FLAGS" -o "dist/$OUTPUT_DIR/grok_exporter"
+        ./compile-linux.sh -ldflags "$VERSION_FLAGS" -o "dist/grok_exporter-$VERSION.linux-amd64/grok_exporter"
 }
 
-function run_docker_arm64v8 {
-    COMPILE_SCRIPT=$1
-    OUTPUT_DIR=$2
+function run_docker_windows_amd64 {
+    docker run \
+        -v $GOPATH/src/github.com/fstab/grok_exporter:/root/go/src/github.com/fstab/grok_exporter \
+        --net none \
+        --rm -ti fstab/grok_exporter-compiler-amd64 \
+        ./compile-windows-amd64.sh -ldflags "$VERSION_FLAGS" -o "dist/grok_exporter-$VERSION.windows-amd64/grok_exporter.exe"
+}
+
+function run_docker_linux_arm64v8 {
     docker run \
         -v $GOPATH/src/github.com/fstab/grok_exporter:/root/go/src/github.com/fstab/grok_exporter \
         --net none \
         --rm -ti fstab/grok_exporter-compiler-arm64v8 \
-        "$COMPILE_SCRIPT" -ldflags "$VERSION_FLAGS" -o "dist/$OUTPUT_DIR/grok_exporter"
+        ./compile-linux.sh -ldflags "$VERSION_FLAGS" -o "dist/grok_exporter-$VERSION.linux-arm64v8/grok_exporter"
 }
 
 #--------------------------------------------------------------
@@ -86,20 +90,20 @@ function run_docker_arm64v8 {
 function release_linux_amd64 {
     echo "Building dist/grok_exporter-$VERSION.linux-amd64.zip"
     enable_legacy_static_linking
-    run_docker_amd64 ./compile-linux.sh grok_exporter-$VERSION.linux-amd64
+    run_docker_linux_amd64
     revert_legacy_static_linking
     create_zip_file grok_exporter-$VERSION.linux-amd64
 }
 
 function release_linux_arm64v8 {
     echo "Building dist/grok_exporter-$VERSION.linux-arm64v8.zip"
-    run_docker_arm64v8 ./compile-linux.sh grok_exporter-$VERSION.linux-arm64v8
+    run_docker_linux_arm64v8
     create_zip_file grok_exporter-$VERSION.linux-arm64v8
 }
 
 function release_windows_amd64 {
     echo "Building dist/grok_exporter-$VERSION.windows-amd64.zip"
-    run_docker_amd64 ./compile-windows-amd64.sh grok_exporter-$VERSION.windows-amd64
+    run_docker_windows_amd64
     create_zip_file grok_exporter-$VERSION.windows-amd64
 }
 
@@ -127,6 +131,12 @@ case $1 in
         release_linux_arm64v8
         ;;
     darwin-amd64)
+        if [[ $(go version) != *"1.9.3"* ]]; then
+            # Cannot upgrade to 1.9.4 until this is fixed:
+            # https://github.com/golang/go/issues/23739
+            echo "Go version 1.9.3 required." >&2
+            exit -1
+        fi
         rm -rf dist/*
         run_tests
         release_darwin_amd64
