@@ -150,7 +150,7 @@ func (events *eventList) Process(fileBefore *File, reader *bufferedLineReader, a
 
 	// Handle truncate events.
 	for _, event := range events.events {
-		if file != nil && event.Ident == uint64(file.Fd()) && event.Fflags&syscall.NOTE_ATTRIB == syscall.NOTE_ATTRIB {
+		if file != nil && event.Ident == fdToInt(file.Fd()) && event.Fflags&syscall.NOTE_ATTRIB == syscall.NOTE_ATTRIB {
 			truncated, err = file.CheckTruncated()
 			if err != nil {
 				return
@@ -166,7 +166,7 @@ func (events *eventList) Process(fileBefore *File, reader *bufferedLineReader, a
 
 	// Handle write event.
 	for _, event := range events.events {
-		if file != nil && event.Ident == uint64(file.Fd()) && event.Fflags&syscall.NOTE_WRITE == syscall.NOTE_WRITE {
+		if file != nil && event.Ident == fdToInt(file.Fd()) && event.Fflags&syscall.NOTE_WRITE == syscall.NOTE_WRITE {
 			var freshLines []string
 			freshLines, err = reader.ReadAvailableLines(file)
 			if err != nil {
@@ -178,7 +178,7 @@ func (events *eventList) Process(fileBefore *File, reader *bufferedLineReader, a
 
 	// Handle move and delete events (NOTE_RENAME on the file's fd means the file was moved away, like in inotify's IN_MOVED_FROM).
 	for _, event := range events.events {
-		if file != nil && event.Ident == uint64(file.Fd()) && (event.Fflags&syscall.NOTE_DELETE == syscall.NOTE_DELETE || event.Fflags&syscall.NOTE_RENAME == syscall.NOTE_RENAME) {
+		if file != nil && event.Ident == fdToInt(file.Fd()) && (event.Fflags&syscall.NOTE_DELETE == syscall.NOTE_DELETE || event.Fflags&syscall.NOTE_RENAME == syscall.NOTE_RENAME) {
 			file.Close() // closing the fd will automatically remove event from kq.
 			file = nil
 			reader.Clear()
@@ -187,7 +187,7 @@ func (events *eventList) Process(fileBefore *File, reader *bufferedLineReader, a
 
 	// Handle move_to and create events (NOTE_WRITE on the directory's fd means a file was created or moved, so this covers inotify's MOVED_TO).
 	for _, event := range events.events {
-		if file == nil && event.Ident == uint64(events.watcher.dir.Fd()) && event.Fflags&syscall.NOTE_WRITE == syscall.NOTE_WRITE {
+		if file == nil && event.Ident == fdToInt(events.watcher.dir.Fd()) && event.Fflags&syscall.NOTE_WRITE == syscall.NOTE_WRITE {
 			file, err = open(abspath)
 			if err == nil {
 				zeroTimeout := syscall.NsecToTimespec(0) // timeout zero means non-blocking kevent() call
@@ -230,7 +230,7 @@ func makeEvent(file *os.File) syscall.Kevent_t {
 	// See also http://benno.id.au/blog/2008/05/15/simplefilemon
 
 	return syscall.Kevent_t{
-		Ident:  uint64(file.Fd()),
+		Ident:  fdToInt(file.Fd()),
 		Filter: syscall.EVFILT_VNODE,              // File modification and deletion events
 		Flags:  syscall.EV_ADD | syscall.EV_CLEAR, // Add a new event, automatically enabled unless EV_DISABLE is specified
 		Fflags: syscall.NOTE_DELETE | syscall.NOTE_WRITE | syscall.NOTE_EXTEND | syscall.NOTE_ATTRIB | syscall.NOTE_LINK | syscall.NOTE_RENAME | syscall.NOTE_REVOKE,
@@ -241,9 +241,9 @@ func makeEvent(file *os.File) syscall.Kevent_t {
 
 func event2string(dir *os.File, file *File, event syscall.Kevent_t) string {
 	result := "event"
-	if dir != nil && event.Ident == uint64(dir.Fd()) {
+	if dir != nil && event.Ident == fdToInt(dir.Fd()) {
 		result = fmt.Sprintf("%v for logdir with fflags", result)
-	} else if file != nil && event.Ident == uint64(file.Fd()) {
+	} else if file != nil && event.Ident == fdToInt(file.Fd()) {
 		result = fmt.Sprintf("%v for logfile with fflags", result)
 	} else {
 		result = fmt.Sprintf("%s for unknown fd=%v with fflags", result, event.Ident)
