@@ -201,7 +201,7 @@ func TestFileMissingOnStartup(t *testing.T) {
 	// Double check that file does not exist yet
 	_, err := os.Stat(logfile)
 	if err == nil || !os.IsNotExist(err) {
-		t.Fatalf("%v should not exist yet")
+		t.Fatalf("%v should not exist yet", logfile)
 	}
 
 	logFileWriter := newLogFileWriter(t, logfile, closeFileAfterEachLine)
