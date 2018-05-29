@@ -144,7 +144,10 @@ func (m *OnigurumaMatchResult) Get(name string) (string, error) {
 	for _, groupNum := range groupNums {
 		beg := getPos(m.region.beg, groupNum)
 		end := getPos(m.region.end, groupNum)
-		if beg > end || beg < 0 || int(end) > len(m.input) {
+		if beg == -1 && end == -1 {
+			// The capture is optional, like %{BAR}?, and there is no match.
+			continue
+		} else if beg > end || beg < 0 || int(end) > len(m.input) {
 			return "", fmt.Errorf("%v: unexpected result when calling onig_name_to_group_numbers()", name)
 		} else if beg == end {
 			continue // return empty string unless there are other matches for that name.

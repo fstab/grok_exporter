@@ -20,7 +20,7 @@ import (
 	"testing"
 )
 
-func TestLoadPatternDir(t *testing.T) {
+func TestDefaultPatternsLoadSuccessfully(t *testing.T) {
 	loadPatternDir(t)
 }
 
@@ -38,4 +38,59 @@ func loadPatternDir(t *testing.T) *Patterns {
 		t.Errorf("Patterns are still empty after loading the pattern directory %v. If the directory is empty, run 'git submodule update --init --recursive'.", patternDir)
 	}
 	return p
+}
+
+func TestOptionalLabels(t *testing.T) {
+	for _, expected := range []struct {
+		input string
+		match bool
+		foo   string
+		bar   string
+	}{
+		{"foobar", true, "foo", "bar"},
+		{"foobaz", true, "foo", ""},
+		{"foo", true, "foo", ""},
+		{"bar", false, "", ""},
+	} {
+		matchResult := matchFooBar(t, expected.input)
+		if matchResult.IsMatch() != expected.match {
+			t.Fatalf("Expected match(%v)=%v, but got %v", expected.input, expected.match, matchResult.IsMatch())
+		}
+		actualFoo, err := matchResult.Get("foo")
+		if err != nil {
+			t.Fatal(err.Error())
+		}
+		if actualFoo != expected.foo {
+			t.Fatalf("Expected %v to return foo=%v, but got foo=%v", expected.input, expected.foo, actualFoo)
+		}
+		actualBar, err := matchResult.Get("bar")
+		if err != nil {
+			t.Fatal(err.Error())
+		}
+		if actualBar != expected.bar {
+			t.Fatalf("Expected %v to return bar=%v, but got bar=%v", expected.input, expected.bar, actualBar)
+		}
+		matchResult.Free()
+	}
+}
+
+func matchFooBar(t *testing.T, input string) *OnigurumaMatchResult {
+	p := InitPatterns()
+	p.AddPattern("FOO foo")
+	p.AddPattern("BAR bar")
+	p.AddPattern("FOOBAR %{FOO:foo}%{BAR:bar}?")
+
+	libonig, err := InitOnigurumaLib()
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	regex, err := Compile("%{FOOBAR}", p, libonig)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	matchResult, err := regex.Match(input)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	return matchResult
 }
