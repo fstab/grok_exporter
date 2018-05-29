@@ -53,10 +53,10 @@ func testInvalidPatterns(t *testing.T, libonig *OnigurumaLib) {
 
 func testValidPatterns(t *testing.T, libonig *OnigurumaLib) {
 	for _, data := range [][]string{
-		[]string{"^.*[a-z]([0-9])$", "abc7abc7", "abc7abc"},
-		[]string{"^some .*test\\s.*$", "some test 3", "some test3"},
-		[]string{"^is\\]this$", "is]this", "is\\]this"},
-		[]string{"^abc(.*abc)+$", "abcabcabc", "abc"},
+		{"^.*[a-z]([0-9])$", "abc7abc7", "abc7abc"},
+		{"^some .*test\\s.*$", "some test 3", "some test3"},
+		{"^is\\]this$", "is]this", "is\\]this"},
+		{"^abc(.*abc)+$", "abcabcabc", "abc"},
 	} {
 		regex, err := libonig.Compile(data[0])
 		if err != nil {
@@ -88,9 +88,9 @@ func testValidCaptureGroups(t *testing.T, libonig *OnigurumaLib) {
 		t.Error(err)
 	}
 	for _, data := range [][]string{
-		[]string{"1st user fabian 2nd user grok value 7", "fabian", "7"},
-		[]string{"1st user 2nd user grok value 789", "grok", "789"},
-		[]string{"1st user somebody 2nd user else value 123", "somebody", "123"},
+		{"1st user fabian 2nd user grok value 7", "fabian", "7"},
+		{"1st user 2nd user grok value 789", "grok", "789"},
+		{"1st user somebody 2nd user else value 123", "somebody", "123"},
 	} {
 		result, err := regex.Match(data[0])
 		if err != nil {
@@ -128,8 +128,8 @@ func testInvalidCaptureGroups(t *testing.T, libonig *OnigurumaLib) {
 		t.Error("expected a match")
 	}
 	for _, data := range [][]string{
-		[]string{"void", ""},
-		[]string{"", ""},
+		{"void", ""},
+		{"", ""},
 	} {
 		_, err := match.Get(data[0])
 		if err == nil {
