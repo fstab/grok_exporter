@@ -94,6 +94,7 @@ type ServerConfig struct {
 	Protocol string `yaml:",omitempty"`
 	Host     string `yaml:",omitempty"`
 	Port     int    `yaml:",omitempty"`
+	Path     string `yaml:",omitempty"`
 	Cert     string `yaml:",omitempty"`
 	Key      string `yaml:",omitempty"`
 }
@@ -137,6 +138,9 @@ func (c *ServerConfig) addDefaults() {
 	}
 	if c.Port == 0 {
 		c.Port = 9144
+	}
+	if c.Path == "" {
+		c.Path = "/metrics"
 	}
 }
 
@@ -289,6 +293,8 @@ func (c *ServerConfig) validate() error {
 		return fmt.Errorf("Invalid 'server.protocol': '%v'. Expecting 'http' or 'https'.", c.Protocol)
 	case c.Port <= 0:
 		return fmt.Errorf("Invalid 'server.port': '%v'.", c.Port)
+	case !strings.HasPrefix(c.Path, "/"):
+		return fmt.Errorf("Invalid server configuration: 'server.path' must start with '/'.")
 	case c.Protocol == "https":
 		if c.Cert != "" && c.Key == "" {
 			return fmt.Errorf("Invalid server configuration: 'server.cert' must not be specified without 'server.key'")
@@ -364,6 +370,9 @@ func (cfg *Config) String() string {
 	}
 	if stripped.Input.FailOnMissingLogfileString == "true" {
 		stripped.Input.FailOnMissingLogfileString = ""
+	}
+	if stripped.Server.Path == "/metrics" {
+		stripped.Server.Path = ""
 	}
 	return stripped.marshalToString()
 }

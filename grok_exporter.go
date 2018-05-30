@@ -69,7 +69,7 @@ func main() {
 	tail, err := startTailer(cfg)
 	exitOnError(err)
 	fmt.Print(startMsg(cfg))
-	serverErrors := startServer(cfg, "/metrics", prometheus.Handler())
+	serverErrors := startServer(cfg.Server, prometheus.Handler())
 
 	retentionTicker := time.NewTicker(cfg.Global.RetentionCheckInterval)
 
@@ -130,7 +130,7 @@ func startMsg(cfg *v2.Config) string {
 			host = hostname
 		}
 	}
-	return fmt.Sprintf("Starting server on %v://%v:%v/metrics\n", cfg.Server.Protocol, host, cfg.Server.Port)
+	return fmt.Sprintf("Starting server on %v://%v:%v%v\n", cfg.Server.Protocol, host, cfg.Server.Port, cfg.Server.Path)
 }
 
 func exitOnError(err error) {
@@ -245,21 +245,21 @@ func initSelfMonitoring(metrics []exporter.Metric) (*prometheus.CounterVec, *pro
 	return nLinesTotal, nMatchesByMetric, procTimeMicrosecondsByMetric, nErrorsByMetric
 }
 
-func startServer(cfg *v2.Config, path string, handler http.Handler) chan error {
+func startServer(cfg v2.ServerConfig, handler http.Handler) chan error {
 	serverErrors := make(chan error)
 	go func() {
 		switch {
-		case cfg.Server.Protocol == "http":
-			serverErrors <- exporter.RunHttpServer(cfg.Server.Host, cfg.Server.Port, path, handler)
-		case cfg.Server.Protocol == "https":
-			if cfg.Server.Cert != "" && cfg.Server.Key != "" {
-				serverErrors <- exporter.RunHttpsServer(cfg.Server.Host, cfg.Server.Port, cfg.Server.Cert, cfg.Server.Key, path, handler)
+		case cfg.Protocol == "http":
+			serverErrors <- exporter.RunHttpServer(cfg.Host, cfg.Port, cfg.Path, handler)
+		case cfg.Protocol == "https":
+			if cfg.Cert != "" && cfg.Key != "" {
+				serverErrors <- exporter.RunHttpsServer(cfg.Host, cfg.Port, cfg.Cert, cfg.Key, cfg.Path, handler)
 			} else {
-				serverErrors <- exporter.RunHttpsServerWithDefaultKeys(cfg.Server.Host, cfg.Server.Port, path, handler)
+				serverErrors <- exporter.RunHttpsServerWithDefaultKeys(cfg.Host, cfg.Port, cfg.Path, handler)
 			}
 		default:
 			// This cannot happen, because cfg.validate() makes sure that protocol is either http or https.
-			serverErrors <- fmt.Errorf("Configuration error: Invalid 'server.protocol': '%v'. Expecting 'http' or 'https'.", cfg.Server.Protocol)
+			serverErrors <- fmt.Errorf("Configuration error: Invalid 'server.protocol': '%v'. Expecting 'http' or 'https'.", cfg.Protocol)
 		}
 	}()
 	return serverErrors
