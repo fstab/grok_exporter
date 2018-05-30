@@ -94,3 +94,80 @@ func matchFooBar(t *testing.T, input string) *OnigurumaMatchResult {
 	}
 	return matchResult
 }
+
+// The nginx example is taken from https://github.com/fstab/grok_exporter/issues/33
+func TestNginxExample(t *testing.T) {
+	p := loadPatternDir(t)
+	p.AddPattern("ERRORDATE %{YEAR}/%{MONTHNUM}/%{MONTHDAY} %{TIME}")
+	p.AddPattern("METHOD (OPTIONS|GET|HEAD|POST|PUT|DELETE|TRACE|CONNECT)")
+	p.AddPattern("REQUEST_START %{METHOD:method} %{DATA:path} HTTP/%{DATA:http_version}")
+	p.AddPattern("ADDITIONAL_INFO client: %{URIHOST:client}|server: %{URIHOST:server}|request: \"%{REQUEST_START:request}\"|upstream: \"%{URI:upstream}\"|host: \"%{URIHOST:host}\"|referrer: \"%{URI:referrer}\"")
+	p.AddPattern("NGINX_ERROR ^%{ERRORDATE:time_local} \\[%{LOGLEVEL:level}\\] %{INT:process_id}#%{INT:thread_id}: \\*(%{INT:connection_id})? %{DATA:errormessage}(, %{ADDITIONAL_INFO})*$")
+
+	libonig, err := InitOnigurumaLib()
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	regex, err := Compile("%{NGINX_ERROR}", p, libonig)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	for _, testData := range []struct {
+		input  string
+		labels map[string]string
+	}{
+		{
+			"2018/05/29 15:33:58 [error] 50#50: *5338007 no live upstreams while connecting to upstream, client: 5.128.43.14, server: example.com, request: \"GET /backend/api/event/events?_limit=0&startTime=2018-05-29T04:00:00%2B07:00 HTTP/2.0\", upstream: \"http://example.com/backend/api/event/events?_limit=0&startTime=2018-05-29T04:00:00%2B07:00\", host: \"example.com\", referrer: \"https://example.com/platform\"",
+			map[string]string{
+				"client":   "5.128.43.14",
+				"server":   "example.com",
+				"request":  "GET /backend/api/event/events?_limit=0&startTime=2018-05-29T04:00:00%2B07:00 HTTP/2.0",
+				"upstream": "http://example.com/backend/api/event/events?_limit=0&startTime=2018-05-29T04:00:00%2B07:00",
+				"host":     "example.com",
+				"referrer": "https://example.com/platform",
+			},
+		},
+		{"2018/05/29 15:35:33 [error] 50#50: *5340036 upstream prematurely closed connection while sending to client, client: 188.162.213.93, server: example.com, request: \"GET /backend/api/ HTTP/2.0\", upstream: \"http://172.19.0.8:80/backend/api\", host: \"example.com\", referrer: \"https://example.com/event\"",
+			map[string]string{
+				"client":   "188.162.213.93",
+				"server":   "example.com",
+				"request":  "GET /backend/api/ HTTP/2.0",
+				"upstream": "http://172.19.0.8:80/backend/api",
+				"host":     "example.com",
+				"referrer": "https://example.com/event",
+			},
+		},
+		{"2018/05/29 18:54:03 [crit] 50#50: *5411664 SSL_do_handshake() failed (SSL: error:1417D18C:SSL routines:tls_process_client_hello:version too low) while SSL handshaking, client: 208.93.213.176, server: 0.0.0.0:443",
+			map[string]string{
+				"client": "208.93.213.176",
+				"server": "0.0.0.0:443",
+				// all others empty
+			},
+		},
+	} {
+		matchResult, err := regex.Match(testData.input)
+		if err != nil {
+			t.Fatal(err.Error())
+		}
+		if !matchResult.IsMatch() {
+			t.Fatalf("The following line didn't match the NGINX_ERROR pattern: %v", testData.input)
+		}
+		for _, labelName := range []string{
+			"client",
+			"server",
+			"request",
+			"upstream",
+			"host",
+			"referrer",
+		} {
+			value, err := matchResult.Get(labelName)
+			if err != nil {
+				t.Fatal(err.Error())
+			}
+			if value != testData.labels[labelName] {
+				t.Fatalf("Expected label value '%v' but got '%v'.", testData.labels[labelName], value)
+			}
+		}
+		matchResult.Free()
+	}
+}
