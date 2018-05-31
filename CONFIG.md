@@ -369,6 +369,7 @@ server:
     protocol: https
     host: localhost
     port: 9144
+    path: /metrics
     cert: /path/to/cert
     key: /path/to/key
 ```
@@ -376,6 +377,7 @@ server:
 * `protocol` can be `http` or `https`. Default is `http`.
 * `host` can be a hostname or an IP address. If host is specified, `grok_exporter` will listen on the network interface with the given address. If host is omitted, `grok_exporter` will listen on all available network interfaces.
 * `port` is the TCP port to be used. Default is `9144`.
+* `path` is the path where the metrics are exposed. Default is `/metrics`, i.e. by default metrics will be exported on [http://localhost:9144/metrics].
 * `cert` is the path to the SSL certificate file for protocol `https`. It is optional. If omitted, a hard-coded default certificate will be used.
 * `key` is the path to the SSL key file for protocol `https`. It is optional. If omitted, a hard-coded default key will be used.
 
@@ -408,3 +410,4 @@ How to Configure Durations
 [Grok documentation]: https://www.elastic.co/guide/en/logstash/current/plugins-filters-grok.html
 [histograms and summaries]: https://prometheus.io/docs/practices/histograms/
 [time.ParseDuration()]: https://golang.org/pkg/time/#ParseDuration
+[http://localhost:9144/metrics]: http://localhost:9144/metrics
