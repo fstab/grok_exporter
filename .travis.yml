@@ -1,7 +1,7 @@
 language: go
 
 go:
-  - 1.9.3 # Cannot update to 1.9.4 until https://github.com/golang/go/issues/23739 is solved.
+  - "1.10"
 
 os:
   - linux
