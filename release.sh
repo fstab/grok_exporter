@@ -35,12 +35,12 @@ function enable_legacy_static_linking {
     # The compile script in the Docker image sets CGO_LDFLAGS to libonig.a, which should make grok_exporter
     # statically linked with the Oniguruma library. However, this doesn't work on Darwin and CentOS 6.
     # As a workaround, we set LDFLAGS directly in the header of oniguruma.go.
-    sed -i.bak 's;#cgo LDFLAGS: -L/usr/local/lib -lonig;#cgo LDFLAGS: /usr/local/lib/libonig.a;' exporter/oniguruma.go
+    sed -i.bak 's;#cgo LDFLAGS: -L/usr/local/lib -lonig;#cgo LDFLAGS: /usr/local/lib/libonig.a;' oniguruma/oniguruma.go
 }
 
 function revert_legacy_static_linking {
-    if [ -f exporter/oniguruma.go.bak ] ; then
-        mv exporter/oniguruma.go.bak exporter/oniguruma.go
+    if [ -f oniguruma/oniguruma.go.bak ] ; then
+        mv oniguruma/oniguruma.go.bak oniguruma/oniguruma.go
     fi
 }
 

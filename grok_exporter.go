@@ -20,6 +20,7 @@ import (
 	"github.com/fstab/grok_exporter/config"
 	"github.com/fstab/grok_exporter/config/v2"
 	"github.com/fstab/grok_exporter/exporter"
+	"github.com/fstab/grok_exporter/oniguruma"
 	"github.com/fstab/grok_exporter/tailer"
 	"github.com/prometheus/client_golang/prometheus"
 	"net/http"
@@ -57,7 +58,7 @@ func main() {
 	}
 	patterns, err := initPatterns(cfg)
 	exitOnError(err)
-	libonig, err := exporter.InitOnigurumaLib()
+	libonig, err := oniguruma.Init()
 	exitOnError(err)
 	metrics, err := createMetrics(cfg, patterns, libonig)
 	exitOnError(err)
@@ -168,11 +169,11 @@ func initPatterns(cfg *v2.Config) (*exporter.Patterns, error) {
 	return patterns, nil
 }
 
-func createMetrics(cfg *v2.Config, patterns *exporter.Patterns, libonig *exporter.OnigurumaLib) ([]exporter.Metric, error) {
+func createMetrics(cfg *v2.Config, patterns *exporter.Patterns, libonig *oniguruma.OnigurumaLib) ([]exporter.Metric, error) {
 	result := make([]exporter.Metric, 0, len(cfg.Metrics))
 	for _, m := range cfg.Metrics {
 		var (
-			regex, deleteRegex *exporter.OnigurumaRegexp
+			regex, deleteRegex *oniguruma.Regex
 			err                error
 		)
 		regex, err = exporter.Compile(m.Match, patterns, libonig)

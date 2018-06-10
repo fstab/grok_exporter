@@ -17,13 +17,14 @@ package exporter
 import (
 	"fmt"
 	"github.com/fstab/grok_exporter/config/v2"
+	"github.com/fstab/grok_exporter/oniguruma"
 	"github.com/fstab/grok_exporter/templates"
 	"regexp"
 	"strings"
 )
 
 // Compile a grok pattern string into a regular expression.
-func Compile(pattern string, patterns *Patterns, libonig *OnigurumaLib) (*OnigurumaRegexp, error) {
+func Compile(pattern string, patterns *Patterns, libonig *oniguruma.OnigurumaLib) (*oniguruma.Regex, error) {
 	regex, err := expand(pattern, patterns)
 	if err != nil {
 		return nil, err
@@ -35,7 +36,7 @@ func Compile(pattern string, patterns *Patterns, libonig *OnigurumaLib) (*Onigur
 	return result, nil
 }
 
-func VerifyFieldNames(m *v2.MetricConfig, regex, deleteRegex *OnigurumaRegexp) error {
+func VerifyFieldNames(m *v2.MetricConfig, regex, deleteRegex *oniguruma.Regex) error {
 	for _, template := range m.LabelTemplates {
 		err := verifyFieldName(m.Name, template, regex)
 		if err != nil {
@@ -57,7 +58,7 @@ func VerifyFieldNames(m *v2.MetricConfig, regex, deleteRegex *OnigurumaRegexp) e
 	return nil
 }
 
-func verifyFieldName(metricName string, template templates.Template, regex *OnigurumaRegexp) error {
+func verifyFieldName(metricName string, template templates.Template, regex *oniguruma.Regex) error {
 	if template != nil {
 		for _, grokFieldName := range template.ReferencedGrokFields() {
 			if !regex.HasCaptureGroup(grokFieldName) {

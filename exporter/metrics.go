@@ -17,6 +17,7 @@ package exporter
 import (
 	"fmt"
 	configuration "github.com/fstab/grok_exporter/config/v2"
+	"github.com/fstab/grok_exporter/oniguruma"
 	"github.com/fstab/grok_exporter/templates"
 	"github.com/prometheus/client_golang/prometheus"
 	"strconv"
@@ -43,8 +44,8 @@ type Metric interface {
 // Common values for incMetric and observeMetric
 type metric struct {
 	name        string
-	regex       *OnigurumaRegexp
-	deleteRegex *OnigurumaRegexp
+	regex       *oniguruma.Regex
+	deleteRegex *oniguruma.Regex
 	retention   time.Duration
 }
 
@@ -371,7 +372,7 @@ func (m *summaryVecMetric) ProcessRetention() error {
 	return m.processRetention(m.summaryVec)
 }
 
-func newMetric(cfg *configuration.MetricConfig, regex, deleteRegex *OnigurumaRegexp) metric {
+func newMetric(cfg *configuration.MetricConfig, regex, deleteRegex *oniguruma.Regex) metric {
 	return metric{
 		name:        cfg.Name,
 		regex:       regex,
@@ -380,7 +381,7 @@ func newMetric(cfg *configuration.MetricConfig, regex, deleteRegex *OnigurumaReg
 	}
 }
 
-func newMetricWithLabels(cfg *configuration.MetricConfig, regex, deleteRegex *OnigurumaRegexp) metricWithLabels {
+func newMetricWithLabels(cfg *configuration.MetricConfig, regex, deleteRegex *oniguruma.Regex) metricWithLabels {
 	return metricWithLabels{
 		metric:               newMetric(cfg, regex, deleteRegex),
 		labelTemplates:       cfg.LabelTemplates,
@@ -389,21 +390,21 @@ func newMetricWithLabels(cfg *configuration.MetricConfig, regex, deleteRegex *On
 	}
 }
 
-func newObserveMetric(cfg *configuration.MetricConfig, regex, deleteRegex *OnigurumaRegexp) observeMetric {
+func newObserveMetric(cfg *configuration.MetricConfig, regex, deleteRegex *oniguruma.Regex) observeMetric {
 	return observeMetric{
 		metric:        newMetric(cfg, regex, deleteRegex),
 		valueTemplate: cfg.ValueTemplate,
 	}
 }
 
-func newObserveMetricWithLabels(cfg *configuration.MetricConfig, regex, deleteRegex *OnigurumaRegexp) observeMetricWithLabels {
+func newObserveMetricWithLabels(cfg *configuration.MetricConfig, regex, deleteRegex *oniguruma.Regex) observeMetricWithLabels {
 	return observeMetricWithLabels{
 		metricWithLabels: newMetricWithLabels(cfg, regex, deleteRegex),
 		valueTemplate:    cfg.ValueTemplate,
 	}
 }
 
-func NewCounterMetric(cfg *configuration.MetricConfig, regex *OnigurumaRegexp, deleteRegex *OnigurumaRegexp) Metric {
+func NewCounterMetric(cfg *configuration.MetricConfig, regex *oniguruma.Regex, deleteRegex *oniguruma.Regex) Metric {
 	counterOpts := prometheus.CounterOpts{
 		Name: cfg.Name,
 		Help: cfg.Help,
@@ -421,7 +422,7 @@ func NewCounterMetric(cfg *configuration.MetricConfig, regex *OnigurumaRegexp, d
 	}
 }
 
-func NewGaugeMetric(cfg *configuration.MetricConfig, regex *OnigurumaRegexp, deleteRegex *OnigurumaRegexp) Metric {
+func NewGaugeMetric(cfg *configuration.MetricConfig, regex *oniguruma.Regex, deleteRegex *oniguruma.Regex) Metric {
 	gaugeOpts := prometheus.GaugeOpts{
 		Name: cfg.Name,
 		Help: cfg.Help,
@@ -441,7 +442,7 @@ func NewGaugeMetric(cfg *configuration.MetricConfig, regex *OnigurumaRegexp, del
 	}
 }
 
-func NewHistogramMetric(cfg *configuration.MetricConfig, regex *OnigurumaRegexp, deleteRegex *OnigurumaRegexp) Metric {
+func NewHistogramMetric(cfg *configuration.MetricConfig, regex *oniguruma.Regex, deleteRegex *oniguruma.Regex) Metric {
 	histogramOpts := prometheus.HistogramOpts{
 		Name: cfg.Name,
 		Help: cfg.Help,
@@ -462,7 +463,7 @@ func NewHistogramMetric(cfg *configuration.MetricConfig, regex *OnigurumaRegexp,
 	}
 }
 
-func NewSummaryMetric(cfg *configuration.MetricConfig, regex *OnigurumaRegexp, deleteRegex *OnigurumaRegexp) Metric {
+func NewSummaryMetric(cfg *configuration.MetricConfig, regex *oniguruma.Regex, deleteRegex *oniguruma.Regex) Metric {
 	summaryOpts := prometheus.SummaryOpts{
 		Name: cfg.Name,
 		Help: cfg.Help,
@@ -483,7 +484,7 @@ func NewSummaryMetric(cfg *configuration.MetricConfig, regex *OnigurumaRegexp, d
 	}
 }
 
-func labelValues(metricName string, matchResult *OnigurumaMatchResult, templates []templates.Template) (map[string]string, error) {
+func labelValues(metricName string, matchResult *oniguruma.MatchResult, templates []templates.Template) (map[string]string, error) {
 	result := make(map[string]string, len(templates))
 	for _, t := range templates {
 		value, err := evalTemplate(matchResult, t)
@@ -495,7 +496,7 @@ func labelValues(metricName string, matchResult *OnigurumaMatchResult, templates
 	return result, nil
 }
 
-func floatValue(metricName string, matchResult *OnigurumaMatchResult, valueTemplate templates.Template) (float64, error) {
+func floatValue(metricName string, matchResult *oniguruma.MatchResult, valueTemplate templates.Template) (float64, error) {
 	stringVal, err := evalTemplate(matchResult, valueTemplate)
 	if err != nil {
 		return 0, fmt.Errorf("error processing metric %v: %v", metricName, err.Error())
@@ -507,7 +508,7 @@ func floatValue(metricName string, matchResult *OnigurumaMatchResult, valueTempl
 	return floatVal, nil
 }
 
-func evalTemplate(matchResult *OnigurumaMatchResult, t templates.Template) (string, error) {
+func evalTemplate(matchResult *oniguruma.MatchResult, t templates.Template) (string, error) {
 	grokValues := make(map[string]string, len(t.ReferencedGrokFields()))
 	for _, field := range t.ReferencedGrokFields() {
 		value, err := matchResult.Get(field)

@@ -16,6 +16,7 @@ package exporter
 
 import (
 	configuration "github.com/fstab/grok_exporter/config/v2"
+	"github.com/fstab/grok_exporter/oniguruma"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_model/go"
 	"reflect"
@@ -76,13 +77,13 @@ func TestCounter(t *testing.T) {
 	}
 }
 
-func initCounterRegex(t *testing.T) *OnigurumaRegexp {
+func initCounterRegex(t *testing.T) *oniguruma.Regex {
 	patterns := loadPatternDir(t)
 	err := patterns.AddPattern("EXIM_MESSAGE [a-zA-Z ]*")
 	if err != nil {
 		t.Error(err)
 	}
-	libonig, err := InitOnigurumaLib()
+	libonig, err := oniguruma.Init()
 	if err != nil {
 		t.Error(err)
 	}
@@ -171,9 +172,9 @@ func TestGaugeVec(t *testing.T) {
 	}
 }
 
-func initGaugeRegex(t *testing.T) *OnigurumaRegexp {
+func initGaugeRegex(t *testing.T) *oniguruma.Regex {
 	patterns := loadPatternDir(t)
-	libonig, err := InitOnigurumaLib()
+	libonig, err := oniguruma.Init()
 	if err != nil {
 		t.Error(err)
 	}

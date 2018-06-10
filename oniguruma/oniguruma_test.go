@@ -12,27 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package exporter
+package oniguruma
 
 import (
 	"testing"
 )
 
 func TestOniguruma(t *testing.T) {
-	libonig, err := InitOnigurumaLib()
+	libonig, err := Init()
 	if err != nil {
 		t.Fatal(err)
 	}
-	run(t, "valid patterns", func(t *testing.T) {
+	t.Run("valid patterns", func(t *testing.T) {
 		testValidPatterns(t, libonig)
 	})
-	run(t, "invalid patterns", func(t *testing.T) {
+	t.Run("invalid patterns", func(t *testing.T) {
 		testInvalidPatterns(t, libonig)
 	})
-	run(t, "valid capture groups", func(t *testing.T) {
+	t.Run("valid capture groups", func(t *testing.T) {
 		testValidCaptureGroups(t, libonig)
 	})
-	run(t, "invalid capture groups", func(t *testing.T) {
+	t.Run("invalid capture groups", func(t *testing.T) {
 		testInvalidCaptureGroups(t, libonig)
 	})
 }

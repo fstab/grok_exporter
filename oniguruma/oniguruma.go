@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package exporter
+package oniguruma
 
 /*
 #cgo CFLAGS: -I/usr/local/include
@@ -38,20 +38,20 @@ type OnigurumaLib struct {
 	encoding C.OnigEncoding
 }
 
-type OnigurumaRegexp struct {
+type Regex struct {
 	regex                  C.OnigRegex
 	cachedCaptureGroupNums map[string][]C.int
 }
 
-type OnigurumaMatchResult struct {
+type MatchResult struct {
 	match  bool
-	regex  *OnigurumaRegexp
+	regex  *Regex
 	region *C.OnigRegion
 	input  string
 }
 
 // Warning: The Oniguruma library is not thread save, it should be used in a single thread.
-func InitOnigurumaLib() (*OnigurumaLib, error) {
+func Init() (*OnigurumaLib, error) {
 	result := &OnigurumaLib{
 		encoding: ONIG_ENCODING_UTF8, // TODO: This is the encoding of the logfile. Should be configurable and default to the system encoding.
 	}
@@ -67,8 +67,8 @@ func (o *OnigurumaLib) Version() string {
 	return C.GoString(C.onig_version())
 }
 
-func (o *OnigurumaLib) Compile(pattern string) (*OnigurumaRegexp, error) {
-	result := &OnigurumaRegexp{
+func (o *OnigurumaLib) Compile(pattern string) (*Regex, error) {
+	result := &Regex{
 		cachedCaptureGroupNums: make(map[string][]C.int),
 	}
 	patternStart, patternEnd := pointers(pattern)
@@ -81,16 +81,16 @@ func (o *OnigurumaLib) Compile(pattern string) (*OnigurumaRegexp, error) {
 	return result, nil
 }
 
-func (regex *OnigurumaRegexp) Free() {
+func (regex *Regex) Free() {
 	C.onig_free(regex.regex)
 }
 
-func (regex *OnigurumaRegexp) HasCaptureGroup(name string) bool {
+func (regex *Regex) HasCaptureGroup(name string) bool {
 	_, err := regex.getCaptureGroupNums(name)
 	return err == nil
 }
 
-func (r *OnigurumaRegexp) getCaptureGroupNums(name string) ([]C.int, error) {
+func (r *Regex) getCaptureGroupNums(name string) ([]C.int, error) {
 	cached, ok := r.cachedCaptureGroupNums[name]
 	if ok {
 		return cached, nil
@@ -110,21 +110,21 @@ func (r *OnigurumaRegexp) getCaptureGroupNums(name string) ([]C.int, error) {
 	return result, nil
 }
 
-func (regex *OnigurumaRegexp) Match(input string) (*OnigurumaMatchResult, error) {
+func (regex *Regex) Match(input string) (*MatchResult, error) {
 	region := C.onig_region_new()
 	inputStart, inputEnd := pointers(input)
 	defer free(inputStart, inputEnd)
 	r := C.onig_match(regex.regex, inputStart, inputEnd, inputStart, region, C.ONIG_OPTION_NONE)
 	if r == C.ONIG_MISMATCH {
 		C.onig_region_free(region, 1)
-		return &OnigurumaMatchResult{
+		return &MatchResult{
 			match: false,
 		}, nil
 	} else if r < 0 {
 		C.onig_region_free(region, 1)
 		return nil, errors.New(errMsg(r))
 	} else {
-		return &OnigurumaMatchResult{
+		return &MatchResult{
 			match:  true,
 			regex:  regex,
 			region: region,
@@ -133,7 +133,7 @@ func (regex *OnigurumaRegexp) Match(input string) (*OnigurumaMatchResult, error)
 	}
 }
 
-func (m *OnigurumaMatchResult) Get(name string) (string, error) {
+func (m *MatchResult) Get(name string) (string, error) {
 	if !m.match {
 		return "", nil // no match -> no capture group
 	}
@@ -158,11 +158,11 @@ func (m *OnigurumaMatchResult) Get(name string) (string, error) {
 	return "", nil
 }
 
-func (m *OnigurumaMatchResult) IsMatch() bool {
+func (m *MatchResult) IsMatch() bool {
 	return m.match
 }
 
-func (m *OnigurumaMatchResult) Free() {
+func (m *MatchResult) Free() {
 	if m.match {
 		C.onig_region_free(m.region, 1)
 	}

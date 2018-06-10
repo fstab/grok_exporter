@@ -64,7 +64,7 @@ script:
     "STATIC")
         if [[ "$TRAVIS_OS_NAME" == "osx" ]] ;
         then
-            sed -i.bak 's;#cgo LDFLAGS: -L/usr/local/lib -lonig;#cgo LDFLAGS: /usr/local/lib/libonig.a;' exporter/oniguruma.go ;
+            sed -i.bak 's;#cgo LDFLAGS: -L/usr/local/lib -lonig;#cgo LDFLAGS: /usr/local/lib/libonig.a;' oniguruma/oniguruma.go ;
         fi ;
         CGO_LDFLAGS=/usr/local/lib/libonig.a go test -v $(go list ./... | grep -v /vendor/) ;
         CGO_LDFLAGS=/usr/local/lib/libonig.a go install . ;
