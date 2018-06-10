@@ -53,8 +53,13 @@ build_script:
     - git submodule update --init --recursive
     - go version
     - go test github.com/fstab/grok_exporter
+    - go test github.com/fstab/grok_exporter/config
+    - go test github.com/fstab/grok_exporter/config/v1
+    - go test github.com/fstab/grok_exporter/config/v2
     - go test github.com/fstab/grok_exporter/exporter
+    - go test github.com/fstab/grok_exporter/oniguruma
     - go test github.com/fstab/grok_exporter/tailer
+    - go test github.com/fstab/grok_exporter/templates
     - go install github.com/fstab/grok_exporter
     - C:\cygwin\bin\bash -c "cd /cygdrive/c/go/src/github.com/fstab/grok_exporter ; PATH='/usr/sbin:/usr/bin:/sbin:/bin' ./integration-test.sh"
 
