@@ -81,11 +81,7 @@ func matchFooBar(t *testing.T, input string) *oniguruma.MatchResult {
 	p.AddPattern("BAR bar")
 	p.AddPattern("FOOBAR %{FOO:foo}%{BAR:bar}?")
 
-	libonig, err := oniguruma.Init()
-	if err != nil {
-		t.Fatal(err.Error())
-	}
-	regex, err := Compile("%{FOOBAR}", p, libonig)
+	regex, err := Compile("%{FOOBAR}", p)
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -105,11 +101,7 @@ func TestNginxExample(t *testing.T) {
 	p.AddPattern("ADDITIONAL_INFO client: %{URIHOST:client}|server: %{URIHOST:server}|request: \"%{REQUEST_START:request}\"|upstream: \"%{URI:upstream}\"|host: \"%{URIHOST:host}\"|referrer: \"%{URI:referrer}\"")
 	p.AddPattern("NGINX_ERROR ^%{ERRORDATE:time_local} \\[%{LOGLEVEL:level}\\] %{INT:process_id}#%{INT:thread_id}: \\*(%{INT:connection_id})? %{DATA:errormessage}(, %{ADDITIONAL_INFO})*$")
 
-	libonig, err := oniguruma.Init()
-	if err != nil {
-		t.Fatal(err.Error())
-	}
-	regex, err := Compile("%{NGINX_ERROR}", p, libonig)
+	regex, err := Compile("%{NGINX_ERROR}", p)
 	if err != nil {
 		t.Fatal(err.Error())
 	}

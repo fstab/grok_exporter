@@ -83,11 +83,7 @@ func initCounterRegex(t *testing.T) *oniguruma.Regex {
 	if err != nil {
 		t.Error(err)
 	}
-	libonig, err := oniguruma.Init()
-	if err != nil {
-		t.Error(err)
-	}
-	regex, err := Compile("%{EXIM_DATE} %{EXIM_REMOTE_HOST} F=<%{EMAILADDRESS}> rejected RCPT <%{EMAILADDRESS}>: %{EXIM_MESSAGE:message}", patterns, libonig)
+	regex, err := Compile("%{EXIM_DATE} %{EXIM_REMOTE_HOST} F=<%{EMAILADDRESS}> rejected RCPT <%{EMAILADDRESS}>: %{EXIM_MESSAGE:message}", patterns)
 	if err != nil {
 		t.Error(err)
 	}
@@ -174,11 +170,7 @@ func TestGaugeVec(t *testing.T) {
 
 func initGaugeRegex(t *testing.T) *oniguruma.Regex {
 	patterns := loadPatternDir(t)
-	libonig, err := oniguruma.Init()
-	if err != nil {
-		t.Error(err)
-	}
-	regex, err := Compile("Temperature in %{WORD:city}: %{INT:temperature}", patterns, libonig)
+	regex, err := Compile("Temperature in %{WORD:city}: %{INT:temperature}", patterns)
 	if err != nil {
 		t.Error(err)
 	}

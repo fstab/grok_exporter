@@ -26,17 +26,12 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"os"
 	"unsafe"
 )
 
-var (
-	// See the #define statements in oniguruma.h
-	ONIG_ENCODING_UTF8 = &C.OnigEncodingUTF8
-)
-
-type OnigurumaLib struct {
-	encoding C.OnigEncoding
-}
+// TODO: This is the encoding of the logfile. Should be configurable and default to the system encoding.
+var encoding = &C.OnigEncodingUTF8 // See the #define statements in oniguruma.h
 
 type Regex struct {
 	regex                  C.OnigRegex
@@ -51,30 +46,29 @@ type MatchResult struct {
 }
 
 // Warning: The Oniguruma library is not thread save, it should be used in a single thread.
-func Init() (*OnigurumaLib, error) {
-	result := &OnigurumaLib{
-		encoding: ONIG_ENCODING_UTF8, // TODO: This is the encoding of the logfile. Should be configurable and default to the system encoding.
+func init() {
+	encodings := []C.OnigEncoding{
+		encoding,
 	}
-	encodings := []C.OnigEncoding{result.encoding}
 	ret := C.oniguruma_helper_initialize(&encodings[0], C.int(len(encodings)))
 	if ret != 0 {
-		return nil, errors.New("failed to initialize encoding for the Oniguruma regular expression library.")
+		fmt.Fprintf(os.Stderr, "Failed to start grok_exporter: Unexpected error while initializing the Oniguruma regular expression library.\n")
+		os.Exit(-1)
 	}
-	return result, nil
 }
 
-func (o *OnigurumaLib) Version() string {
+func Version() string {
 	return C.GoString(C.onig_version())
 }
 
-func (o *OnigurumaLib) Compile(pattern string) (*Regex, error) {
+func Compile(pattern string) (*Regex, error) {
 	result := &Regex{
 		cachedCaptureGroupNums: make(map[string][]C.int),
 	}
 	patternStart, patternEnd := pointers(pattern)
 	defer free(patternStart, patternEnd)
 	var errorInfo C.OnigErrorInfo
-	r := C.onig_new(&result.regex, patternStart, patternEnd, C.ONIG_OPTION_DEFAULT, o.encoding, C.ONIG_SYNTAX_DEFAULT, &errorInfo)
+	r := C.onig_new(&result.regex, patternStart, patternEnd, C.ONIG_OPTION_DEFAULT, encoding, C.ONIG_SYNTAX_DEFAULT, &errorInfo)
 	if r != C.ONIG_NORMAL {
 		return nil, errors.New(errMsgWithInfo(r, &errorInfo))
 	}

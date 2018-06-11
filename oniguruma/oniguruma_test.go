@@ -18,47 +18,28 @@ import (
 	"testing"
 )
 
-func TestOniguruma(t *testing.T) {
-	libonig, err := Init()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Run("valid patterns", func(t *testing.T) {
-		testValidPatterns(t, libonig)
-	})
-	t.Run("invalid patterns", func(t *testing.T) {
-		testInvalidPatterns(t, libonig)
-	})
-	t.Run("valid capture groups", func(t *testing.T) {
-		testValidCaptureGroups(t, libonig)
-	})
-	t.Run("invalid capture groups", func(t *testing.T) {
-		testInvalidCaptureGroups(t, libonig)
-	})
-}
-
-func testInvalidPatterns(t *testing.T, libonig *OnigurumaLib) {
+func TestInvalidPatterns(t *testing.T) {
 	for _, pattern := range []string{
 		".*[a-z]([0-9]",        // missing closing )
 		"some\\",               // ends with \
 		"some (?<g>.*)(?<>.*)", // empty group name
 		".*abc)",               // missing opening (
 	} {
-		_, err := libonig.Compile(pattern)
+		_, err := Compile(pattern)
 		if err == nil {
 			t.Errorf("Oniguruma compiles invalid pattern '%v' w/o returning an error.", pattern)
 		}
 	}
 }
 
-func testValidPatterns(t *testing.T, libonig *OnigurumaLib) {
+func TestValidPatterns(t *testing.T) {
 	for _, data := range [][]string{
 		{"^.*[a-z]([0-9])$", "abc7abc7", "abc7abc"},
 		{"^some .*test\\s.*$", "some test 3", "some test3"},
 		{"^is\\]this$", "is]this", "is\\]this"},
 		{"^abc(.*abc)+$", "abcabcabc", "abc"},
 	} {
-		regex, err := libonig.Compile(data[0])
+		regex, err := Compile(data[0])
 		if err != nil {
 			t.Error(err)
 		}
@@ -82,8 +63,8 @@ func testValidPatterns(t *testing.T, libonig *OnigurumaLib) {
 	}
 }
 
-func testValidCaptureGroups(t *testing.T, libonig *OnigurumaLib) {
-	regex, err := libonig.Compile("^1st user (?<user>[a-z]*) ?2nd user (?<user>[a-z]+) value (?<val>[0-9]+)$")
+func TestValidCaptureGroups(t *testing.T) {
+	regex, err := Compile("^1st user (?<user>[a-z]*) ?2nd user (?<user>[a-z]+) value (?<val>[0-9]+)$")
 	if err != nil {
 		t.Error(err)
 	}
@@ -115,8 +96,8 @@ func testValidCaptureGroups(t *testing.T, libonig *OnigurumaLib) {
 	regex.Free()
 }
 
-func testInvalidCaptureGroups(t *testing.T, libonig *OnigurumaLib) {
-	regex, err := libonig.Compile("^1st user (?<user>[a-z]*) ?2nd user (?<user>[a-z]+) (?<x>.*)(.*)value (?<val>[0-9]*)$")
+func TestInvalidCaptureGroups(t *testing.T) {
+	regex, err := Compile("^1st user (?<user>[a-z]*) ?2nd user (?<user>[a-z]+) (?<x>.*)(.*)value (?<val>[0-9]*)$")
 	if err != nil {
 		t.Error(err)
 	}

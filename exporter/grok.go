@@ -24,12 +24,12 @@ import (
 )
 
 // Compile a grok pattern string into a regular expression.
-func Compile(pattern string, patterns *Patterns, libonig *oniguruma.OnigurumaLib) (*oniguruma.Regex, error) {
+func Compile(pattern string, patterns *Patterns) (*oniguruma.Regex, error) {
 	regex, err := expand(pattern, patterns)
 	if err != nil {
 		return nil, err
 	}
-	result, err := libonig.Compile(regex)
+	result, err := oniguruma.Compile(regex)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile pattern %v: error in regular expression %v: %v", pattern, regex, err.Error())
 	}

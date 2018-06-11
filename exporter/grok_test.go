@@ -23,50 +23,46 @@ import (
 )
 
 func TestGrok(t *testing.T) {
-	libonig, err := oniguruma.Init()
-	if err != nil {
-		t.Fatal(err)
-	}
 	patterns := loadPatternDir(t)
 	t.Run("compile all patterns", func(t *testing.T) {
-		testCompileAllPatterns(t, patterns, libonig)
+		testCompileAllPatterns(t, patterns)
 	})
 	t.Run("compile unknown pattern", func(t *testing.T) {
-		testCompileUnknownPattern(t, patterns, libonig)
+		testCompileUnknownPattern(t, patterns)
 	})
 	t.Run("compile invalid regexp", func(t *testing.T) {
-		testCompileInvalidRegexp(t, patterns, libonig)
+		testCompileInvalidRegexp(t, patterns)
 	})
 	t.Run("verify capture group", func(t *testing.T) {
-		testVerifyCaptureGroup(t, patterns, libonig)
+		testVerifyCaptureGroup(t, patterns)
 	})
 }
 
-func testCompileAllPatterns(t *testing.T, patterns *Patterns, libonig *oniguruma.OnigurumaLib) {
+func testCompileAllPatterns(t *testing.T, patterns *Patterns) {
 	for pattern := range *patterns {
-		_, err := Compile("%{"+pattern+"}", patterns, libonig)
+		_, err := Compile("%{"+pattern+"}", patterns)
 		if err != nil {
 			t.Errorf("%v", err.Error())
 		}
 	}
 }
 
-func testCompileUnknownPattern(t *testing.T, patterns *Patterns, libonig *oniguruma.OnigurumaLib) {
-	_, err := Compile("%{USER} [a-z] %{SOME_UNKNOWN_PATTERN}.*", patterns, libonig)
+func testCompileUnknownPattern(t *testing.T, patterns *Patterns) {
+	_, err := Compile("%{USER} [a-z] %{SOME_UNKNOWN_PATTERN}.*", patterns)
 	if err == nil || !strings.Contains(err.Error(), "SOME_UNKNOWN_PATTERN") {
 		t.Error("expected error message saying which pattern is undefined.")
 	}
 }
 
-func testCompileInvalidRegexp(t *testing.T, patterns *Patterns, libonig *oniguruma.OnigurumaLib) {
-	_, err := Compile("%{USER} [a-z] \\", patterns, libonig) // wrong because regex cannot end with backslash
+func testCompileInvalidRegexp(t *testing.T, patterns *Patterns) {
+	_, err := Compile("%{USER} [a-z] \\", patterns) // wrong because regex cannot end with backslash
 	if err == nil || !strings.Contains(err.Error(), "%{USER} [a-z] \\") {
 		t.Error("expected error message saying which pattern is invalid.")
 	}
 }
 
-func testVerifyCaptureGroup(t *testing.T, patterns *Patterns, libonig *oniguruma.OnigurumaLib) {
-	regex, err := Compile("host %{HOSTNAME:host} user %{USER:user} value %{NUMBER:val}.", patterns, libonig)
+func testVerifyCaptureGroup(t *testing.T, patterns *Patterns) {
+	regex, err := Compile("host %{HOSTNAME:host} user %{USER:user} value %{NUMBER:val}.", patterns)
 	if err != nil {
 		t.Fatal(err)
 	}

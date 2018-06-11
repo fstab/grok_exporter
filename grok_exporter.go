@@ -58,9 +58,7 @@ func main() {
 	}
 	patterns, err := initPatterns(cfg)
 	exitOnError(err)
-	libonig, err := oniguruma.Init()
-	exitOnError(err)
-	metrics, err := createMetrics(cfg, patterns, libonig)
+	metrics, err := createMetrics(cfg, patterns)
 	exitOnError(err)
 	for _, m := range metrics {
 		prometheus.MustRegister(m.Collector())
@@ -169,19 +167,19 @@ func initPatterns(cfg *v2.Config) (*exporter.Patterns, error) {
 	return patterns, nil
 }
 
-func createMetrics(cfg *v2.Config, patterns *exporter.Patterns, libonig *oniguruma.OnigurumaLib) ([]exporter.Metric, error) {
+func createMetrics(cfg *v2.Config, patterns *exporter.Patterns) ([]exporter.Metric, error) {
 	result := make([]exporter.Metric, 0, len(cfg.Metrics))
 	for _, m := range cfg.Metrics {
 		var (
 			regex, deleteRegex *oniguruma.Regex
 			err                error
 		)
-		regex, err = exporter.Compile(m.Match, patterns, libonig)
+		regex, err = exporter.Compile(m.Match, patterns)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
 		}
 		if len(m.DeleteMatch) > 0 {
-			deleteRegex, err = exporter.Compile(m.DeleteMatch, patterns, libonig)
+			deleteRegex, err = exporter.Compile(m.DeleteMatch, patterns)
 			if err != nil {
 				return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
 			}
