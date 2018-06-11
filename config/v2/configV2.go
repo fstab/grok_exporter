@@ -16,7 +16,7 @@ package v2
 
 import (
 	"fmt"
-	"github.com/fstab/grok_exporter/templates"
+	"github.com/fstab/grok_exporter/template"
 	"gopkg.in/yaml.v2"
 	"strconv"
 	"strings"
@@ -71,21 +71,21 @@ type GrokConfig struct {
 }
 
 type MetricConfig struct {
-	Type                 string               `yaml:",omitempty"`
-	Name                 string               `yaml:",omitempty"`
-	Help                 string               `yaml:",omitempty"`
-	Match                string               `yaml:",omitempty"`
-	Retention            time.Duration        `yaml:",omitempty"` // implicitly parsed with time.ParseDuration()
-	Value                string               `yaml:",omitempty"`
-	Cumulative           bool                 `yaml:",omitempty"`
-	Buckets              []float64            `yaml:",flow,omitempty"`
-	Quantiles            map[float64]float64  `yaml:",flow,omitempty"`
-	Labels               map[string]string    `yaml:",omitempty"`
-	LabelTemplates       []templates.Template `yaml:"-"` // parsed version of Labels, will not be serialized to yaml.
-	ValueTemplate        templates.Template   `yaml:"-"` // parsed version of Value, will not be serialized to yaml.
-	DeleteMatch          string               `yaml:"delete_match,omitempty"`
-	DeleteLabels         map[string]string    `yaml:"delete_labels,omitempty"` // TODO: Make sure that DeleteMatch is not nil if DeleteLabels are used.
-	DeleteLabelTemplates []templates.Template `yaml:"-"`                       // parsed version of DeleteLabels, will not be serialized to yaml.
+	Type                 string              `yaml:",omitempty"`
+	Name                 string              `yaml:",omitempty"`
+	Help                 string              `yaml:",omitempty"`
+	Match                string              `yaml:",omitempty"`
+	Retention            time.Duration       `yaml:",omitempty"` // implicitly parsed with time.ParseDuration()
+	Value                string              `yaml:",omitempty"`
+	Cumulative           bool                `yaml:",omitempty"`
+	Buckets              []float64           `yaml:",flow,omitempty"`
+	Quantiles            map[float64]float64 `yaml:",flow,omitempty"`
+	Labels               map[string]string   `yaml:",omitempty"`
+	LabelTemplates       []template.Template `yaml:"-"` // parsed version of Labels, will not be serialized to yaml.
+	ValueTemplate        template.Template   `yaml:"-"` // parsed version of Value, will not be serialized to yaml.
+	DeleteMatch          string              `yaml:"delete_match,omitempty"`
+	DeleteLabels         map[string]string   `yaml:"delete_labels,omitempty"` // TODO: Make sure that DeleteMatch is not nil if DeleteLabels are used.
+	DeleteLabelTemplates []template.Template `yaml:"-"`                       // parsed version of DeleteLabels, will not be serialized to yaml.
 }
 
 type MetricsConfig []MetricConfig
@@ -327,13 +327,13 @@ func AddDefaultsAndValidate(cfg *Config) error {
 func (metric *MetricConfig) InitTemplates() error {
 	var (
 		err   error
-		tmplt templates.Template
+		tmplt template.Template
 		msg   = "invalid configuration: failed to read metric %v: error parsing %v template: %v: " +
 			"don't forget to put a . (dot) in front of grok fields, otherwise it will be interpreted as a function."
 	)
 	for _, t := range []struct {
-		src  map[string]string     // label / template string as read from the config file
-		dest *[]templates.Template // parsed template used internally in grok_exporter
+		src  map[string]string    // label / template string as read from the config file
+		dest *[]template.Template // parsed template used internally in grok_exporter
 	}{
 		{
 			src:  metric.Labels,
@@ -344,9 +344,9 @@ func (metric *MetricConfig) InitTemplates() error {
 			dest: &(metric.DeleteLabelTemplates),
 		},
 	} {
-		*t.dest = make([]templates.Template, 0, len(t.src))
+		*t.dest = make([]template.Template, 0, len(t.src))
 		for name, templateString := range t.src {
-			tmplt, err = templates.New(name, templateString)
+			tmplt, err = template.New(name, templateString)
 			if err != nil {
 				return fmt.Errorf(msg, fmt.Sprintf("label %v", metric.Name), name, err.Error())
 			}
@@ -354,7 +354,7 @@ func (metric *MetricConfig) InitTemplates() error {
 		}
 	}
 	if len(metric.Value) > 0 {
-		metric.ValueTemplate, err = templates.New("__value__", metric.Value)
+		metric.ValueTemplate, err = template.New("__value__", metric.Value)
 		if err != nil {
 			return fmt.Errorf(msg, "value", metric.Name, err.Error())
 		}

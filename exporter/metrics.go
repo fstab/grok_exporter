@@ -18,7 +18,7 @@ import (
 	"fmt"
 	configuration "github.com/fstab/grok_exporter/config/v2"
 	"github.com/fstab/grok_exporter/oniguruma"
-	"github.com/fstab/grok_exporter/templates"
+	"github.com/fstab/grok_exporter/template"
 	"github.com/prometheus/client_golang/prometheus"
 	"strconv"
 	"time"
@@ -51,19 +51,19 @@ type metric struct {
 
 type observeMetric struct {
 	metric
-	valueTemplate templates.Template
+	valueTemplate template.Template
 }
 
 type metricWithLabels struct {
 	metric
-	labelTemplates       []templates.Template
-	deleteLabelTemplates []templates.Template
+	labelTemplates       []template.Template
+	deleteLabelTemplates []template.Template
 	labelValueTracker    LabelValueTracker
 }
 
 type observeMetricWithLabels struct {
 	metricWithLabels
-	valueTemplate templates.Template
+	valueTemplate template.Template
 }
 
 type counterMetric struct {
@@ -484,7 +484,7 @@ func NewSummaryMetric(cfg *configuration.MetricConfig, regex *oniguruma.Regex, d
 	}
 }
 
-func labelValues(metricName string, matchResult *oniguruma.MatchResult, templates []templates.Template) (map[string]string, error) {
+func labelValues(metricName string, matchResult *oniguruma.MatchResult, templates []template.Template) (map[string]string, error) {
 	result := make(map[string]string, len(templates))
 	for _, t := range templates {
 		value, err := evalTemplate(matchResult, t)
@@ -496,7 +496,7 @@ func labelValues(metricName string, matchResult *oniguruma.MatchResult, template
 	return result, nil
 }
 
-func floatValue(metricName string, matchResult *oniguruma.MatchResult, valueTemplate templates.Template) (float64, error) {
+func floatValue(metricName string, matchResult *oniguruma.MatchResult, valueTemplate template.Template) (float64, error) {
 	stringVal, err := evalTemplate(matchResult, valueTemplate)
 	if err != nil {
 		return 0, fmt.Errorf("error processing metric %v: %v", metricName, err.Error())
@@ -508,7 +508,7 @@ func floatValue(metricName string, matchResult *oniguruma.MatchResult, valueTemp
 	return floatVal, nil
 }
 
-func evalTemplate(matchResult *oniguruma.MatchResult, t templates.Template) (string, error) {
+func evalTemplate(matchResult *oniguruma.MatchResult, t template.Template) (string, error) {
 	grokValues := make(map[string]string, len(t.ReferencedGrokFields()))
 	for _, field := range t.ReferencedGrokFields() {
 		value, err := matchResult.Get(field)
@@ -520,7 +520,7 @@ func evalTemplate(matchResult *oniguruma.MatchResult, t templates.Template) (str
 	return t.Execute(grokValues)
 }
 
-func prometheusLabels(templates []templates.Template) []string {
+func prometheusLabels(templates []template.Template) []string {
 	promLabels := make([]string, 0, len(templates))
 	for _, t := range templates {
 		promLabels = append(promLabels, t.Name())

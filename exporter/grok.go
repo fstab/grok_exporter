@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"github.com/fstab/grok_exporter/config/v2"
 	"github.com/fstab/grok_exporter/oniguruma"
-	"github.com/fstab/grok_exporter/templates"
+	"github.com/fstab/grok_exporter/template"
 	"regexp"
 	"strings"
 )
@@ -58,7 +58,7 @@ func VerifyFieldNames(m *v2.MetricConfig, regex, deleteRegex *oniguruma.Regex) e
 	return nil
 }
 
-func verifyFieldName(metricName string, template templates.Template, regex *oniguruma.Regex) error {
+func verifyFieldName(metricName string, template template.Template, regex *oniguruma.Regex) error {
 	if template != nil {
 		for _, grokFieldName := range template.ReferencedGrokFields() {
 			if !regex.HasCaptureGroup(grokFieldName) {
