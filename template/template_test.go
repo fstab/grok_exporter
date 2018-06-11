@@ -16,17 +16,22 @@ package template
 
 import (
 	"fmt"
-	"strconv"
 	"testing"
+	"text/template/parse"
 )
 
 func TestReferencedGrokFields(t *testing.T) {
 
 	// Some template actions require arrays as parameters.
 	// Provide a function returning an array so that we can test these actions.
-	funcs["testarray"] = func(strings ...string) []string {
-		return strings
-	}
+	funcs.add("testarray", functionWithValidator{
+		func(strings ...string) []string {
+			return strings
+		},
+		func(cmd *parse.CommandNode) error {
+			return nil
+		},
+	})
 
 	for i, test := range []struct {
 		template           string
@@ -230,58 +235,6 @@ func TestReferencedGrokFields(t *testing.T) {
 			return
 		}
 	}
-}
-
-func TestTimestampFunction(t *testing.T) {
-	// log4j examples: http://log4jtester.com
-	template, err := New("date", "{{timestamp \"2006-01-02 15:04:05,000\" .date}}")
-	if err != nil {
-		t.Fatalf("unexpected error parsing template: %v", err)
-		return
-	}
-	result1 := evalTimestamp(t, template, "2015-07-26 15:01:33,665")
-	result2 := evalTimestamp(t, template, "2015-07-26 15:02:33,665")
-	durationSeconds := int(result2 - result1)
-	if durationSeconds != 60 {
-		t.Fatalf("expected 60 seconds difference between the two timestamps, but got %v seconds", durationSeconds)
-	}
-}
-
-func TestTimestampCommaError(t *testing.T) {
-	// 0 commas
-	_, err := New("date", "{{timestamp \"2006-01-02 15:04:05.000\" .date}}")
-	if err != nil {
-		t.Fatalf("unexpected error parsing template: %v", err)
-	}
-	// 1 comma ok
-	_, err = New("date", "{{timestamp \"2006-01-02 15:04:05,000\" .date}}")
-	if err != nil {
-		t.Fatalf("unexpected error parsing template: %v", err)
-	}
-	// 1 comma wrong
-	_, err = New("date", "{{timestamp \"2006-01-02, 15:04:05\" .date}}")
-	if err == nil {
-		t.Fatal("expected error, but got no error.")
-	}
-	// more than 1 comma
-	_, err = New("date", "{{timestamp \"2006-01-02 15:04:05,999,000\" .date}}")
-	if err == nil {
-		t.Fatal("expected error, but got no error.")
-	}
-}
-
-func evalTimestamp(t *testing.T, template Template, value string) float64 {
-	resultString, err := template.Execute(map[string]string{
-		"date": value,
-	})
-	if err != nil {
-		t.Fatalf("unexpected error parsing date: %v", err)
-	}
-	result, err := strconv.ParseFloat(resultString, 64)
-	if err != nil {
-		t.Fatalf("template returned invalid float64: %v", err)
-	}
-	return result
 }
 
 func assertArrayEqualsIgnoreOrder(t *testing.T, expected, actual []string) {

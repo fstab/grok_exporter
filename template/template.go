@@ -17,30 +17,32 @@ package template
 import (
 	"bytes"
 	"fmt"
-	"strings"
-	text_template "text/template"
+	textTemplate "text/template"
 	"text/template/parse"
-	"time"
 )
 
-type tmplate struct {
-	template             *text_template.Template
-	referencedGrokFields map[string]bool // We use this for a set of strings, the value is always true.
-}
-
+// Works like golang's text/template, but additionally provides the list of referenced fields.
+// Example: "{{if eq .field1 .field2}}{{.field3}}{{end}}"
+// Executing this template is similar to text/template.Template.Execute(), and
+// ReferencedGrokFields() yields {"field1", "field2", "field3"}
 type Template interface {
 	Execute(grokValues map[string]string) (string, error)
 	ReferencedGrokFields() []string
 	Name() string
 }
 
+type templateImpl struct {
+	template             *textTemplate.Template
+	referencedGrokFields map[string]bool // This map is used as a set. Value true indicates the string is present in the set.
+}
+
 func New(name, template string) (Template, error) {
 	var (
-		result *tmplate
+		result *templateImpl
 		err    error
 	)
-	result = &tmplate{}
-	result.template, err = text_template.New(name).Funcs(funcs).Parse(template)
+	result = &templateImpl{}
+	result.template, err = textTemplate.New(name).Funcs(funcs.toFuncMap()).Parse(template)
 	if err != nil {
 		return nil, err
 	}
@@ -51,11 +53,11 @@ func New(name, template string) (Template, error) {
 	return result, nil
 }
 
-func (t *tmplate) Name() string {
+func (t *templateImpl) Name() string {
 	return t.template.Name()
 }
 
-func (t *tmplate) Execute(grokValues map[string]string) (string, error) {
+func (t *templateImpl) Execute(grokValues map[string]string) (string, error) {
 	var buf bytes.Buffer
 	err := t.template.Execute(&buf, grokValues)
 	if err != nil {
@@ -64,7 +66,7 @@ func (t *tmplate) Execute(grokValues map[string]string) (string, error) {
 	return buf.String(), nil
 }
 
-func (t *tmplate) ReferencedGrokFields() []string {
+func (t *templateImpl) ReferencedGrokFields() []string {
 	result := make([]string, len(t.referencedGrokFields))
 	i := 0
 	for field := range t.referencedGrokFields {
@@ -74,45 +76,7 @@ func (t *tmplate) ReferencedGrokFields() []string {
 	return result
 }
 
-var funcs = text_template.FuncMap{
-	"timestamp": timestamp,
-}
-
-func timestamp(layout, value string) (float64, error) {
-	layout, value, err := fixCommas(layout, value)
-	if err != nil {
-		return 0, err
-	}
-	result, err := time.Parse(layout, value)
-	if err != nil {
-		return 0, err
-	}
-	return float64(result.UnixNano()) * time.Nanosecond.Seconds(), nil
-}
-
-// Cannot parse ISO 8601 timestamps (commonly used in log4j) with time.Parse()
-// because these timestamps use a comma separator between seconds and microseconds
-// while time.Parse() requires a dot separator between seconds and microseconds.
-// As a workaround, replace comma with dot. See https://github.com/golang/go/issues/6189
-func fixCommas(layout, value string) (string, string, error) {
-	errmsg := "comma not allowed in reference timestamp, except for milliseconds ',000' or ',999'"
-	switch strings.Count(layout, ",") {
-	case 0:
-		return layout, value, nil // no comma -> nothing to fix
-	case 1:
-		if strings.Contains(layout, ",000") || strings.Contains(layout, ",999") {
-			layout = strings.Replace(layout, ",", ".", -1)
-			value = strings.Replace(value, ",", ".", -1)
-			return layout, value, nil
-		} else {
-			return "", "", fmt.Errorf("%v.", errmsg)
-		}
-	default:
-		return "", "", fmt.Errorf("%v.", errmsg)
-	}
-}
-
-func referencedGrokFields(t *text_template.Template) (map[string]bool, error) {
+func referencedGrokFields(t *textTemplate.Template) (map[string]bool, error) {
 	var (
 		result = make(map[string]bool)
 		fields map[string]bool
@@ -183,20 +147,6 @@ func extractGrokFieldsFromCmd(cmd *parse.CommandNode) (map[string]bool, error) {
 	return result, nil
 }
 
-func validateFunctionCalls(cmd *parse.CommandNode) error {
-	if len(cmd.Args) > 0 {
-		if identifierNode, ok := cmd.Args[0].(*parse.IdentifierNode); ok {
-			switch {
-			case identifierNode.Ident == "timestamp":
-				if err := validateTimestampCall(cmd); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	return nil
-}
-
 func extractGrokFieldsFromBranchNode(node *parse.BranchNode) (map[string]bool, error) {
 	var (
 		result = make(map[string]bool)
@@ -232,18 +182,13 @@ func extractGrokFieldsFromBranchNode(node *parse.BranchNode) (map[string]bool, e
 	return result, nil
 }
 
-func validateTimestampCall(cmd *parse.CommandNode) error {
-	prefix := "syntax error in timestamp call"
-	if len(cmd.Args) != 3 {
-		return fmt.Errorf("%v: expected two parameters, but found %v parameters.", prefix, len(cmd.Args)-1)
-	}
-	if stringNode, ok := cmd.Args[1].(*parse.StringNode); ok {
-		_, err := timestamp(stringNode.Text, stringNode.Text)
-		if err != nil {
-			return fmt.Errorf("%v: %v is not a valid reference timestamp: %v", prefix, stringNode.Text, err)
+func validateFunctionCalls(cmd *parse.CommandNode) error {
+	if len(cmd.Args) > 0 {
+		if identifierNode, ok := cmd.Args[0].(*parse.IdentifierNode); ok {
+			if err := funcs.validate(identifierNode.Ident, cmd); err != nil {
+				return err
+			}
 		}
-	} else {
-		return fmt.Errorf("%v: first parameter is not a valid reference timestamp.", prefix)
 	}
 	return nil
 }
