@@ -131,12 +131,6 @@ case $1 in
         release_linux_arm64v8
         ;;
     darwin-amd64)
-        if [[ $(go version) != *"1.9.3"* ]]; then
-            # Cannot upgrade to 1.9.4 until this is fixed:
-            # https://github.com/golang/go/issues/23739
-            echo "Go version 1.9.3 required." >&2
-            exit -1
-        fi
         rm -rf dist/*
         run_tests
         release_darwin_amd64
