@@ -53,29 +53,29 @@ func TestOptionalLabels(t *testing.T) {
 		{"foo", true, "foo", ""},
 		{"bar", false, "", ""},
 	} {
-		matchResult := matchFooBar(t, expected.input)
-		if matchResult.IsMatch() != expected.match {
-			t.Fatalf("Expected match(%v)=%v, but got %v", expected.input, expected.match, matchResult.IsMatch())
+		searchResult := matchFooBar(t, expected.input)
+		if searchResult.IsMatch() != expected.match {
+			t.Fatalf("Expected match(%v)=%v, but got %v", expected.input, expected.match, searchResult.IsMatch())
 		}
-		actualFoo, err := matchResult.Get("foo")
+		actualFoo, err := searchResult.GetCaptureGroupByName("foo")
 		if err != nil {
 			t.Fatal(err.Error())
 		}
 		if actualFoo != expected.foo {
 			t.Fatalf("Expected %v to return foo=%v, but got foo=%v", expected.input, expected.foo, actualFoo)
 		}
-		actualBar, err := matchResult.Get("bar")
+		actualBar, err := searchResult.GetCaptureGroupByName("bar")
 		if err != nil {
 			t.Fatal(err.Error())
 		}
 		if actualBar != expected.bar {
 			t.Fatalf("Expected %v to return bar=%v, but got bar=%v", expected.input, expected.bar, actualBar)
 		}
-		matchResult.Free()
+		searchResult.Free()
 	}
 }
 
-func matchFooBar(t *testing.T, input string) *oniguruma.MatchResult {
+func matchFooBar(t *testing.T, input string) *oniguruma.SearchResult {
 	p := InitPatterns()
 	p.AddPattern("FOO foo")
 	p.AddPattern("BAR bar")
@@ -85,11 +85,11 @@ func matchFooBar(t *testing.T, input string) *oniguruma.MatchResult {
 	if err != nil {
 		t.Fatal(err.Error())
 	}
-	matchResult, err := regex.Match(input)
+	searchResult, err := regex.Search(input)
 	if err != nil {
 		t.Fatal(err.Error())
 	}
-	return matchResult
+	return searchResult
 }
 
 // The nginx example is taken from https://github.com/fstab/grok_exporter/issues/33
@@ -138,11 +138,11 @@ func TestNginxExample(t *testing.T) {
 			},
 		},
 	} {
-		matchResult, err := regex.Match(testData.input)
+		searchResult, err := regex.Search(testData.input)
 		if err != nil {
 			t.Fatal(err.Error())
 		}
-		if !matchResult.IsMatch() {
+		if !searchResult.IsMatch() {
 			t.Fatalf("The following line didn't match the NGINX_ERROR pattern: %v", testData.input)
 		}
 		for _, labelName := range []string{
@@ -153,7 +153,7 @@ func TestNginxExample(t *testing.T) {
 			"host",
 			"referrer",
 		} {
-			value, err := matchResult.Get(labelName)
+			value, err := searchResult.GetCaptureGroupByName(labelName)
 			if err != nil {
 				t.Fatal(err.Error())
 			}
@@ -161,6 +161,6 @@ func TestNginxExample(t *testing.T) {
 				t.Fatalf("Expected label value '%v' but got '%v'.", testData.labels[labelName], value)
 			}
 		}
-		matchResult.Free()
+		searchResult.Free()
 	}
 }

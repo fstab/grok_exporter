@@ -43,7 +43,7 @@ func TestValidPatterns(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
-		successfulMatch, err := regex.Match(data[1])
+		successfulMatch, err := regex.Search(data[1])
 		if err != nil {
 			t.Error(err)
 		}
@@ -51,7 +51,7 @@ func TestValidPatterns(t *testing.T) {
 			t.Errorf("pattern '%v' didn't match string '%v'", data[0], data[1])
 		}
 		successfulMatch.Free()
-		unsuccessfulMatch, err := regex.Match(data[2])
+		unsuccessfulMatch, err := regex.Search(data[2])
 		if err != nil {
 			t.Error(err)
 		}
@@ -73,18 +73,18 @@ func TestValidCaptureGroups(t *testing.T) {
 		{"1st user 2nd user grok value 789", "grok", "789"},
 		{"1st user somebody 2nd user else value 123", "somebody", "123"},
 	} {
-		result, err := regex.Match(data[0])
+		result, err := regex.Search(data[0])
 		if err != nil {
 			t.Error(err)
 		}
-		user, err := result.Get("user")
+		user, err := result.GetCaptureGroupByName("user")
 		if err != nil {
 			t.Error(err)
 		}
 		if user != data[1] {
 			t.Errorf("Expected user %v, but got %v", data[1], user)
 		}
-		val, err := result.Get("val")
+		val, err := result.GetCaptureGroupByName("val")
 		if err != nil {
 			t.Error(err)
 		}
@@ -101,7 +101,7 @@ func TestInvalidCaptureGroups(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	match, err := regex.Match("1st user fabian 2nd user grok value 789")
+	match, err := regex.Search("1st user fabian 2nd user grok value 789")
 	if err != nil {
 		t.Error(err)
 	}
@@ -112,12 +112,12 @@ func TestInvalidCaptureGroups(t *testing.T) {
 		{"void", ""},
 		{"", ""},
 	} {
-		_, err := match.Get(data[0])
+		_, err := match.GetCaptureGroupByName(data[0])
 		if err == nil {
 			t.Error("Expected error, because used non-existing capture group name.")
 		}
 	}
-	val, err := match.Get("x")
+	val, err := match.GetCaptureGroupByName("x")
 	if err != nil {
 		t.Error(err)
 	}

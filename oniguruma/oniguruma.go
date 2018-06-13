@@ -38,7 +38,7 @@ type Regex struct {
 	cachedCaptureGroupNums map[string][]C.int
 }
 
-type MatchResult struct {
+type SearchResult struct {
 	match  bool
 	regex  *Regex
 	region *C.OnigRegion
@@ -77,6 +77,9 @@ func Compile(pattern string) (*Regex, error) {
 
 func (regex *Regex) Free() {
 	C.onig_free(regex.regex)
+	// Set fields nil so we get an error if regex is used after Free().
+	regex.regex = nil
+	regex.cachedCaptureGroupNums = nil
 }
 
 func (regex *Regex) HasCaptureGroup(name string) bool {
@@ -104,21 +107,26 @@ func (r *Regex) getCaptureGroupNums(name string) ([]C.int, error) {
 	return result, nil
 }
 
-func (regex *Regex) Match(input string) (*MatchResult, error) {
+func (regex *Regex) Search(input string) (*SearchResult, error) {
+	return regex.searchWithOffset(input, 0)
+}
+
+func (regex *Regex) searchWithOffset(input string, offset int) (*SearchResult, error) {
 	region := C.onig_region_new()
 	inputStart, inputEnd := pointers(input)
 	defer free(inputStart, inputEnd)
-	r := C.onig_match(regex.regex, inputStart, inputEnd, inputStart, region, C.ONIG_OPTION_NONE)
+	searchStart := offsetPointer(inputStart, offset)
+	r := C.onig_search(regex.regex, inputStart, inputEnd, searchStart, inputEnd, region, C.ONIG_OPTION_NONE)
 	if r == C.ONIG_MISMATCH {
 		C.onig_region_free(region, 1)
-		return &MatchResult{
+		return &SearchResult{
 			match: false,
 		}, nil
 	} else if r < 0 {
 		C.onig_region_free(region, 1)
 		return nil, errors.New(errMsg(r))
 	} else {
-		return &MatchResult{
+		return &SearchResult{
 			match:  true,
 			regex:  regex,
 			region: region,
@@ -127,7 +135,17 @@ func (regex *Regex) Match(input string) (*MatchResult, error) {
 	}
 }
 
-func (m *MatchResult) Get(name string) (string, error) {
+func (m *SearchResult) IsMatch() bool {
+	return m.match
+}
+
+func (m *SearchResult) Free() {
+	if m.match {
+		C.onig_region_free(m.region, 1)
+	}
+}
+
+func (m *SearchResult) GetCaptureGroupByName(name string) (string, error) {
 	if !m.match {
 		return "", nil // no match -> no capture group
 	}
@@ -136,30 +154,47 @@ func (m *MatchResult) Get(name string) (string, error) {
 		return "", err
 	}
 	for _, groupNum := range groupNums {
-		beg := getPos(m.region.beg, groupNum)
-		end := getPos(m.region.end, groupNum)
-		if beg == -1 && end == -1 {
-			// The capture is optional, like %{BAR}?, and there is no match.
-			continue
-		} else if beg > end || beg < 0 || int(end) > len(m.input) {
-			return "", fmt.Errorf("%v: unexpected result when calling onig_name_to_group_numbers()", name)
-		} else if beg == end {
-			continue // return empty string unless there are other matches for that name.
-		} else {
-			return m.input[beg:end], nil
+		result, err := m.getCaptureGroupByNumber(groupNum)
+		if err != nil {
+			return "", err
+		}
+		if len(result) > 0 {
+			return result, nil
 		}
 	}
 	return "", nil
 }
 
-func (m *MatchResult) IsMatch() bool {
-	return m.match
+func (m *SearchResult) GetCaptureGroupByNumber(groupNum int) (string, error) {
+	return m.getCaptureGroupByNumber(C.int(groupNum))
 }
 
-func (m *MatchResult) Free() {
-	if m.match {
-		C.onig_region_free(m.region, 1)
+func (m *SearchResult) getCaptureGroupByNumber(groupNum C.int) (string, error) {
+	if !m.match {
+		return "", nil // no match -> no capture group
 	}
+	beg := getPos(m.region.beg, groupNum)
+	end := getPos(m.region.end, groupNum)
+	if beg == -1 && end == -1 {
+		// optional capture, like (x)?, and no match
+		return "", nil
+	} else if beg > end || beg < 0 || int(end) > len(m.input) {
+		return "", fmt.Errorf("unexpected result when calling oniguruma.getPos()")
+	} else if beg == end {
+		return "", nil
+	} else {
+		return m.input[beg:end], nil
+	}
+}
+
+func (m *SearchResult) startPos() int {
+	beg := getPos(m.region.beg, 0)
+	return int(beg)
+}
+
+func (m *SearchResult) endPos() int {
+	end := getPos(m.region.end, 0)
+	return int(end)
 }
 
 // returns a pointer to the start of the string and a pointer to the end of the string
@@ -167,6 +202,10 @@ func pointers(s string) (start, end *C.OnigUChar) {
 	start = (*C.OnigUChar)(unsafe.Pointer(C.CString(s)))
 	end = (*C.OnigUChar)(unsafe.Pointer(uintptr(unsafe.Pointer(start)) + uintptr(len(s))))
 	return
+}
+
+func offsetPointer(start *C.OnigUChar, offset int) *C.OnigUChar {
+	return (*C.OnigUChar)(unsafe.Pointer(uintptr(unsafe.Pointer(start)) + uintptr(offset)))
 }
 
 // returns p[i]
