@@ -23,6 +23,7 @@ var funcs functions = make(map[string]functionWithValidator)
 
 func init() {
 	funcs.add("timestamp", newTimestampFunc())
+	funcs.add("gsub", newGsubFunc())
 }
 
 type functions map[string]functionWithValidator
