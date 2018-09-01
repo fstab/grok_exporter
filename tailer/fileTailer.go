@@ -180,9 +180,6 @@ func openLogfile(path string, readall bool, failOnMissingFile bool) (*File, stri
 	}
 	file, err := open(abspath)
 	if err != nil {
-		if failOnMissingFile && os.IsNotExist(err) {
-			return nil, "", fmt.Errorf("%v. use 'fail_on_missing_logfile: false' in the input configuration if you want grok_exporter to start even though the logfile is missing", err)
-		}
 		if failOnMissingFile || !os.IsNotExist(err) {
 			return nil, "", err
 		}
