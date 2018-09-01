@@ -77,6 +77,9 @@ func main() {
 		case err := <-serverErrors:
 			exitOnError(fmt.Errorf("server error: %v", err.Error()))
 		case err := <-tail.Errors():
+			if os.IsNotExist(err) {
+				exitOnError(fmt.Errorf("error reading log lines: %v. use 'fail_on_missing_logfile: false' in the input configuration if you want grok_exporter to start even though the logfile is missing", err))
+			}
 			exitOnError(fmt.Errorf("error reading log lines: %v", err.Error()))
 		case line := <-tail.Lines():
 			matched := false
