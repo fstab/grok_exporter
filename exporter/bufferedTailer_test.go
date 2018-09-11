@@ -16,6 +16,7 @@ package exporter
 
 import (
 	"fmt"
+	"github.com/fstab/grok_exporter/tailer"
 	"math/rand"
 	"sync"
 	"testing"
@@ -30,7 +31,7 @@ func (tail *sourceTailer) Lines() chan string {
 	return tail.lines
 }
 
-func (tail *sourceTailer) Errors() chan error {
+func (tail *sourceTailer) Errors() chan tailer.Error {
 	return nil
 }
 

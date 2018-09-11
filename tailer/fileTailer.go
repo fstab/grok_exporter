@@ -24,7 +24,7 @@ import (
 
 type fileTailer struct {
 	lines  chan string
-	errors chan error
+	errors chan Error
 	done   chan struct{}
 	closed bool
 }
@@ -40,7 +40,7 @@ func (f *fileTailer) Lines() chan string {
 	return f.lines
 }
 
-func (f *fileTailer) Errors() chan error {
+func (f *fileTailer) Errors() chan Error {
 	return f.errors
 }
 
@@ -62,7 +62,7 @@ func runFileTailer(path string, readall bool, failOnMissingFile bool, logger sim
 
 	lines := make(chan string)
 	done := make(chan struct{})
-	errors := make(chan error)
+	errors := make(chan Error)
 
 	result := &fileTailer{
 		lines:  lines,
@@ -74,7 +74,7 @@ func runFileTailer(path string, readall bool, failOnMissingFile bool, logger sim
 	file, abspath, err := openLogfile(path, readall, failOnMissingFile) // file may be nil if failOnMissingFile is false and the file doesn't exist yet.
 	if err != nil {
 		go func(err error) {
-			writeError(errors, done, "failed to initialize file system watcher for %v: %v", path, err)
+			writeError(errors, done, err, "failed to initialize file system watcher for %v", path)
 			close(lines)
 			close(errors)
 		}(err)
@@ -83,7 +83,7 @@ func runFileTailer(path string, readall bool, failOnMissingFile bool, logger sim
 	watcher, err := makeWatcher(abspath, file) // if file is nil the watcher assumes the file doesn't exist yet and waits for CREATE events.
 	if err != nil {
 		go func(err error) {
-			writeError(errors, done, "failed to initialize file system watcher for %v: %v", path, err)
+			writeError(errors, done, err, "failed to initialize file system watcher for %v", path)
 			if file != nil {
 				file.Close()
 			}
@@ -112,7 +112,7 @@ func runFileTailer(path string, readall bool, failOnMissingFile bool, logger sim
 			// process all pre-existing lines
 			freshLines, err := reader.ReadAvailableLines(file)
 			if err != nil {
-				writeError(errors, done, "failed to initialize file system watcher for %v: %v", path, err.Error())
+				writeError(errors, done, err, "failed to initialize file system watcher for %v", path)
 				return
 			}
 			for _, line := range freshLines {
@@ -136,10 +136,10 @@ func runFileTailer(path string, readall bool, failOnMissingFile bool, logger sim
 						// The tailer is shutting down and closed the 'done' and 'errors' channels. This is ok.
 					default:
 						// 'done' is still open, the tailer is not shutting down. This is a bug.
-						writeError(errors, done, "failed to watch %v: unknown error", abspath)
+						writeError(errors, done, nil, "failed to watch %v", abspath)
 					}
 				} else {
-					writeError(errors, done, "failed to watch %v: %v", abspath, err)
+					writeError(errors, done, err, "failed to watch %v", abspath)
 				}
 				return
 			case evnts := <-eventLoop.Events():
@@ -149,14 +149,14 @@ func runFileTailer(path string, readall bool, failOnMissingFile bool, logger sim
 						// The tailer is shutting down and closed the 'done' and 'errors' channels. This is ok.
 					default:
 						// 'done' is still open, the tailer is not shutting down. This is a bug.
-						writeError(errors, done, "failed to watch %v: unknown error", abspath)
+						writeError(errors, done, nil, "failed to watch %v", abspath)
 					}
 					return
 				}
 				var freshLines []string
 				file, freshLines, err = evnts.Process(file, reader, abspath, logger)
 				if err != nil {
-					writeError(errors, done, "failed to watch %v: %v", abspath, err)
+					writeError(errors, done, err, "failed to watch %v", abspath)
 					return
 				}
 				for _, line := range freshLines {
@@ -179,13 +179,8 @@ func openLogfile(path string, readall bool, failOnMissingFile bool) (*File, stri
 		return nil, "", err
 	}
 	file, err := open(abspath)
-	if err != nil {
-		if failOnMissingFile && os.IsNotExist(err) {
-			return nil, "", fmt.Errorf("%v. use 'fail_on_missing_logfile: false' in the input configuration if you want grok_exporter to start even though the logfile is missing", err)
-		}
-		if failOnMissingFile || !os.IsNotExist(err) {
-			return nil, "", err
-		}
+	if err != nil && (failOnMissingFile || !os.IsNotExist(err)) {
+		return nil, "", err
 	}
 	if !readall && file != nil {
 		_, err = file.Seek(0, io.SeekEnd)
@@ -199,9 +194,9 @@ func openLogfile(path string, readall bool, failOnMissingFile bool) (*File, stri
 	return file, abspath, nil
 }
 
-func writeError(errors chan error, done chan struct{}, format string, a ...interface{}) {
+func writeError(errors chan Error, done chan struct{}, cause error, format string, a ...interface{}) {
 	select {
-	case errors <- fmt.Errorf(format, a...):
+	case errors <- newError(fmt.Sprintf(format, a...), cause):
 	case <-done:
 	}
 }

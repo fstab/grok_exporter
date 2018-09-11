@@ -33,7 +33,7 @@ func (b *bufferedTailerWithMetrics) Lines() chan string {
 	return b.out
 }
 
-func (b *bufferedTailerWithMetrics) Errors() chan error {
+func (b *bufferedTailerWithMetrics) Errors() chan tailer.Error {
 	return b.orig.Errors()
 }
 
