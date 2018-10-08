@@ -87,7 +87,7 @@ function run_docker_linux_arm32v7 {
     docker run \
         -v $GOPATH/src/github.com/fstab/grok_exporter:/root/go/src/github.com/fstab/grok_exporter \
         --net none \
-        --rm -ti geekdave/grok_exporter-compiler-arm32v7:latest \
+        --rm -ti fstab/grok_exporter-compiler-arm32v7:latest \
         ./compile-linux.sh -ldflags "$VERSION_FLAGS" -o "dist/grok_exporter-$VERSION.linux-arm32v7/grok_exporter"
 }
 
@@ -135,32 +135,32 @@ function release_darwin_amd64 {
 
 case $1 in
     linux-amd64)
-        rm -rf dist/*
+        rm -rf dist/grok_exporter-*.linux-amd64*
         run_tests
         release_linux_amd64
         ;;
     linux-arm64v8)
-        rm -rf dist/*
+        rm -rf dist/grok_exporter-*.linux-arm64v8*
         run_tests
         release_linux_arm64v8
         ;;
     linux-arm32v7)
-        rm -rf dist/*
-        #run_tests
+        rm -rf dist/grok_exporter-*.linux-arm32v7*
+        run_tests
         release_linux_arm32v7
-        ;;        
+        ;;
     darwin-amd64)
-        rm -rf dist/*
+        rm -rf dist/grok_exporter-*.darwin-amd64*
         run_tests
         release_darwin_amd64
         ;;
     windows-amd64)
-        rm -rf dist/*
+        rm -rf dist/grok_exporter-*.windows-amd64*
         run_tests
         release_windows_amd64
         ;;
     all-amd64)
-        rm -rf dist/*
+        rm -rf dist/grok_exporter-*.*-amd64*
         run_tests
         release_linux_amd64
         release_darwin_amd64
