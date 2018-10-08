@@ -83,6 +83,14 @@ function run_docker_linux_arm64v8 {
         ./compile-linux.sh -ldflags "$VERSION_FLAGS" -o "dist/grok_exporter-$VERSION.linux-arm64v8/grok_exporter"
 }
 
+function run_docker_linux_arm32v7 {
+    docker run \
+        -v $GOPATH/src/github.com/fstab/grok_exporter:/root/go/src/github.com/fstab/grok_exporter \
+        --net none \
+        --rm -ti geekdave/grok_exporter-compiler-arm32v7:latest \
+        ./compile-linux.sh -ldflags "$VERSION_FLAGS" -o "dist/grok_exporter-$VERSION.linux-arm32v7/grok_exporter"
+}
+
 #--------------------------------------------------------------
 # Release functions
 #--------------------------------------------------------------
@@ -99,6 +107,12 @@ function release_linux_arm64v8 {
     echo "Building dist/grok_exporter-$VERSION.linux-arm64v8.zip"
     run_docker_linux_arm64v8
     create_zip_file grok_exporter-$VERSION.linux-arm64v8
+}
+
+function release_linux_arm32v7 {
+    echo "Building dist/grok_exporter-$VERSION.linux-arm32v7.zip"
+    run_docker_linux_arm32v7
+    create_zip_file grok_exporter-$VERSION.linux-arm32v7
 }
 
 function release_windows_amd64 {
@@ -130,6 +144,11 @@ case $1 in
         run_tests
         release_linux_arm64v8
         ;;
+    linux-arm32v7)
+        rm -rf dist/*
+        #run_tests
+        release_linux_arm32v7
+        ;;        
     darwin-amd64)
         rm -rf dist/*
         run_tests
@@ -154,6 +173,7 @@ case $1 in
         echo '    - darwin-amd64' >&2
         echo '    - windows-amd64' >&2
         echo '    - linux-arm64v8' >&2
+        echo '    - linux-arm32v7' >&2
         echo '    - all-amd64' >&2
         exit -1
 esac
