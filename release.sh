@@ -83,12 +83,12 @@ function run_docker_linux_arm64v8 {
         ./compile-linux.sh -ldflags "$VERSION_FLAGS" -o "dist/grok_exporter-$VERSION.linux-arm64v8/grok_exporter"
 }
 
-function run_docker_linux_arm32v7 {
+function run_docker_linux_arm32v6 {
     docker run \
         -v $GOPATH/src/github.com/fstab/grok_exporter:/root/go/src/github.com/fstab/grok_exporter \
         --net none \
-        --rm -ti fstab/grok_exporter-compiler-arm32v7:latest \
-        ./compile-linux.sh -ldflags "$VERSION_FLAGS" -o "dist/grok_exporter-$VERSION.linux-arm32v7/grok_exporter"
+        --rm -ti fstab/grok_exporter-compiler-arm32v6 \
+        ./compile-linux.sh -ldflags "$VERSION_FLAGS" -o "dist/grok_exporter-$VERSION.linux-arm32v6/grok_exporter"
 }
 
 #--------------------------------------------------------------
@@ -109,10 +109,12 @@ function release_linux_arm64v8 {
     create_zip_file grok_exporter-$VERSION.linux-arm64v8
 }
 
-function release_linux_arm32v7 {
-    echo "Building dist/grok_exporter-$VERSION.linux-arm32v7.zip"
-    run_docker_linux_arm32v7
-    create_zip_file grok_exporter-$VERSION.linux-arm32v7
+function release_linux_arm32v6 {
+    echo "Building dist/grok_exporter-$VERSION.linux-arm32v6.zip"
+    enable_legacy_static_linking
+    run_docker_linux_arm32v6
+    revert_legacy_static_linking
+    create_zip_file grok_exporter-$VERSION.linux-arm32v6
 }
 
 function release_windows_amd64 {
@@ -144,10 +146,10 @@ case $1 in
         run_tests
         release_linux_arm64v8
         ;;
-    linux-arm32v7)
-        rm -rf dist/grok_exporter-*.linux-arm32v7*
+    linux-arm32v6)
+        rm -rf dist/grok_exporter-*.linux-arm32v6*
         run_tests
-        release_linux_arm32v7
+        release_linux_arm32v6
         ;;
     darwin-amd64)
         rm -rf dist/grok_exporter-*.darwin-amd64*
@@ -173,7 +175,7 @@ case $1 in
         echo '    - darwin-amd64' >&2
         echo '    - windows-amd64' >&2
         echo '    - linux-arm64v8' >&2
-        echo '    - linux-arm32v7' >&2
+        echo '    - linux-arm32v6' >&2
         echo '    - all-amd64' >&2
         exit -1
 esac
