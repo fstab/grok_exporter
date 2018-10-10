@@ -49,7 +49,7 @@ The following table shows which `grok_exporter` version uses which `config_versi
 | grok_exporter              | config_version           |
 | -------------------------- | ------------------------ |
 | ≤ 0.1.4                    | 1 _(see [CONFIG_v1.md])_ |
-| 0.2.0, 0.2.1, 0.2.2, 0.2.3 | 2 _(current version)_    |
+| 0.2.X                      | 2 _(current version)_    |
 
 The `retention_check_interval` is the interval at which `grok_exporter` checks for expired metrics. By default, metrics don't expire so this is relevant only if `retention` is configured explicitly with a metric. The `retention_check_interval` is optional, the value defaults to `53s`. The default value is reasonable for production and should not be changed. This property is intended to be used in tests, where you might not want to wait 53 seconds until an expired metric is cleaned up. The format is described in [How to Configure Durations] below.
 
@@ -141,12 +141,16 @@ At least one of `patterns_dir` or `additional_patterns` is required: If `pattern
 Metrics Section
 ---------------
 
+### Metric Types Overview
+
 The metrics section contains a list of metric definitions, specifying how log lines are mapped to Prometheus metrics. Four metric types are supported:
 
 * [Counter](#counter-metric-type)
 * [Gauge](#gauge-metric-type)
 * [Histogram](#histogram-metric-type)
 * [Summary](#summary-metric-type)
+
+### Example Log Lines
 
 To exemplify the different metrics configurations, we use the following example log lines:
 
@@ -163,9 +167,11 @@ Each line consists of a date, time, user, and a number. Using [Grok's default pa
 %{DATE} %{TIME} %{USER} %{NUMBER}
 ```
 
-One of the main features of Prometheus is its multi-dimensional data model: A Prometheus metric can be further partitioned using different labels.
+### Labels
 
-Labels are defined in two steps:
+One of the main features of Prometheus is its multi-dimensional data model: A Prometheus metric can be further partitioned using labels.
+
+In order to define a label, you need to first define a Grok field name in the `match:` pattern, and second add label template under `labels:`.
 
 1. _Define Grok field names._ In Grok, each field, like `%{USER}`, can be given a name, like `%{USER:user}`. The name `user` can then be used in label templates.
 2. _Define label templates._ Each metric type supports `labels`, which is a map of name/template pairs. The name will be used in Prometheus as the label name. The template is a [Go template] that may contain references to Grok fields, like `{{.user}}`.
@@ -173,7 +179,7 @@ Labels are defined in two steps:
 Example: In order to define a label `user` for the example log lines above, use the following fragment:
 
 ```yaml
-match: '%{DATE} %{TIME} %{USER:user} %{NUMBER}'
+match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
 labels:
     user: '{{.user}}'
 ```
@@ -181,6 +187,33 @@ labels:
 The `match` stores whatever matches the `%{USER}` pattern under the Grok field name `user`. The label defines a Prometheus label `user` with the value of the Grok field `user` as its content.
 
 This simple example shows a one-to-one mapping of a Grok field to a Prometheus label. However, the label definition is pretty flexible: You can combine multiple Grok fields in one label, and you can define constant labels that don't use Grok fields at all.
+
+### Label Template Functions
+
+Label values are defined as [Go templates]. As of v0.2.6, `grok_exporter` supports the following template functions: `gsub`, `add`, `subtract`, `multiply`, `divide`.
+
+For example, let's assume we have the match from above:
+
+```yaml
+match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
+```
+
+We apply this pattern to the first log line of our example:
+
+```yaml
+30.07.2016 14:37:03 alice 1.5
+```
+
+Now the Grok field `user` has the value `alice`, and the Grok field `val` has the value `1.5`. The following example show how to use these fields as label values using the [Go template] language:
+
+* `'{{.user}}'` -> `alice`
+* `'user {{.user}} with number {{.val}}.'` -> `user alice with number 1.5.`
+* `'{{gsub .user "ali" "beatri"}}'` -> `beatrice`
+* `'{{multiply .val 1000}}'` -> `1500`
+
+The syntax of the `gsub` function is `{{gsub input pattern replacement}}`. The pattern and replacement are is similar to [Elastic's mutate filter's gsub] (derived from Ruby's [String.gsub()]), except that you need to double-escape backslashes (\\\\ instead of \\). A more complex example (including capture groups) can be found in [this comment].
+
+The arithmetic functions `add`, `subtract`, `multiply`, and `divide` are straightforward. These functions may not be useful for label values, but they can be useful as the `value:` in [gauge](#gauge-metric-type), [histogram](#histogram-metric-type), or [summary](#summary-metric-type) metrics. For example, they could be used to convert milliseconds to seconds.
 
 ### Expiring Old Labels
 
@@ -401,6 +434,10 @@ How to Configure Durations
 [http://grokconstructor.appspot.com]: http://grokconstructor.appspot.com
 [Grok's default patterns]: https://github.com/logstash-plugins/logstash-patterns-core/blob/master/patterns/grok-patterns
 [Go template]: https://golang.org/pkg/text/template/
+[Go templates]: https://golang.org/pkg/text/template/
+[Elastic's mutate filter's gsub]: https://www.elastic.co/guide/en/logstash/current/plugins-filters-mutate.html#plugins-filters-mutate-gsub
+[String.gsub()]: https://ruby-doc.org/core-2.1.4/String.html#method-i-gsub
+[this comment]: https://github.com/fstab/grok_exporter/issues/36#issuecomment-397094266
 [counter metric]: https://prometheus.io/docs/concepts/metric_types/#counter
 [gauge metric]: https://prometheus.io/docs/concepts/metric_types/#gauge
 [summary metric]: https://prometheus.io/docs/concepts/metric_types/#summary
