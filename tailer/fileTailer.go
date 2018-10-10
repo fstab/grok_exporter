@@ -44,18 +44,39 @@ func (f *fileTailer) Errors() chan Error {
 	return f.errors
 }
 
+func getSeekArgs(readall bool) (bool, int64, int) {
+	if readall {
+		return false, 0, 0
+	} else {
+		return true, 0, io.SeekEnd
+	}
+}
+
 func RunFseventFileTailer(path string, readall bool, failOnMissingFile bool, logger simpleLogger) Tailer {
-	return runFileTailer(path, readall, failOnMissingFile, logger, NewFseventWatcher)
+	seek, offset, whence := getSeekArgs(readall)
+	return runFileTailer(path, failOnMissingFile, logger, seek, offset, whence, NewFseventWatcher)
+}
+
+func RunFseventFileTailerWithSeek(path string, failOnMissingFile bool, logger simpleLogger, offset int64, whence int) Tailer {
+	return runFileTailer(path, failOnMissingFile, logger, true, offset, whence, NewFseventWatcher)
 }
 
 func RunPollingFileTailer(path string, readall bool, failOnMissingFile bool, pollIntervall time.Duration, logger simpleLogger) Tailer {
+	seek, offset, whence := getSeekArgs(readall)
 	makeWatcher := func(abspath string, _ *File) (Watcher, error) {
 		return NewPollingWatcher(abspath, pollIntervall)
 	}
-	return runFileTailer(path, readall, failOnMissingFile, logger, makeWatcher)
+	return runFileTailer(path, failOnMissingFile, logger, seek, offset, whence, makeWatcher)
 }
 
-func runFileTailer(path string, readall bool, failOnMissingFile bool, logger simpleLogger, makeWatcher func(string, *File) (Watcher, error)) Tailer {
+func RunPollingFileTailerWithSeek(path string, failOnMissingFile bool, pollIntervall time.Duration, logger simpleLogger, offset int64, whence int) Tailer {
+	makeWatcher := func(abspath string, _ *File) (Watcher, error) {
+		return NewPollingWatcher(abspath, pollIntervall)
+	}
+	return runFileTailer(path, failOnMissingFile, logger, true, offset, whence, makeWatcher)
+}
+
+func runFileTailer(path string, failOnMissingFile bool, logger simpleLogger, seek bool, seekOffset int64, seekWhence int, makeWatcher func(string, *File) (Watcher, error)) Tailer {
 	if logger == nil {
 		logger = &nilLogger{}
 	}
@@ -71,7 +92,7 @@ func runFileTailer(path string, readall bool, failOnMissingFile bool, logger sim
 		closed: false,
 	}
 
-	file, abspath, err := openLogfile(path, readall, failOnMissingFile) // file may be nil if failOnMissingFile is false and the file doesn't exist yet.
+	file, abspath, err := openLogfile(path, failOnMissingFile, seek, seekOffset, seekWhence) // file may be nil if failOnMissingFile is false and the file doesn't exist yet.
 	if err != nil {
 		go func(err error) {
 			writeError(errors, done, err, "failed to initialize file system watcher for %v", path)
@@ -173,7 +194,7 @@ func runFileTailer(path string, readall bool, failOnMissingFile bool, logger sim
 }
 
 // may return *File == nil if the file does not exist and failOnMissingFile == false
-func openLogfile(path string, readall bool, failOnMissingFile bool) (*File, string, error) {
+func openLogfile(path string, failOnMissingFile bool, seek bool, seekOffset int64, seekWhence int) (*File, string, error) {
 	abspath, err := filepath.Abs(path)
 	if err != nil {
 		return nil, "", err
@@ -182,8 +203,8 @@ func openLogfile(path string, readall bool, failOnMissingFile bool) (*File, stri
 	if err != nil && (failOnMissingFile || !os.IsNotExist(err)) {
 		return nil, "", err
 	}
-	if !readall && file != nil {
-		_, err = file.Seek(0, io.SeekEnd)
+	if seek && file != nil {
+		_, err = file.Seek(seekOffset, seekWhence)
 		if err != nil {
 			if file != nil {
 				file.Close()
