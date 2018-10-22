@@ -139,9 +139,8 @@ func (l *eventLoop) Events() chan Events {
 	return l.events
 }
 
-func (events *eventList) Process(fileBefore *File, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *File, lines []string, err error) {
+func (events *eventList) Process(fileBefore *File, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *File, err error) {
 	file = fileBefore
-	lines = []string{}
 	var truncated bool
 	logger.Debug("File system watcher received %v event(s):\n", len(events.events))
 	for i, event := range events.events {
@@ -167,12 +166,11 @@ func (events *eventList) Process(fileBefore *File, reader *bufferedLineReader, a
 	// Handle write event.
 	for _, event := range events.events {
 		if file != nil && event.Ident == fdToInt(file.Fd()) && event.Fflags&syscall.NOTE_WRITE == syscall.NOTE_WRITE {
-			var freshLines []string
-			freshLines, err = reader.ReadAvailableLines(file)
-			if err != nil {
+			var finished bool
+			finished, err = reader.ReadAvailableLines(file)
+			if finished || err != nil {
 				return
 			}
-			lines = append(lines, freshLines...)
 		}
 	}
 
@@ -196,12 +194,11 @@ func (events *eventList) Process(fileBefore *File, reader *bufferedLineReader, a
 					return
 				}
 				reader.Clear()
-				var freshLines []string
-				freshLines, err = reader.ReadAvailableLines(file)
-				if err != nil {
+				var finished bool
+				finished, err = reader.ReadAvailableLines(file)
+				if finished || err != nil {
 					return
 				}
-				lines = append(lines, freshLines...)
 			} else {
 				// If file could not be opened, the CREATE event was for another file, we ignore this.
 				err = nil

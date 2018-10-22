@@ -141,9 +141,8 @@ func (l *eventLoop) Events() chan Events {
 	return l.events
 }
 
-func (events eventList) Process(fileBefore *File, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *File, lines []string, err error) {
+func (events eventList) Process(fileBefore *File, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *File, err error) {
 	file = fileBefore
-	lines = []string{}
 	filename := filepath.Base(abspath)
 	var truncated bool
 	for _, event := range events {
@@ -163,12 +162,11 @@ func (events eventList) Process(fileBefore *File, reader *bufferedLineReader, ab
 					return
 				}
 			}
-			var freshLines []string
-			freshLines, err = reader.ReadAvailableLines(file)
-			if err != nil {
+			var finished bool
+			finished, err = reader.ReadAvailableLines(file)
+			if finished || err != nil {
 				return
 			}
-			lines = append(lines, freshLines...)
 		}
 	}
 
@@ -189,12 +187,11 @@ func (events eventList) Process(fileBefore *File, reader *bufferedLineReader, ab
 				return
 			}
 			reader.Clear()
-			var freshLines []string
-			freshLines, err = reader.ReadAvailableLines(file)
-			if err != nil {
+			var finished bool
+			finished, err = reader.ReadAvailableLines(file)
+			if finished || err != nil {
 				return
 			}
-			lines = append(lines, freshLines...)
 		}
 	}
 	return
