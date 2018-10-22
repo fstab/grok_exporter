@@ -210,10 +210,13 @@ Now the Grok field `user` has the value `alice`, and the Grok field `val` has th
 * `'user {{.user}} with number {{.val}}.'` -> `user alice with number 1.5.`
 * `'{{gsub .user "ali" "beatri"}}'` -> `beatrice`
 * `'{{multiply .val 1000}}'` -> `1500`
+* `'{{if eq .user "alice"}}1{{else}}0{{end}}'` -> `1`
 
-The syntax of the `gsub` function is `{{gsub input pattern replacement}}`. The pattern and replacement are is similar to [Elastic's mutate filter's gsub] (derived from Ruby's [String.gsub()]), except that you need to double-escape backslashes (\\\\ instead of \\). A more complex example (including capture groups) can be found in [this comment].
+The syntax of the `gsub` function is `{{gsub input pattern replacement}}`. The pattern and replacement are is similar to [Elastic's mutate filter's gsub] (derived from Ruby's [String.gsub()]), except that you need to double-escape backslashes (\\\\ instead of \\). A more complex example (including capture groups) can be found in [this comment](https://github.com/fstab/grok_exporter/issues/36#issuecomment-397094266).
 
 The arithmetic functions `add`, `subtract`, `multiply`, and `divide` are straightforward. These functions may not be useful for label values, but they can be useful as the `value:` in [gauge](#gauge-metric-type), [histogram](#histogram-metric-type), or [summary](#summary-metric-type) metrics. For example, they could be used to convert milliseconds to seconds.
+
+Conditionals like `'{{if eq .user "alice"}}1{{else}}0{{end}}` are described in the [Go template] documentation. For example, they can be used to define boolean metrics, i.e. [gauge](#gauge-metric-type) metrics with a value of `1` or `0`. Another example can be found in [this comment](https://github.com/fstab/grok_exporter/issues/36#issuecomment-431605857).
 
 ### Expiring Old Labels
 
@@ -437,7 +440,6 @@ How to Configure Durations
 [Go templates]: https://golang.org/pkg/text/template/
 [Elastic's mutate filter's gsub]: https://www.elastic.co/guide/en/logstash/current/plugins-filters-mutate.html#plugins-filters-mutate-gsub
 [String.gsub()]: https://ruby-doc.org/core-2.1.4/String.html#method-i-gsub
-[this comment]: https://github.com/fstab/grok_exporter/issues/36#issuecomment-397094266
 [counter metric]: https://prometheus.io/docs/concepts/metric_types/#counter
 [gauge metric]: https://prometheus.io/docs/concepts/metric_types/#gauge
 [summary metric]: https://prometheus.io/docs/concepts/metric_types/#summary
