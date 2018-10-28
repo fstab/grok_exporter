@@ -45,26 +45,73 @@ func (f *mockFile) Read(p []byte) (int, error) {
 	}
 }
 
-func TestLineReader(t *testing.T) {
-	file := NewMockFile("This is l", "ine 1\n", "This is line two\nThis is line three\n", "This ", "is ", "line 4", "\n", "\n")
-	reader := NewBufferedLineReader()
+func collectLines(linechan chan string) []string {
+	lines := []string{}
+	for {
+		select {
+		case line := <-linechan:
+			lines = append(lines, line)
+		default:
+			return lines
+		}
+	}
+}
 
-	lines, err := reader.ReadAvailableLines(file)
-	expectEmpty(t, lines, err)
-	lines, err = reader.ReadAvailableLines(file)
-	expectLines(t, lines, err, "This is line 1")
-	lines, err = reader.ReadAvailableLines(file)
-	expectLines(t, lines, err, "This is line two", "This is line three")
-	lines, err = reader.ReadAvailableLines(file) // This
-	expectEmpty(t, lines, err)
-	lines, err = reader.ReadAvailableLines(file) // is
-	expectEmpty(t, lines, err)
-	lines, err = reader.ReadAvailableLines(file) // line 4
-	expectEmpty(t, lines, err)
-	lines, err = reader.ReadAvailableLines(file) // \n
-	expectLines(t, lines, err, "This is line 4")
-	lines, err = reader.ReadAvailableLines(file) // \n
-	expectLines(t, lines, err, "")
+func TestLineReader(t *testing.T) {
+	file := NewMockFile("This is l", "ine 1\n", "This is line two\nThis is line three\n", "This ", "is ", "line 4", "\n", "\n", "\n")
+
+	done := make(chan struct{})
+	linechan := make(chan string, 20)
+
+	reader := NewBufferedLineReader(linechan, done)
+
+	finished, err := reader.ReadAvailableLines(file)
+	expectEmpty(t, collectLines(linechan), err)
+	expectNotFinished(t, finished)
+
+	finished, err = reader.ReadAvailableLines(file)
+	expectLines(t, collectLines(linechan), err, "This is line 1")
+	expectNotFinished(t, finished)
+
+	finished, err = reader.ReadAvailableLines(file)
+	expectLines(t, collectLines(linechan), err, "This is line two", "This is line three")
+	expectNotFinished(t, finished)
+
+	finished, err = reader.ReadAvailableLines(file) // This
+	expectEmpty(t, collectLines(linechan), err)
+	expectNotFinished(t, finished)
+
+	finished, err = reader.ReadAvailableLines(file) // is
+	expectEmpty(t, collectLines(linechan), err)
+	expectNotFinished(t, finished)
+
+	finished, err = reader.ReadAvailableLines(file) // line 4
+	expectEmpty(t, collectLines(linechan), err)
+	expectNotFinished(t, finished)
+
+	finished, err = reader.ReadAvailableLines(file) // \n
+	expectLines(t, collectLines(linechan), err, "This is line 4")
+	expectNotFinished(t, finished)
+
+	finished, err = reader.ReadAvailableLines(file) // \n
+	expectLines(t, collectLines(linechan), err, "")
+	expectNotFinished(t, finished)
+
+	close(done)
+	finished, err = reader.ReadAvailableLines(file) // \n
+	expectFinished(t, finished)
+}
+
+func expectNotFinished(t *testing.T, finished bool) {
+	if finished {
+		t.Error("expected to be not finished, but finished")
+	}
+}
+
+func expectFinished(t *testing.T, finished bool) {
+	if !finished {
+		t.Error("expected to be finished, but not finished")
+	}
 }
 
 func expectEmpty(t *testing.T, lines []string, err error) {
