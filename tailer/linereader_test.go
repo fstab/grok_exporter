@@ -16,129 +16,160 @@ package tailer
 
 import (
 	"io"
+	"math/rand"
+	"strings"
 	"testing"
 )
 
 type mockFile struct {
-	bytes []string
-	pos   int
-	eof   bool
+	results []readResult
+	pos     int
 }
 
-func NewMockFile(lines ...string) *mockFile {
+type readResult struct {
+	data string
+	err  error
+}
+
+func newMockFile(readResults []readResult) *mockFile {
 	return &mockFile{
-		bytes: lines,
-		pos:   0,
-		eof:   false,
+		results: readResults,
+		pos:     0,
 	}
 }
 
 func (f *mockFile) Read(p []byte) (int, error) {
-	if f.eof {
-		f.eof = false
+	if f.pos >= len(f.results) {
 		return 0, io.EOF
-	} else {
-		f.eof = true
-		copy(p, []byte(f.bytes[f.pos])) // In this test the buffer p will alwasy be large enough.
-		f.pos++
-		return len(f.bytes[f.pos-1]), nil
 	}
-}
-
-func collectLines(linechan chan string) []string {
-	lines := []string{}
-	for {
-		select {
-		case line := <-linechan:
-			lines = append(lines, line)
-		default:
-			return lines
-		}
-	}
+	result := f.results[f.pos]
+	f.pos++
+	copy(p, result.data) // In this test the buffer p will always be large enough.
+	//fmt.Printf("mock file read() returning %q, %v\n", result.data, result.err)
+	return len(result.data), result.err
 }
 
 func TestLineReader(t *testing.T) {
-	file := NewMockFile("This is l", "ine 1\n", "This is line two\nThis is line three\n", "This ", "is ", "line 4", "\n", "\n", "\n")
-
-	done := make(chan struct{})
-	linechan := make(chan string, 20)
-
-	reader := NewBufferedLineReader(linechan, done)
-
-	finished, err := reader.ReadAvailableLines(file)
-	expectEmpty(t, collectLines(linechan), err)
-	expectNotFinished(t, finished)
-
-	finished, err = reader.ReadAvailableLines(file)
-	expectLines(t, collectLines(linechan), err, "This is line 1")
-	expectNotFinished(t, finished)
-
-	finished, err = reader.ReadAvailableLines(file)
-	expectLines(t, collectLines(linechan), err, "This is line two", "This is line three")
-	expectNotFinished(t, finished)
-
-	finished, err = reader.ReadAvailableLines(file) // This
-	expectEmpty(t, collectLines(linechan), err)
-	expectNotFinished(t, finished)
-
-	finished, err = reader.ReadAvailableLines(file) // is
-	expectEmpty(t, collectLines(linechan), err)
-	expectNotFinished(t, finished)
-
-	finished, err = reader.ReadAvailableLines(file) // line 4
-	expectEmpty(t, collectLines(linechan), err)
-	expectNotFinished(t, finished)
-
-	finished, err = reader.ReadAvailableLines(file) // \n
-	expectLines(t, collectLines(linechan), err, "This is line 4")
-	expectNotFinished(t, finished)
-
-	finished, err = reader.ReadAvailableLines(file) // \n
-	expectLines(t, collectLines(linechan), err, "")
-	expectNotFinished(t, finished)
-
-	close(done)
-	finished, err = reader.ReadAvailableLines(file) // \n
-	expectFinished(t, finished)
-}
-
-func expectNotFinished(t *testing.T, finished bool) {
-	if finished {
-		t.Error("expected to be not finished, but finished")
+	var (
+		file = newMockFile([]readResult{
+			// reading line 1 takes two read operations
+			{"This is l", nil},
+			{"ine 1\n", nil},
+			// line 2, line 3, and the beginning of line 4 are read in a single read operation
+			{"This is line 2\nThis is line 3\nThis ", nil},
+			// reading line 4 takes three read operations
+			{"is line 4", nil},
+			{"\n", nil},
+			// while reading line 5 we temporarily hit eof
+			{"This is ", nil},
+			{"", io.EOF},
+			{"", io.EOF},
+			{"line ", nil},
+			// eof with data
+			{"5\n", io.EOF},
+			// line 6 is empty
+			{"\n", nil},
+			// line 7 is empty
+			{"\n", nil},
+		})
+		reader = NewLineReader()
+		line   string
+		eof    bool
+		err    error
+		tries  int
+	)
+	for _, expected := range []string{
+		"This is line 1",
+		"This is line 2",
+		"This is line 3",
+		"This is line 4",
+		"This is line 5",
+		"",
+		"",
+	} {
+		for tries = 0; tries < 10; tries++ {
+			line, eof, err = reader.ReadLine(file)
+			if err != nil {
+				t.Fatalf("unexpected error reading line: %v", err)
+			}
+			if !eof {
+				break
+			}
+		}
+		if tries >= 10 {
+			t.Fatalf("failed to read line after %v tries.\n", tries)
+		}
+		if line != expected {
+			t.Fatalf("expected line %q, but got %q\n", expected, line)
+		}
+	}
+	line, eof, err = reader.ReadLine(file)
+	if len(line) > 0 || !eof || err != nil {
+		t.Fatalf("unexpected result after hitting last line: line=%q eof=%v err=%v", line, eof, err)
 	}
 }
 
-func expectFinished(t *testing.T, finished bool) {
-	if !finished {
-		t.Error("expected to be finished, but not finished")
+func TestLineReaderWindowsLineEndings(t *testing.T) {
+	file := newMockFile([]readResult{
+		// reading line 1 takes two read operations
+		{"Line with Windows line ending\r\n", nil},
+		{"Line 2\r\n", nil},
+	})
+	reader := NewLineReader()
+	line, _, _ := reader.ReadLine(file)
+	if line != "Line with Windows line ending" {
+		t.Fatalf("expected \"Line with Windows line ending\", but got %q", line)
+	}
+	line, _, _ = reader.ReadLine(file)
+	if line != "Line 2" {
+		t.Fatalf("expected \"Line 2\", but got %q", line)
 	}
 }
 
-func expectEmpty(t *testing.T, lines []string, err error) {
-	if err != nil {
-		t.Error(err)
+type largeLineMockFile struct {
+	currentLine string
+	pos         int
+}
+
+func (file *largeLineMockFile) next() {
+	length := rand.Intn(1024*1024) + 1
+	nextLine := make([]byte, length+1) // next line is initialized with '\0'
+	// Commented out, because generating random content makes the test much slower
+	//for i := 0; i<length; i++ {
+	//	nextLine[i] = 'a' + byte(rand.Intn('z'-'a'))
+	//}
+	nextLine[length] = '\n'
+	file.currentLine = string(nextLine)
+	file.pos = 0
+}
+
+func (file *largeLineMockFile) Read(p []byte) (int, error) {
+	if file.pos >= len(file.currentLine) {
+		return 0, io.EOF
 	}
-	if lines == nil {
-		t.Error("expected empty slice, but got nil")
-	}
-	if len(lines) > 0 {
-		t.Errorf("expected empty slice, but got len = %v", len(lines))
+	n := min(len(p), len(file.currentLine)-file.pos)
+	copy(p, file.currentLine[file.pos:])
+	file.pos += n
+	return n, nil
+}
+
+func min(a, b int) int {
+	if a > b {
+		return b
+	} else {
+		return a
 	}
 }
 
-func expectLines(t *testing.T, lines []string, err error, expectedLines ...string) {
-	if err != nil {
-		t.Error(err)
-	}
-	if lines == nil {
-		t.Error("slice is nil")
-	}
-	if len(lines) != len(expectedLines) {
-		t.Errorf("expected slice with len = %v, but got len = %v", len(expectedLines), len(lines))
-	}
-	for i, expectedLine := range expectedLines {
-		if lines[i] != expectedLine {
-			t.Errorf("Expected line '%v', but got '%v'.", expectedLine, lines[i])
+func TestLineReaderLargeLines(t *testing.T) {
+	rand.Seed(0)
+	file := &largeLineMockFile{}
+	reader := NewLineReader()
+	for i := 0; i < 100; i++ {
+		file.next()
+		line, _, _ := reader.ReadLine(file)
+		if line != strings.TrimRight(file.currentLine, "\n") {
+			t.Fatal("read unexpected line")
 		}
 	}
 }

@@ -16,72 +16,65 @@ package tailer
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 )
 
-type bufferedLineReader struct {
+type lineReader struct {
 	remainingBytesFromLastRead []byte
-
-	// channels are used to stream the results out
-	lines chan<- string
-	done  <-chan struct{}
 }
 
-func NewBufferedLineReader(lines chan<- string, done <-chan struct{}) *bufferedLineReader {
-	return &bufferedLineReader{
+func NewLineReader() *lineReader {
+	return &lineReader{
 		remainingBytesFromLastRead: []byte{},
-		lines: lines,
-		done:  done,
 	}
 }
 
-func (r *bufferedLineReader) ReadAvailableLines(file io.Reader) (bool, error) {
-
-	// for each buffer, split lines and stream
-	buf := make([]byte, 512)
-	var done bool
-
+// read the next line from the file.
+// return values are (line, eof, err).
+// * line is the line read.
+// * eof is a boolean indicating if the end of file was reached before getting to the next '\n'.
+// * err is set if an error other than io.EOF has occurred. err is never io.EOF.
+// if eof is true, line is always "" and err always is nil.
+// if eof is false and err is nil, an empty line means that there actually was an empty line in the file.
+func (r *lineReader) ReadLine(file io.Reader) (string, bool, error) {
+	var (
+		err error
+		buf = make([]byte, 512)
+		n   = 0
+	)
 	for {
-		n, err := file.Read(buf)
-		if n > 0 {
-			// Callers should always process the n > 0 bytes returned before considering the error err.
-			result := append(r.remainingBytesFromLastRead, buf[0:n]...)
-			done, r.remainingBytesFromLastRead = r.processLines(result)
-			if done {
-				return true, nil
-			}
-		}
-		if err != nil {
+		newlinePos := bytes.IndexByte(r.remainingBytesFromLastRead, '\n')
+		if newlinePos >= 0 {
+			l := len(r.remainingBytesFromLastRead)
+			result := make([]byte, newlinePos)
+			copy(result, r.remainingBytesFromLastRead[:newlinePos])
+			copy(r.remainingBytesFromLastRead, r.remainingBytesFromLastRead[newlinePos+1:])
+			r.remainingBytesFromLastRead = r.remainingBytesFromLastRead[:l-(newlinePos+1)]
+			return string(stripWindowsLineEnding(result)), false, nil
+		} else if err != nil {
 			if err == io.EOF {
-				return false, nil
+				return "", true, nil
 			} else {
-				return false, fmt.Errorf("read error: %v", err.Error())
-			}
-		}
-	}
-}
-
-func (r *bufferedLineReader) Clear() {
-	r.remainingBytesFromLastRead = []byte{}
-}
-
-func (r *bufferedLineReader) processLines(data []byte) (finished bool, remainingBytes []byte) {
-	newline := []byte("\n")
-	for _, line := range bytes.SplitAfter(data, newline) {
-		if bytes.HasSuffix(line, newline) {
-			line = bytes.TrimSuffix(line, newline)
-			line = bytes.TrimSuffix(line, []byte("\r")) // Needed for CRLF line endings?
-			select {
-			case r.lines <- string(line):
-			case <-r.done:
-				finished = true
-				return
+				return "", false, err
 			}
 		} else {
-			// This is the last (incomplete) line returned by SplitAfter(). We will exit the for loop here.
-			remainingBytes = line
+			n, err = file.Read(buf)
+			if n > 0 {
+				// io.Reader: Callers should always process the n > 0 bytes returned before considering the error err.
+				r.remainingBytesFromLastRead = append(r.remainingBytesFromLastRead, buf[0:n]...)
+			}
 		}
 	}
-	return
+}
+
+func stripWindowsLineEnding(s []byte) []byte {
+	if len(s) > 0 && s[len(s)-1] == '\r' {
+		return s[:len(s)-1]
+	} else {
+		return s
+	}
+}
+
+func (r *lineReader) Clear() {
+	r.remainingBytesFromLastRead = r.remainingBytesFromLastRead[:0]
 }

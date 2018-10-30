@@ -107,15 +107,23 @@ func runFileTailer(path string, readall bool, failOnMissingFile bool, logger sim
 		if eventLoop != nil {
 			defer eventLoop.Close()
 		}
-		reader := NewBufferedLineReader(lines, done)
+		reader := NewLineReader()
 		if file != nil {
 			// process all pre-existing lines
-			finished, err := reader.ReadAvailableLines(file)
-			if err != nil {
-				writeError(errors, done, err, "failed to initialize file system watcher for %v", path)
-				return
-			} else if finished {
-				return
+			for {
+				line, eof, err := reader.ReadLine(file)
+				if err != nil {
+					writeError(errors, done, err, "failed to initialize file system watcher for %v", path)
+					return
+				}
+				if eof {
+					break
+				}
+				select {
+				case <-done:
+					return
+				case lines <- line:
+				}
 			}
 		}
 
@@ -148,10 +156,18 @@ func runFileTailer(path string, readall bool, failOnMissingFile bool, logger sim
 					}
 					return
 				}
-				file, err = evnts.Process(file, reader, abspath, logger)
+				var freshLines []string
+				file, freshLines, err = evnts.Process(file, reader, abspath, logger)
 				if err != nil {
 					writeError(errors, done, err, "failed to watch %v", abspath)
 					return
+				}
+				for _, line := range freshLines {
+					select {
+					case <-done:
+						return
+					case lines <- line:
+					}
 				}
 			}
 		}

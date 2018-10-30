@@ -139,9 +139,13 @@ func (l *eventLoop) Events() chan Events {
 	return l.events
 }
 
-func (events *eventList) Process(fileBefore *File, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *File, err error) {
+func (events *eventList) Process(fileBefore *File, reader *lineReader, abspath string, logger simpleLogger) (file *File, lines []string, err error) {
 	file = fileBefore
-	var truncated bool
+	lines = []string{}
+	var (
+		line           string
+		truncated, eof bool
+	)
 	logger.Debug("File system watcher received %v event(s):\n", len(events.events))
 	for i, event := range events.events {
 		logger.Debug("%v/%v: %v.\n", i+1, len(events.events), event2string(events.watcher.dir, file, event))
@@ -159,6 +163,7 @@ func (events *eventList) Process(fileBefore *File, reader *bufferedLineReader, a
 				if err != nil {
 					return
 				}
+				reader.Clear()
 			}
 		}
 	}
@@ -166,10 +171,15 @@ func (events *eventList) Process(fileBefore *File, reader *bufferedLineReader, a
 	// Handle write event.
 	for _, event := range events.events {
 		if file != nil && event.Ident == fdToInt(file.Fd()) && event.Fflags&syscall.NOTE_WRITE == syscall.NOTE_WRITE {
-			var finished bool
-			finished, err = reader.ReadAvailableLines(file)
-			if finished || err != nil {
-				return
+			for {
+				line, eof, err = reader.ReadLine(file)
+				if err != nil {
+					return
+				}
+				if eof {
+					break
+				}
+				lines = append(lines, line)
 			}
 		}
 	}
@@ -194,10 +204,15 @@ func (events *eventList) Process(fileBefore *File, reader *bufferedLineReader, a
 					return
 				}
 				reader.Clear()
-				var finished bool
-				finished, err = reader.ReadAvailableLines(file)
-				if finished || err != nil {
-					return
+				for {
+					line, eof, err = reader.ReadLine(file)
+					if err != nil {
+						return
+					}
+					if eof {
+						break
+					}
+					lines = append(lines, line)
 				}
 			} else {
 				// If file could not be opened, the CREATE event was for another file, we ignore this.

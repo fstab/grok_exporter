@@ -34,5 +34,5 @@ type EventLoop interface {
 // File system events.
 // The operating system may return more than one event for each read, so it's plural.
 type Events interface {
-	Process(fileBefore *File, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *File, err error)
+	Process(fileBefore *File, reader *lineReader, abspath string, logger simpleLogger) (file *File, lines []string, err error)
 }

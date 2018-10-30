@@ -105,9 +105,13 @@ func (l *eventLoop) Events() chan Events {
 	return l.events
 }
 
-func (event *event) Process(fileBefore *File, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *File, err error) {
+func (event *event) Process(fileBefore *File, reader *lineReader, abspath string, logger simpleLogger) (file *File, lines []string, err error) {
 	file = fileBefore
-	var truncated bool
+	lines = []string{}
+	var (
+		truncated, eof bool
+		line           string
+	)
 	logger.Debug("File system watcher received %v.\n", event.String())
 
 	// WRITE or TRUNCATE
@@ -121,11 +125,17 @@ func (event *event) Process(fileBefore *File, reader *bufferedLineReader, abspat
 			if err != nil {
 				return
 			}
+			reader.Clear()
 		}
-		var finished bool
-		finished, err = reader.ReadAvailableLines(file)
-		if finished || err != nil {
-			return
+		for {
+			line, eof, err = reader.ReadLine(file)
+			if err != nil {
+				return
+			}
+			if eof {
+				break
+			}
+			lines = append(lines, line)
 		}
 	}
 
@@ -142,10 +152,15 @@ func (event *event) Process(fileBefore *File, reader *bufferedLineReader, abspat
 			return
 		}
 		reader.Clear()
-		var finished bool
-		finished, err = reader.ReadAvailableLines(file)
-		if finished || err != nil {
-			return
+		for {
+			line, eof, err = reader.ReadLine(file)
+			if err != nil {
+				return
+			}
+			if eof {
+				break
+			}
+			lines = append(lines, line)
 		}
 	}
 	return

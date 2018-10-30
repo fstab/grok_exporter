@@ -83,10 +83,10 @@ func (l *pollingEventLoop) Events() chan Events {
 	return l.events
 }
 
-func (e *pollingEvent) Process(fileBefore *File, reader *bufferedLineReader, abspath string, logger simpleLogger) (file *File, err error) {
+func (e *pollingEvent) Process(fileBefore *File, reader *lineReader, abspath string, logger simpleLogger) (file *File, lines []string, err error) {
 	var (
-		truncated, moved, finished bool
-		filename                   string
+		truncated, moved, eof bool
+		filename, line        string
 	)
 	file = fileBefore
 	moved, err = file.CheckMoved()
@@ -94,15 +94,19 @@ func (e *pollingEvent) Process(fileBefore *File, reader *bufferedLineReader, abs
 		return
 	}
 	if moved {
-		finished, err = reader.ReadAvailableLines(file)
-		if err != nil {
-			return
+		for {
+			line, eof, err = reader.ReadLine(file)
+			if err != nil {
+				return
+			}
+			if eof {
+				break
+			}
+			lines = append(lines, line)
 		}
 		filename = file.Name()
 		file.Close()
-		if finished {
-			return
-		}
+		reader.Clear()
 		file, err = open(filename)
 		if err != nil {
 			return
@@ -117,10 +121,17 @@ func (e *pollingEvent) Process(fileBefore *File, reader *bufferedLineReader, abs
 		if err != nil {
 			return
 		}
+		reader.Clear()
 	}
-	finished, err = reader.ReadAvailableLines(file)
-	if err != nil {
-		return
+	for {
+		line, eof, err = reader.ReadLine(file)
+		if err != nil {
+			return
+		}
+		if eof {
+			break
+		}
+		lines = append(lines, line)
 	}
 	return
 }
