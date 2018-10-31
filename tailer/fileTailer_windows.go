@@ -114,6 +114,31 @@ func (event *event) Process(fileBefore *File, reader *lineReader, abspath string
 	)
 	logger.Debug("File system watcher received %v.\n", event.String())
 
+	// MOVED_FROM or DELETE
+	if file != nil && norm(event.Name) == norm(abspath) && (event.Mask&winfsnotify.FS_MOVED_FROM == winfsnotify.FS_MOVED_FROM || event.Mask&winfsnotify.FS_DELETE == winfsnotify.FS_DELETE) {
+		file = nil
+		reader.Clear()
+	}
+
+	// MOVED_TO or CREATE
+	if file == nil && norm(event.Name) == norm(abspath) && (event.Mask&winfsnotify.FS_MOVED_TO == winfsnotify.FS_MOVED_TO || event.Mask&winfsnotify.FS_CREATE == winfsnotify.FS_CREATE) {
+		file, err = open(abspath)
+		if err != nil {
+			return
+		}
+		reader.Clear()
+		for {
+			line, eof, err = reader.ReadLine(file)
+			if err != nil {
+				return
+			}
+			if eof {
+				break
+			}
+			lines = append(lines, line)
+		}
+	}
+
 	// WRITE or TRUNCATE
 	if file != nil && norm(event.Name) == norm(abspath) && event.Mask&winfsnotify.FS_MODIFY == winfsnotify.FS_MODIFY {
 		truncated, err = file.CheckTruncated()
@@ -139,30 +164,6 @@ func (event *event) Process(fileBefore *File, reader *lineReader, abspath string
 		}
 	}
 
-	// MOVED_FROM or DELETE
-	if file != nil && norm(event.Name) == norm(abspath) && (event.Mask&winfsnotify.FS_MOVED_FROM == winfsnotify.FS_MOVED_FROM || event.Mask&winfsnotify.FS_DELETE == winfsnotify.FS_DELETE) {
-		file = nil
-		reader.Clear()
-	}
-
-	// MOVED_TO or CREATE
-	if file == nil && norm(event.Name) == norm(abspath) && (event.Mask&winfsnotify.FS_MOVED_TO == winfsnotify.FS_MOVED_TO || event.Mask&winfsnotify.FS_CREATE == winfsnotify.FS_CREATE) {
-		file, err = open(abspath)
-		if err != nil {
-			return
-		}
-		reader.Clear()
-		for {
-			line, eof, err = reader.ReadLine(file)
-			if err != nil {
-				return
-			}
-			if eof {
-				break
-			}
-			lines = append(lines, line)
-		}
-	}
 	return
 }
 

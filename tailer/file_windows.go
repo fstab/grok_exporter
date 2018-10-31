@@ -48,6 +48,10 @@ func (f *File) Seek(offset int64, whence int) (int64, error) {
 		return 0, err
 	}
 	defer file.Close()
+	_, err = file.Seek(f.currentPos, io.SeekStart)
+	if err != nil {
+		return 0, err
+	}
 	result, resultErr := file.Seek(offset, whence)
 	f.currentPos, err = file.Seek(0, io.SeekCurrent)
 	if err != nil {

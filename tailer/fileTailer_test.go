@@ -305,7 +305,11 @@ func (l *closeFileAfterEachLineLogFileWriter) writeLine(t *testing.T, log simple
 	if err != nil {
 		t.Fatalf("%v: Failed to open file for writing: %v", l.path, err.Error())
 	}
-	_, err = f.WriteString(fmt.Sprintf("%v\n", line))
+	newline := "\n"
+	if runtime.GOOS == "windows" {
+		newline = "\r\n"
+	}
+	_, err = f.WriteString(fmt.Sprintf("%v%v", line, newline))
 	if err != nil {
 		t.Fatalf("%v: Failed to write to file: %v", l.path, err.Error())
 	}

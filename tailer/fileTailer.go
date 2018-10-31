@@ -60,7 +60,36 @@ func runFileTailer(path string, readall bool, failOnMissingFile bool, logger sim
 		logger = &nilLogger{}
 	}
 
-	lines := make(chan string)
+	// Why does the lines channel have a size of 10?
+	// ---
+	// In fileTailer_test, we read a line from the channel, then we run the next action
+	// on the logfile (like writing the next line, simulating logrotate, etc.).
+	//
+	// Example:
+	// 1) write line a
+	// 2) write line b
+	// 3) move the old logfile away and create a new logfile
+	// 4) write line c
+	//
+	// With this example, we would expect 4 calls to Events.Process() with the following events:
+	// 1) MODIFIED : Process() reads line a
+	// 2) MODIFIED : Process() reads line b
+	// 3) MOVED_FROM, CREATED : Process() resets the line reader and seeks the file to position 0
+	// 4) MODIFIED : Process() reads line c
+	//
+	// However, there is a race condition: When the line reader is slow, it does not hit EOF
+	// before line b is written. The reader keeps reading upon the 1st MODIFIED event.
+	// 1) MODIFIED : Process() reads line a and line b
+	// 2) MODIFIED : Process() detects the truncated file, seeks to position 0, reads line c
+	// 3) MOVED_FROM, CREATED : seek to position 0, read line c again !!!
+	// 4) MODIFIED : no changes in file
+	//
+	// As a result, we read 'line c' two times.
+	// This problem occurs especially on Windows where we don't keep the file open.
+	//
+	// To minimize the risk, we give the lines channel size 10, so that the line reader can
+	// continue reading the next few lines and does not need to wait until the lines are processed.
+	lines := make(chan string, 10)
 	done := make(chan struct{})
 	errors := make(chan Error)
 
