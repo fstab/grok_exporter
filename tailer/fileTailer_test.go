@@ -245,6 +245,7 @@ func testLogrotate(t *testing.T, log simpleLogger, watcherOpt watcherType, logro
 	case polling:
 		tail = RunPollingFileTailer(logfile, true, true, 10*time.Millisecond, log)
 	}
+	tail = BufferedTailerWithMetrics(tail)
 	defer tail.Close()
 
 	// We don't expect errors. However, start a go-routine listening on

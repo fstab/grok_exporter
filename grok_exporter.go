@@ -282,5 +282,5 @@ func startTailer(cfg *v2.Config) (tailer.Tailer, error) {
 	default:
 		return nil, fmt.Errorf("Config error: Input type '%v' unknown.", cfg.Input.Type)
 	}
-	return exporter.BufferedTailerWithMetrics(tail), nil
+	return tailer.BufferedTailerWithMetrics(tail), nil
 }

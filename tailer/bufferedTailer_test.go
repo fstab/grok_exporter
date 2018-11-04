@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package exporter
+package tailer
 
 import (
 	"fmt"
-	"github.com/fstab/grok_exporter/tailer"
 	"math/rand"
 	"sync"
 	"testing"
@@ -31,7 +30,7 @@ func (tail *sourceTailer) Lines() chan string {
 	return tail.lines
 }
 
-func (tail *sourceTailer) Errors() chan tailer.Error {
+func (tail *sourceTailer) Errors() chan Error {
 	return nil
 }
 
