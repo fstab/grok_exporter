@@ -282,5 +282,26 @@ func startTailer(cfg *v2.Config) (tailer.Tailer, error) {
 	default:
 		return nil, fmt.Errorf("Config error: Input type '%v' unknown.", cfg.Input.Type)
 	}
-	return tailer.BufferedTailerWithMetrics(tail), nil
+	return tailer.BufferedTailerWithMetrics(tail, &bufferLoadMetric{}), nil
+}
+
+type bufferLoadMetric struct {
+	bufferLoad prometheus.Summary
+}
+
+func (m *bufferLoadMetric) Register() {
+	bufferLoad := prometheus.NewSummary(prometheus.SummaryOpts{
+		Name: "grok_exporter_line_buffer_peak_load",
+		Help: "Number of lines that are read from the logfile and waiting to be processed. Peak value per second.",
+	})
+	prometheus.MustRegister(bufferLoad)
+	m.bufferLoad = bufferLoad
+}
+
+func (m *bufferLoadMetric) Unregister() {
+	prometheus.Unregister(m.bufferLoad)
+}
+
+func (m *bufferLoadMetric) Observe(currentLoad float64) {
+	m.bufferLoad.Observe(currentLoad)
 }

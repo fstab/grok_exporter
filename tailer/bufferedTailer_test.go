@@ -41,16 +41,19 @@ func (tail *sourceTailer) Close() {
 // First produce 10,000 lines, then consume 10,000 lines.
 func TestLineBufferSequential(t *testing.T) {
 	src := &sourceTailer{lines: make(chan string)}
-	buffered := BufferedTailerWithMetrics(src)
-	for i := 0; i < 10000; i++ {
+	metric := &peakLoadMetric{}
+	buffered := BufferedTailerWithMetrics(src, metric)
+	for i := 1; i <= 10000; i++ {
 		src.lines <- fmt.Sprintf("This is line number %v.", i)
 	}
-	for i := 0; i < 10000; i++ {
+	for i := 1; i <= 10000; i++ {
 		line := <-buffered.Lines()
 		if line != fmt.Sprintf("This is line number %v.", i) {
 			t.Errorf("Expected 'This is line number %v', but got '%v'.", i, line)
 		}
 	}
+	// wait until peak load is observed (buffered tailer observes the max of each 1 Sec interval)
+	time.Sleep(1100 * time.Millisecond)
 	buffered.Close()
 	_, stillOpen := <-buffered.Lines()
 	if stillOpen {
@@ -60,16 +63,26 @@ func TestLineBufferSequential(t *testing.T) {
 	if stillOpen {
 		t.Error("Source tailer was not closed.")
 	}
+	if !metric.registerCalled {
+		t.Error("metric.Register() not called.")
+	}
+	if !metric.unregisterCalled {
+		t.Error("metric.Unregister() not called.")
+	}
+	// The peak load should be 9999 or 9998, depending on how quick
+	// the consumer loop started reading
+	fmt.Printf("peak load: %v\n", metric.peakLoad)
 }
 
 // Produce and consume in parallel.
 func TestLineBufferParallel(t *testing.T) {
 	src := &sourceTailer{lines: make(chan string)}
-	buffered := BufferedTailerWithMetrics(src)
+	metric := &peakLoadMetric{}
+	buffered := BufferedTailerWithMetrics(src, metric)
 	var wg sync.WaitGroup
 	go func() {
 		start := time.Now()
-		for i := 0; i < 10000; i++ {
+		for i := 1; i <= 10000; i++ {
 			src.lines <- fmt.Sprintf("This is line number %v.", i)
 			if rand.Int()%64 == 0 { // Sleep from time to time
 				time.Sleep(10 * time.Millisecond)
@@ -80,7 +93,7 @@ func TestLineBufferParallel(t *testing.T) {
 	}()
 	go func() {
 		start := time.Now()
-		for i := 0; i < 10000; i++ {
+		for i := 1; i <= 10000; i++ {
 			line := <-buffered.Lines()
 			if line != fmt.Sprintf("This is line number %v.", i) {
 				t.Errorf("Expected 'This is line number %v', but got '%v'.", i, line)
@@ -94,6 +107,8 @@ func TestLineBufferParallel(t *testing.T) {
 	}()
 	wg.Add(2)
 	wg.Wait()
+	// wait until peak load is observed (buffered tailer observes the max of each 1 Sec interval)
+	time.Sleep(1100 * time.Millisecond)
 	buffered.Close()
 	_, stillOpen := <-buffered.Lines()
 	if stillOpen {
@@ -103,4 +118,31 @@ func TestLineBufferParallel(t *testing.T) {
 	if stillOpen {
 		t.Error("Source tailer was not closed.")
 	}
+	if !metric.registerCalled {
+		t.Error("metric.Register() not called.")
+	}
+	if !metric.unregisterCalled {
+		t.Error("metric.Unregister() not called.")
+	}
+	// Should be much less than 10000, because consumer and producer work in parallel.
+	fmt.Printf("peak load: %v\n", metric.peakLoad)
+}
+
+type peakLoadMetric struct {
+	registerCalled, unregisterCalled bool
+	peakLoad                         float64
+}
+
+func (m *peakLoadMetric) Register() {
+	m.registerCalled = true
+}
+
+func (m *peakLoadMetric) Observe(currentLoad float64) {
+	if currentLoad > m.peakLoad {
+		m.peakLoad = currentLoad
+	}
+}
+
+func (m *peakLoadMetric) Unregister() {
+	m.unregisterCalled = true
 }

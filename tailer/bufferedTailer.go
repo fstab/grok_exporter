@@ -16,28 +16,31 @@ package tailer
 
 import (
 	"container/list"
-	"github.com/prometheus/client_golang/prometheus"
 	"log"
 	"sync"
 	"time"
 )
 
 // implements Tailer
-type bufferedTailerWithMetrics struct {
+type bufferedTailer struct {
 	out  chan string
 	orig Tailer
 }
 
-func (b *bufferedTailerWithMetrics) Lines() chan string {
+func (b *bufferedTailer) Lines() chan string {
 	return b.out
 }
 
-func (b *bufferedTailerWithMetrics) Errors() chan Error {
+func (b *bufferedTailer) Errors() chan Error {
 	return b.orig.Errors()
 }
 
-func (b *bufferedTailerWithMetrics) Close() {
+func (b *bufferedTailer) Close() {
 	b.orig.Close()
+}
+
+func BufferedTailer(orig Tailer) Tailer {
+	return BufferedTailerWithMetrics(orig, &noopMetric{})
 }
 
 // Wrapper around a tailer that consumes the lines channel quickly.
@@ -99,18 +102,14 @@ func (b *bufferedTailerWithMetrics) Close() {
 //
 // To minimize the risk, use the buffered tailer to make sure file system events are handled
 // as quickly as possible without waiting for the grok patterns to be processed.
-func BufferedTailerWithMetrics(orig Tailer) Tailer {
+func BufferedTailerWithMetrics(orig Tailer, bufferLoadMetric BufferLoadMetric) Tailer {
 	buffer := list.New()
 	bufferSync := sync.NewCond(&sync.Mutex{}) // coordinate producer and consumer
 	out := make(chan string)
 
 	// producer
 	go func() {
-		bufferLoad := prometheus.NewSummary(prometheus.SummaryOpts{
-			Name: "grok_exporter_line_buffer_peak_load",
-			Help: "Number of lines that are read from the logfile and waiting to be processed. Peak value per second.",
-		})
-		prometheus.MustRegister(bufferLoad)
+		bufferLoadMetric.Register()
 		bufferLoadPeakValue := 0
 		tick := time.NewTicker(1 * time.Second)
 		for {
@@ -118,10 +117,10 @@ func BufferedTailerWithMetrics(orig Tailer) Tailer {
 			case line, ok := <-orig.Lines():
 				if ok {
 					bufferSync.L.Lock()
+					buffer.PushBack(line)
 					if buffer.Len() > bufferLoadPeakValue {
 						bufferLoadPeakValue = buffer.Len()
 					}
-					buffer.PushBack(line)
 					bufferSync.Signal()
 					bufferSync.L.Unlock()
 				} else {
@@ -129,12 +128,12 @@ func BufferedTailerWithMetrics(orig Tailer) Tailer {
 					buffer = nil // make the consumer quit
 					bufferSync.Signal()
 					bufferSync.L.Unlock()
-					prometheus.Unregister(bufferLoad)
+					bufferLoadMetric.Unregister()
 					tick.Stop()
 					return
 				}
 			case <-tick.C:
-				bufferLoad.Observe(float64(bufferLoadPeakValue))
+				bufferLoadMetric.Observe(float64(bufferLoadPeakValue))
 				bufferLoadPeakValue = 0
 			}
 		}
@@ -164,8 +163,20 @@ func BufferedTailerWithMetrics(orig Tailer) Tailer {
 			}
 		}
 	}()
-	return &bufferedTailerWithMetrics{
+	return &bufferedTailer{
 		out:  out,
 		orig: orig,
 	}
 }
+
+type BufferLoadMetric interface {
+	Register()
+	Observe(currentLoad float64)
+	Unregister()
+}
+
+type noopMetric struct{}
+
+func (m *noopMetric) Register()                   {}
+func (m *noopMetric) Observe(currentLoad float64) {}
+func (m *noopMetric) Unregister()                 {}
