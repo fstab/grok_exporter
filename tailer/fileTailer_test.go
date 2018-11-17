@@ -16,6 +16,7 @@ package tailer
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"os/user"
@@ -209,6 +210,34 @@ func TestFileMissingOnStartup(t *testing.T) {
 	logFileWriter.writeLine(t, log, "test line 2")
 	expect(t, log, tail.Lines(), "test line 1", 1*time.Second)
 	expect(t, log, tail.Lines(), "test line 2", 1*time.Second)
+}
+
+func TestFileSeek(t *testing.T) {
+	const logfileName = "grok_exporter_seek_logfile.log"
+	log := NewTestRunLogger(400)
+	tmpDir := mkTmpDirOrFail(t)
+	defer cleanUp(t, tmpDir)
+	var logfile = fmt.Sprintf("%s%c%s", tmpDir, os.PathSeparator, logfileName)
+
+	logFileWriter := newLogFileWriter(t, logfile, closeFileAfterEachLine)
+	logFileWriter.writeLine(t, log, "test line 1")
+	logFileWriter.writeLine(t, log, "test line 2")
+
+	tail := RunFseventFileTailerWithSeek(logfile, true, log, 12, io.SeekStart)
+	defer tail.Close()
+
+	// We don't expect errors. However, start a go-routine listening on
+	// the tailer's errorChannel in case something goes wrong.
+	go func() {
+		for err := range tail.Errors() {
+			t.Errorf("Tailer failed: %v", err.Error()) // Cannot call t.Fatalf() in other goroutine.
+		}
+	}()
+
+	expect(t, log, tail.Lines(), "test line 2", 1*time.Second)
+
+	logFileWriter.writeLine(t, log, "test line 3")
+	expect(t, log, tail.Lines(), "test line 3", 1*time.Second)
 }
 
 func TestShutdownDuringSyscall(t *testing.T) {
