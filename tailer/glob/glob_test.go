@@ -16,6 +16,8 @@ package glob
 
 import (
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -85,10 +87,15 @@ var matchTests = []matchTest{
 }
 
 func TestIsPatternValid(t *testing.T) {
-	for _, tt := range matchTests {
-		valid := IsPatternValid(tt.pattern)
-		if valid && !tt.valid || !valid && tt.valid {
-			t.Errorf("IsPatternValid(%#q) returned %t", tt.pattern, tt.valid)
+	for _, testData := range matchTests {
+		if runtime.GOOS == "windows" && strings.Contains(testData.pattern, "\\") {
+			// no escape allowed on windows.
+			// original golang sources also skip tests in that case, see path/filepath/match_test.go
+			continue
+		}
+		valid := IsPatternValid(testData.pattern)
+		if valid && !testData.valid || !valid && testData.valid {
+			t.Errorf("IsPatternValid(%#q) returned %t", testData.pattern, testData.valid)
 		}
 	}
 }
