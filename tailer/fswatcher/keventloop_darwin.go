@@ -55,7 +55,7 @@ func runKeventLoop(kq int) *keventloop {
 			} else if err != nil {
 				select {
 				case <-l.done:
-				case l.errors <- NewError(NotSpecified, "kevent system call failed", err):
+				case l.errors <- NewError(NotSpecified, err, "kevent system call failed"):
 				}
 				return
 			} else {

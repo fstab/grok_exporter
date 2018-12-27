@@ -85,16 +85,24 @@ func Run(globs []string, readall bool, failOnMissingFile bool) (FSWatcher, error
 		for _, dir := range w.watchedDirs {
 			dirLogger := logger2.WithField("directory", dir.Name())
 			dirLogger.Debugf("initializing directory")
-			err = w.syncFilesInDir(dir, readall, dirLogger)
-			if err != nil {
-				w.sendError(err, "failed to initialize the file system watcher: %v", err)
+			syncFilesErr := w.syncFilesInDir(dir, readall, dirLogger)
+			if syncFilesErr != nil {
+				select {
+				case <-w.done:
+				case w.errors <- syncFilesErr:
+				}
 				return
 			}
 		}
 
 		// make sure at least one logfile was found for each glob
 		if failOnMissingFile {
-			if w.sendErrorOnMissingFile() {
+			missingFileError := w.checkMissingFile()
+			if missingFileError != nil {
+				select {
+				case <-w.done:
+				case w.errors <- missingFileError:
+				}
 				return
 			}
 		}
@@ -107,7 +115,14 @@ func Run(globs []string, readall bool, failOnMissingFile bool) (FSWatcher, error
 			case <-w.done:
 				return
 			case event := <-keventProducerLoop.events:
-				w.processEvent(event, logger2)
+				processEventError := w.processEvent(event, logger2)
+				if processEventError != nil {
+					select {
+					case <-w.done:
+					case w.errors <- processEventError:
+					}
+					return
+				}
 			case err := <-keventProducerLoop.errors:
 				select {
 				case <-w.done:
@@ -179,7 +194,7 @@ func initDirs(globs []string) (*watcher, error) {
 }
 
 // check if files have been added/removed and update kevent file watches accordingly
-func (w *watcher) syncFilesInDir(dir *os.File, readall bool, log logrus.FieldLogger) error {
+func (w *watcher) syncFilesInDir(dir *os.File, readall bool, log logrus.FieldLogger) Error {
 	var (
 		existingFile      *fileWithReader
 		newFile           *os.File
@@ -188,12 +203,13 @@ func (w *watcher) syncFilesInDir(dir *os.File, readall bool, log logrus.FieldLog
 		fileInfos         []os.FileInfo
 		fileInfo          os.FileInfo
 		err               error
+		tailerErr         Error
 		fileLogger        logrus.FieldLogger
 		zeroTimeout       = syscall.NsecToTimespec(0) // timeout zero means non-blocking kevent() call
 	)
 	fileInfos, err = repeatableReaddir(dir)
 	if err != nil {
-		return err
+		return NewErrorf(NotSpecified, err, "%v: readdir failed", dir.Name())
 	}
 	watchedFilesAfter = make([]*fileWithReader, 0, len(w.watchedFiles))
 	for _, fileInfo = range fileInfos {
@@ -207,9 +223,9 @@ func (w *watcher) syncFilesInDir(dir *os.File, readall bool, log logrus.FieldLog
 			fileLogger.Debug("skipping, because it is a directory")
 			continue
 		}
-		existingFile, err = findSameFile(w.watchedFiles, fileInfo)
-		if err != nil {
-			return err
+		existingFile, tailerErr = findSameFile(w.watchedFiles, fileInfo)
+		if tailerErr != nil {
+			return tailerErr
 		}
 		if existingFile != nil {
 			if existingFile.file.Name() != fullPath {
@@ -223,12 +239,12 @@ func (w *watcher) syncFilesInDir(dir *os.File, readall bool, log logrus.FieldLog
 		}
 		newFile, err = os.Open(fullPath)
 		if err != nil {
-			return fmt.Errorf("%v: failed to open file: %v", fullPath, err)
+			return NewErrorf(NotSpecified, err, "%v: failed to open file", fullPath)
 		}
 		if !readall {
 			_, err = newFile.Seek(0, io.SeekEnd)
 			if err != nil {
-				return fmt.Errorf("%v: failed to seek to end of file: %v", fullPath, err)
+				return NewErrorf(NotSpecified, err, "%v: failed to seek to end of file", fullPath)
 			}
 		}
 		fileLogger = fileLogger.WithField("fd", newFile.Fd())
@@ -236,10 +252,13 @@ func (w *watcher) syncFilesInDir(dir *os.File, readall bool, log logrus.FieldLog
 		_, err = syscall.Kevent(w.kq, []syscall.Kevent_t{makeEvent(newFile)}, nil, &zeroTimeout)
 		if err != nil {
 			_ = newFile.Close()
-			return fmt.Errorf("%v: failed to watch file: %v", newFile.Name(), err)
+			return NewErrorf(NotSpecified, err, "%v: failed to watch file", newFile.Name())
 		}
 		newFileWithReader = &fileWithReader{file: newFile, reader: NewLineReader()}
-		w.readNewLines(newFileWithReader, fileLogger)
+		tailerErr = w.readNewLines(newFileWithReader, fileLogger)
+		if tailerErr != nil {
+			return tailerErr
+		}
 		watchedFilesAfter = append(watchedFilesAfter, newFileWithReader)
 	}
 	for _, f := range w.watchedFiles {
@@ -253,7 +272,7 @@ func (w *watcher) syncFilesInDir(dir *os.File, readall bool, log logrus.FieldLog
 	return nil
 }
 
-func (w *watcher) processEvent(kevent syscall.Kevent_t, log logrus.FieldLogger) {
+func (w *watcher) processEvent(kevent syscall.Kevent_t, log logrus.FieldLogger) Error {
 	var (
 		dir                   *os.File
 		file                  *fileWithReader
@@ -263,62 +282,62 @@ func (w *watcher) processEvent(kevent syscall.Kevent_t, log logrus.FieldLogger) 
 		if kevent.Ident == fdToInt(dir.Fd()) {
 			dirLogger = log.WithField("directory", dir.Name())
 			dirLogger.Debugf("dir event with fflags %v", fflags2string(kevent))
-			w.processDirEvent(kevent, dir, dirLogger)
-			return
+			return w.processDirEvent(kevent, dir, dirLogger)
 		}
 	}
 	for _, file = range w.watchedFiles {
 		if kevent.Ident == fdToInt(file.file.Fd()) {
 			fileLogger = log.WithField("file", file.file.Name()).WithField("fd", file.file.Fd())
 			fileLogger.Debugf("file event with fflags %v", fflags2string(kevent))
-			w.processFileEvent(kevent, file, fileLogger)
-			return
+			return w.processFileEvent(kevent, file, fileLogger)
 		}
 	}
 	// Events for unknown file descriptors are ignored. This might happen if syncFilesInDir() already
 	// closed a file while a pending event is still coming in.
 	log.Debugf("event for unknown file descriptor %v with fflags %v", kevent.Ident, fflags2string(kevent))
+	return nil
 }
 
-func (w *watcher) processDirEvent(kevent syscall.Kevent_t, dir *os.File, dirLogger logrus.FieldLogger) {
+func (w *watcher) processDirEvent(kevent syscall.Kevent_t, dir *os.File, dirLogger logrus.FieldLogger) Error {
 	if kevent.Fflags&syscall.NOTE_WRITE == syscall.NOTE_WRITE || kevent.Fflags&syscall.NOTE_EXTEND == syscall.NOTE_EXTEND {
 		// NOTE_WRITE on the directory's fd means a file was created, deleted, or moved. This covers inotify's MOVED_TO.
 		// NOTE_EXTEND reports that a directory entry was added	or removed as the result of rename operation.
 		dirLogger.Debugf("checking for new/deleted/moved files")
 		err := w.syncFilesInDir(dir, true, dirLogger)
 		if err != nil {
-			w.sendError(err, "%v: failed to update list of files in directory: %v", dir.Name(), err)
+			return NewErrorf(NotSpecified, err, "%v: failed to update list of files in directory", dir.Name())
 		}
 	}
 	if kevent.Fflags&syscall.NOTE_DELETE == syscall.NOTE_DELETE {
-		w.sendError(nil, "%v: directory was deleted", dir.Name())
+		return NewErrorf(NotSpecified, nil, "%v: directory was deleted", dir.Name())
 	}
 	if kevent.Fflags&syscall.NOTE_RENAME == syscall.NOTE_RENAME {
-		w.sendError(nil, "%v: directory was moved", dir.Name())
+		return NewErrorf(NotSpecified, nil, "%v: directory was moved", dir.Name())
 	}
 	if kevent.Fflags&syscall.NOTE_REVOKE == syscall.NOTE_REVOKE {
-		w.sendError(nil, "%v: filesystem was unmounted", dir.Name())
+		return NewErrorf(NotSpecified, nil, "%v: filesystem was unmounted", dir.Name())
 	}
 	// NOTE_LINK (sub directory created) and NOTE_ATTRIB (attributes changed) are ignored.
+	return nil
 }
 
-func (w *watcher) processFileEvent(kevent syscall.Kevent_t, file *fileWithReader, log logrus.FieldLogger) {
+func (w *watcher) processFileEvent(kevent syscall.Kevent_t, file *fileWithReader, log logrus.FieldLogger) Error {
 	var (
 		truncated bool
 		err       error
+		readErr   Error
 	)
 
 	// Handle truncate events.
 	if kevent.Fflags&syscall.NOTE_ATTRIB == syscall.NOTE_ATTRIB {
 		truncated, err = isTruncated(file.file)
 		if err != nil {
-			w.sendError(err, "%v: seek() or stat() failed", file.file.Name())
-			return
+			return NewErrorf(NotSpecified, err, "%v: seek() or stat() failed", file.file.Name())
 		}
 		if truncated {
 			_, err = file.file.Seek(0, io.SeekStart)
 			if err != nil {
-				w.sendError(err, "%v: seek() failed", file.file.Name())
+				return NewErrorf(NotSpecified, err, "%v: seek() failed", file.file.Name())
 			}
 			file.reader.Clear()
 		}
@@ -326,16 +345,21 @@ func (w *watcher) processFileEvent(kevent syscall.Kevent_t, file *fileWithReader
 
 	// Handle write event.
 	if kevent.Fflags&syscall.NOTE_WRITE == syscall.NOTE_WRITE {
-		w.readNewLines(file, log)
+		readErr = w.readNewLines(file, log)
+		if readErr != nil {
+			return readErr
+		}
 	}
 
 	// Handle move and delete events (NOTE_RENAME on the file's fd means the file was moved away, like in inotify's IN_MOVED_FROM).
 	if kevent.Fflags&syscall.NOTE_DELETE == syscall.NOTE_DELETE || kevent.Fflags&syscall.NOTE_RENAME == syscall.NOTE_RENAME {
 		// File deleted or moved away. Ignoring, because this will also trigger a NOTE_WRITE event on the directory, and we update the list of watched files there.
 	}
+
+	return nil
 }
 
-func (w *watcher) readNewLines(file *fileWithReader, log logrus.FieldLogger) {
+func (w *watcher) readNewLines(file *fileWithReader, log logrus.FieldLogger) Error {
 	var (
 		line string
 		eof  bool
@@ -344,22 +368,21 @@ func (w *watcher) readNewLines(file *fileWithReader, log logrus.FieldLogger) {
 	for {
 		line, eof, err = file.reader.ReadLine(file.file)
 		if err != nil {
-			w.sendError(err, "%v: read() failed", file.file.Name())
-			return
+			return NewErrorf(NotSpecified, err, "%v: read() failed", file.file.Name())
 		}
 		if eof {
-			break
+			return nil
 		}
 		log.Debugf("read line %q", line)
 		select {
 		case <-w.done:
-			return
+			return nil
 		case w.lines <- Line{Line: line, File: file.file.Name()}:
 		}
 	}
 }
 
-func (w *watcher) sendErrorOnMissingFile() bool {
+func (w *watcher) checkMissingFile() Error {
 OUTER:
 	for _, glob := range w.globs {
 		for _, watchedFile := range w.watchedFiles {
@@ -367,13 +390,9 @@ OUTER:
 				continue OUTER
 			}
 		}
-		select {
-		case <-w.done:
-		case w.errors <- NewError(FileNotFound, fmt.Sprintf("%v: no such file", glob), nil):
-		}
-		return true
+		return NewErrorf(FileNotFound, nil, "%v: no such file", glob)
 	}
-	return false
+	return nil
 }
 
 // gets the base directories from the glob expressions,
@@ -435,7 +454,7 @@ func anyGlobMatches(globs []string, path string) bool {
 	return false
 }
 
-func findSameFile(watchedFiles []*fileWithReader, other os.FileInfo) (*fileWithReader, error) {
+func findSameFile(watchedFiles []*fileWithReader, other os.FileInfo) (*fileWithReader, Error) {
 	var (
 		fileInfo os.FileInfo
 		err      error
@@ -443,7 +462,7 @@ func findSameFile(watchedFiles []*fileWithReader, other os.FileInfo) (*fileWithR
 	for _, watchedFile := range watchedFiles {
 		fileInfo, err = watchedFile.file.Stat()
 		if err != nil {
-			return nil, err
+			return nil, NewErrorf(NotSpecified, err, "%v: stat failed", watchedFile.file.Name())
 		}
 		if os.SameFile(fileInfo, other) {
 			return watchedFile, nil
@@ -473,13 +492,6 @@ func contains(list []*fileWithReader, f *fileWithReader) bool {
 		}
 	}
 	return false
-}
-
-func (w *watcher) sendError(cause error, format string, a ...interface{}) {
-	select {
-	case <-w.done:
-	case w.errors <- NewError(NotSpecified, fmt.Sprintf(format, a...), cause):
-	}
 }
 
 func makeEvent(file *os.File) syscall.Kevent_t {

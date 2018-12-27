@@ -35,7 +35,11 @@ type tailerError struct {
 	errorType ErrorType
 }
 
-func NewError(errorType ErrorType, msg string, cause error) Error {
+func NewErrorf(errorType ErrorType, cause error, format string, a ...interface{}) Error {
+	return NewError(errorType, cause, fmt.Sprintf(format, a...))
+}
+
+func NewError(errorType ErrorType, cause error, msg string) Error {
 	return tailerError{
 		msg:       msg,
 		cause:     cause,
