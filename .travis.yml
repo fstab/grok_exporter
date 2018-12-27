@@ -1,7 +1,7 @@
 language: go
 
 go:
-  - "1.10"
+  - "1.11"
 
 os:
   - linux
@@ -60,14 +60,15 @@ script:
     else
         LDD_COMMAND="ldd" ;
     fi
+    export GO111MODULE=on ;
     case "$MODE" in
     "STATIC")
         if [[ "$TRAVIS_OS_NAME" == "osx" ]] ;
         then
             sed -i.bak 's;#cgo LDFLAGS: -L/usr/local/lib -lonig;#cgo LDFLAGS: /usr/local/lib/libonig.a;' oniguruma/oniguruma.go ;
         fi ;
-        CGO_LDFLAGS=/usr/local/lib/libonig.a go test -v $(go list ./... | grep -v /vendor/) ;
-        CGO_LDFLAGS=/usr/local/lib/libonig.a go install . ;
+        CGO_LDFLAGS=/usr/local/lib/libonig.a go test -count=1 -v ./... ;
+        CGO_LDFLAGS=/usr/local/lib/libonig.a go install ;
         if $LDD_COMMAND $GOPATH/bin/grok_exporter | grep libonig ;
         then
             echo "ERROR: Expected statically linked binary." >&2 ;
@@ -76,8 +77,8 @@ script:
         ./integration-test.sh ;
         ;;
     *)
-        go test -v $(go list ./... | grep -v /vendor/) ;
-        go install . ;
+        go test -count=1 -v ./... ;
+        go install ;
         if ! $LDD_COMMAND $GOPATH/bin/grok_exporter | grep libonig ;
         then
             echo "ERROR: Expected dynamically linked binary." >&2 ;
@@ -91,10 +92,11 @@ after_success:
   - |
     set -e ;
     set -x ;
+    export GO111MODULE=on ;
     if [[ "$TRAVIS_OS_NAME" == "linux" && "$ONIG_VERSION" == "DEFAULT" ]] ;
     then
         go get golang.org/x/tools/cmd/cover github.com/mattn/goveralls github.com/modocache/gover ;
-        go list ./... | grep -v /vendor/ | while read package ;
+        go list ./... | while read package ;
         do
             go test -covermode count -coverprofile=$(basename $package).coverprofile $package ;
         done ;
