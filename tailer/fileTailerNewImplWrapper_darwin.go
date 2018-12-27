@@ -15,7 +15,6 @@
 package tailer
 
 import (
-	"fmt"
 	"github.com/fstab/grok_exporter/tailer/fswatcher"
 )
 
@@ -57,17 +56,16 @@ func RunFseventFileTailer(path string, readall bool, failOnMissingFile bool, _ i
 	}
 
 	go func() {
+		defer newTailer.Close()
 		for {
 			select {
 			case l := <-newTailer.Lines():
-				fmt.Printf("*** forwarding line %q to wrapped tailer\n", l.Line)
+				// fmt.Printf("*** forwarding line %q to wrapped tailer\n", l.Line)
 				result.lines <- l.Line
 			case e := <-newTailer.Errors():
 				result.errors <- newError(e.Error(), e.Cause())
-				result.Close()
 				return
 			case <-result.done:
-				newTailer.Close()
 				return
 			}
 		}

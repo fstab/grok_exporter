@@ -87,14 +87,14 @@ func Run(globs []string, readall bool, failOnMissingFile bool) (FSWatcher, error
 			dirLogger.Debugf("initializing directory")
 			err = w.syncFilesInDir(dir, readall, dirLogger)
 			if err != nil {
-				w.errorClose(err, "failed to initialize the file system watcher: %v", err)
+				w.sendError(err, "failed to initialize the file system watcher: %v", err)
 				return
 			}
 		}
 
 		// make sure at least one logfile was found for each glob
 		if failOnMissingFile {
-			if w.errorCloseOnMissingFile() {
+			if w.sendErrorOnMissingFile() {
 				return
 			}
 		}
@@ -287,17 +287,17 @@ func (w *watcher) processDirEvent(kevent syscall.Kevent_t, dir *os.File, dirLogg
 		dirLogger.Debugf("checking for new/deleted/moved files")
 		err := w.syncFilesInDir(dir, true, dirLogger)
 		if err != nil {
-			w.errorClose(err, "%v: failed to update list of files in directory: %v", dir.Name(), err)
+			w.sendError(err, "%v: failed to update list of files in directory: %v", dir.Name(), err)
 		}
 	}
 	if kevent.Fflags&syscall.NOTE_DELETE == syscall.NOTE_DELETE {
-		w.errorClose(nil, "%v: directory was deleted", dir.Name())
+		w.sendError(nil, "%v: directory was deleted", dir.Name())
 	}
 	if kevent.Fflags&syscall.NOTE_RENAME == syscall.NOTE_RENAME {
-		w.errorClose(nil, "%v: directory was moved", dir.Name())
+		w.sendError(nil, "%v: directory was moved", dir.Name())
 	}
 	if kevent.Fflags&syscall.NOTE_REVOKE == syscall.NOTE_REVOKE {
-		w.errorClose(nil, "%v: filesystem was unmounted", dir.Name())
+		w.sendError(nil, "%v: filesystem was unmounted", dir.Name())
 	}
 	// NOTE_LINK (sub directory created) and NOTE_ATTRIB (attributes changed) are ignored.
 }
@@ -312,13 +312,13 @@ func (w *watcher) processFileEvent(kevent syscall.Kevent_t, file *fileWithReader
 	if kevent.Fflags&syscall.NOTE_ATTRIB == syscall.NOTE_ATTRIB {
 		truncated, err = isTruncated(file.file)
 		if err != nil {
-			w.errorClose(err, "%v: seek() or stat() failed", file.file.Name())
+			w.sendError(err, "%v: seek() or stat() failed", file.file.Name())
 			return
 		}
 		if truncated {
 			_, err = file.file.Seek(0, io.SeekStart)
 			if err != nil {
-				w.errorClose(err, "%v: seek() failed", file.file.Name())
+				w.sendError(err, "%v: seek() failed", file.file.Name())
 			}
 			file.reader.Clear()
 		}
@@ -344,7 +344,7 @@ func (w *watcher) readNewLines(file *fileWithReader, log logrus.FieldLogger) {
 	for {
 		line, eof, err = file.reader.ReadLine(file.file)
 		if err != nil {
-			w.errorClose(err, "%v: read() failed", file.file.Name())
+			w.sendError(err, "%v: read() failed", file.file.Name())
 			return
 		}
 		if eof {
@@ -359,7 +359,7 @@ func (w *watcher) readNewLines(file *fileWithReader, log logrus.FieldLogger) {
 	}
 }
 
-func (w *watcher) errorCloseOnMissingFile() bool {
+func (w *watcher) sendErrorOnMissingFile() bool {
 OUTER:
 	for _, glob := range w.globs {
 		for _, watchedFile := range w.watchedFiles {
@@ -371,7 +371,6 @@ OUTER:
 		case <-w.done:
 		case w.errors <- NewError(FileNotFound, fmt.Sprintf("%v: no such file", glob), nil):
 		}
-		w.Close()
 		return true
 	}
 	return false
@@ -476,12 +475,11 @@ func contains(list []*fileWithReader, f *fileWithReader) bool {
 	return false
 }
 
-func (w *watcher) errorClose(cause error, format string, a ...interface{}) {
+func (w *watcher) sendError(cause error, format string, a ...interface{}) {
 	select {
 	case <-w.done:
 	case w.errors <- NewError(NotSpecified, fmt.Sprintf(format, a...), cause):
 	}
-	w.Close()
 }
 
 func makeEvent(file *os.File) syscall.Kevent_t {
