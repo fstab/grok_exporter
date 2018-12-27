@@ -104,15 +104,15 @@ func Run(globs []string, readall bool, failOnMissingFile bool) (FSWatcher, error
 
 		for { // kevent consumer loop
 			select {
+			case <-w.done:
+				return
 			case event := <-keventProducerLoop.events:
 				w.processEvent(event, logger2)
 			case err := <-keventProducerLoop.errors:
 				select {
-				case w.errors <- err:
 				case <-w.done:
+				case w.errors <- err:
 				}
-				return
-			case <-w.done:
 				return
 			}
 		}
@@ -352,9 +352,9 @@ func (w *watcher) readNewLines(file *fileWithReader, log logrus.FieldLogger) {
 		}
 		log.Debugf("read line %q", line)
 		select {
-		case w.lines <- Line{Line: line, File: file.file.Name()}:
 		case <-w.done:
 			return
+		case w.lines <- Line{Line: line, File: file.file.Name()}:
 		}
 	}
 }
@@ -368,8 +368,8 @@ OUTER:
 			}
 		}
 		select {
-		case w.errors <- NewError(FileNotFound, fmt.Sprintf("%v: no such file", glob), nil):
 		case <-w.done:
+		case w.errors <- NewError(FileNotFound, fmt.Sprintf("%v: no such file", glob), nil):
 		}
 		w.Close()
 		return true
@@ -478,8 +478,8 @@ func contains(list []*fileWithReader, f *fileWithReader) bool {
 
 func (w *watcher) errorClose(cause error, format string, a ...interface{}) {
 	select {
-	case w.errors <- NewError(NotSpecified, fmt.Sprintf(format, a...), cause):
 	case <-w.done:
+	case w.errors <- NewError(NotSpecified, fmt.Sprintf(format, a...), cause):
 	}
 	w.Close()
 }

@@ -54,16 +54,16 @@ func runKeventLoop(kq int) *keventloop {
 				return
 			} else if err != nil {
 				select {
-				case l.errors <- NewError(NotSpecified, "kevent system call failed", err):
 				case <-l.done:
+				case l.errors <- NewError(NotSpecified, "kevent system call failed", err):
 				}
 				return
 			} else {
 				for i = 0; i < n; i++ {
 					select {
-					case l.events <- eventBuf[i]:
 					case <-l.done:
 						return
+					case l.events <- eventBuf[i]:
 					}
 				}
 			}
