@@ -44,10 +44,6 @@ func (f *fileTailer) Errors() chan Error {
 	return f.errors
 }
 
-func RunFseventFileTailer(path string, readall bool, failOnMissingFile bool, logger simpleLogger) Tailer {
-	return runFileTailer(path, readall, failOnMissingFile, logger, NewFseventWatcher)
-}
-
 func RunPollingFileTailer(path string, readall bool, failOnMissingFile bool, pollIntervall time.Duration, logger simpleLogger) Tailer {
 	makeWatcher := func(abspath string, _ *File) (Watcher, error) {
 		return NewPollingWatcher(abspath, pollIntervall)

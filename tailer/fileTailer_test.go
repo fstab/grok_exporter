@@ -211,13 +211,13 @@ func TestFileMissingOnStartup(t *testing.T) {
 	expect(t, log, tail.Lines(), "test line 2", 1*time.Second)
 }
 
-func TestShutdownDuringSyscall(t *testing.T) {
-	runTestShutdown(t, "shutdown while the watcher is hanging in the blocking kevent() or syscall.Read() call")
-}
-
-func TestShutdownDuringSendEvent(t *testing.T) {
-	runTestShutdown(t, "shutdown while the watcher is sending an event")
-}
+//func TestShutdownDuringSyscall(t *testing.T) {
+//	runTestShutdown(t, "shutdown while the watcher is hanging in the blocking kevent() or syscall.Read() call")
+//}
+//
+//func TestShutdownDuringSendEvent(t *testing.T) {
+//	runTestShutdown(t, "shutdown while the watcher is sending an event")
+//}
 
 //func TestStress(t *testing.T) {
 //	for i := 0; i < 250; i++ {
@@ -581,63 +581,64 @@ func (l *testRunLogger) Debug(format string, a ...interface{}) {
 	fmt.Printf("%v [%v] %v", time.Now().Format("2006-01-02 15:04:05.0000"), l.testRunNumber, fmt.Sprintf(format, a...))
 }
 
-func runTestShutdown(t *testing.T, mode string) {
-
-	if runtime.GOOS == "windows" {
-		t.Skip("The shutdown tests are flaky on Windows. We skip them until either golang.org/x/exp/winfsnotify is fixed, or until we do our own implementation. This shouldn't be a problem when running grok_exporter, because in grok_exporter the file system watcher is never stopped.")
-		return
-	}
-
-	tmpDir := mkTmpDirOrFail(t)
-	defer cleanUp(t, tmpDir)
-
-	logfile := mkTmpFileOrFail(t, tmpDir)
-	file, err := open(logfile)
-	if err != nil {
-		t.Fatalf("Cannot create temp file: %v", err.Error())
-	}
-	defer file.Close()
-
-	lines := make(chan string)
-	defer close(lines)
-
-	watcher, err := NewFseventWatcher(logfile, file)
-	if err != nil {
-		t.Fatalf("%v", err)
-	}
-
-	eventLoop := watcher.StartEventLoop()
-
-	switch {
-	case mode == "shutdown while the watcher is hanging in the blocking kevent() or syscall.Read() call":
-		time.Sleep(200 * time.Millisecond)
-		eventLoop.Close()
-	case mode == "shutdown while the watcher is sending an event":
-		file.Close()
-		err = os.Remove(logfile) // trigger file system event so kevent() or syscall.Read() returns.
-		if err != nil {
-			t.Fatalf("Failed to remove logfile: %v", err)
-		}
-		// The watcher is now waiting until we read the event from the event channel.
-		// However, we shut down and abort the event.
-		eventLoop.Close()
-	default:
-		t.Fatalf("Unknown mode: %v", mode)
-	}
-	select {
-	case _, ok := <-eventLoop.Errors():
-		if ok {
-			t.Fatalf("error channel not closed")
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatalf("timeout while waiting for errors channel to be closed.")
-	}
-	select {
-	case _, ok := <-eventLoop.Events():
-		if ok {
-			t.Fatalf("events channel not closed")
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatalf("timeout while waiting for errors channel to be closed.")
-	}
-}
+// Commented out until we switched to the new implementation, because this test uses internal API of the old implementation.
+//func runTestShutdown(t *testing.T, mode string) {
+//
+//	if runtime.GOOS == "windows" {
+//		t.Skip("The shutdown tests are flaky on Windows. We skip them until either golang.org/x/exp/winfsnotify is fixed, or until we do our own implementation. This shouldn't be a problem when running grok_exporter, because in grok_exporter the file system watcher is never stopped.")
+//		return
+//	}
+//
+//	tmpDir := mkTmpDirOrFail(t)
+//	defer cleanUp(t, tmpDir)
+//
+//	logfile := mkTmpFileOrFail(t, tmpDir)
+//	file, err := open(logfile)
+//	if err != nil {
+//		t.Fatalf("Cannot create temp file: %v", err.Error())
+//	}
+//	defer file.Close()
+//
+//	lines := make(chan string)
+//	defer close(lines)
+//
+//	watcher, err := NewFseventWatcher(logfile, file)
+//	if err != nil {
+//		t.Fatalf("%v", err)
+//	}
+//
+//	eventLoop := watcher.StartEventLoop()
+//
+//	switch {
+//	case mode == "shutdown while the watcher is hanging in the blocking kevent() or syscall.Read() call":
+//		time.Sleep(200 * time.Millisecond)
+//		eventLoop.Close()
+//	case mode == "shutdown while the watcher is sending an event":
+//		file.Close()
+//		err = os.Remove(logfile) // trigger file system event so kevent() or syscall.Read() returns.
+//		if err != nil {
+//			t.Fatalf("Failed to remove logfile: %v", err)
+//		}
+//		// The watcher is now waiting until we read the event from the event channel.
+//		// However, we shut down and abort the event.
+//		eventLoop.Close()
+//	default:
+//		t.Fatalf("Unknown mode: %v", mode)
+//	}
+//	select {
+//	case _, ok := <-eventLoop.Errors():
+//		if ok {
+//			t.Fatalf("error channel not closed")
+//		}
+//	case <-time.After(5 * time.Second):
+//		t.Fatalf("timeout while waiting for errors channel to be closed.")
+//	}
+//	select {
+//	case _, ok := <-eventLoop.Events():
+//		if ok {
+//			t.Fatalf("events channel not closed")
+//		}
+//	case <-time.After(5 * time.Second):
+//		t.Fatalf("timeout while waiting for errors channel to be closed.")
+//	}
+//}
