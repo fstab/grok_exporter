@@ -27,8 +27,6 @@ type keventloop struct {
 
 func (p *keventloop) Close() {
 	close(p.done)
-	close(p.errors)
-	close(p.events)
 	// closing the kq file descriptor will interrupt syscall.Kevent()
 	syscall.Close(p.kq)
 }
@@ -46,6 +44,10 @@ func runKeventLoop(kq int) *keventloop {
 			eventBuf []syscall.Kevent_t
 			err      error
 		)
+		defer func() {
+			close(result.errors)
+			close(result.events)
+		}()
 		for {
 			eventBuf = make([]syscall.Kevent_t, 10)
 			n, err = syscall.Kevent(l.kq, nil, eventBuf, nil)

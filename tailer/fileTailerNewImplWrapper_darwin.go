@@ -26,8 +26,6 @@ type tailerWrapper struct {
 
 func (t *tailerWrapper) Close() {
 	close(t.done)
-	close(t.lines)
-	close(t.errors)
 }
 
 func (t *tailerWrapper) Lines() chan string {
@@ -56,7 +54,11 @@ func RunFseventFileTailer(path string, readall bool, failOnMissingFile bool, _ i
 	}
 
 	go func() {
-		defer newTailer.Close()
+		defer func() {
+			close(result.lines)
+			close(result.errors)
+			newTailer.Close()
+		}()
 		for {
 			select {
 			case l := <-newTailer.Lines():

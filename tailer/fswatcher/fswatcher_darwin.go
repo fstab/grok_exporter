@@ -80,6 +80,20 @@ func Run(globs []string, readall bool, failOnMissingFile bool) (FSWatcher, error
 
 	go func() {
 
+		defer func() {
+
+			close(w.lines)
+			close(w.errors)
+
+			for _, file := range w.watchedFiles {
+				file.file.Close()
+			}
+
+			for _, dir := range w.watchedDirs {
+				dir.Close()
+			}
+		}()
+
 		// Initializing watches for the files within the directories happens in the goroutine, because with readall=true
 		// this will immediately write lines to the lines channel, so this blocks until the caller starts reading from the lines channel.
 		for _, dir := range w.watchedDirs {
@@ -136,22 +150,9 @@ func Run(globs []string, readall bool, failOnMissingFile bool) (FSWatcher, error
 }
 
 func (w *watcher) Close() {
-
-	// Stop the kevent consumer loop first.
-	// When the consumer loop terminates, the producer loop will automatically be closed, because we called "defer keventProducerLoop.Close()" above.
-	// By closing the consumer first, we make sure that the consumer never reads from a closed events or errors channel.
+	// Closing the done channel will stop the kevent consumer loop.
 	close(w.done)
-	// it's now safe to close lines and errors, because we will not write to these channels if the done channel is closed.
-	close(w.lines)
-	close(w.errors)
-
-	for _, file := range w.watchedFiles {
-		file.file.Close()
-	}
-
-	for _, dir := range w.watchedDirs {
-		dir.Close()
-	}
+	// The producer loop, lines and errors channels, files and directories will be closed once the consumer loop is terminated (via deferred function calls).
 }
 
 func initDirs(globs []string) (*watcher, error) {
