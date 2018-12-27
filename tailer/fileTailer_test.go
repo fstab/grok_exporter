@@ -194,6 +194,7 @@ func TestFileMissingOnStartup(t *testing.T) {
 	// the tailer's errorChannel in case something goes wrong.
 	go func() {
 		for err := range tail.Errors() {
+			fmt.Printf("Unexpected error from tailer: %v\n", err.Error())
 			t.Errorf("Tailer failed: %v", err.Error()) // Cannot call t.Fatalf() in other goroutine.
 		}
 	}()
