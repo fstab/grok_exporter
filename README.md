@@ -79,6 +79,8 @@ Prometheus support:
 How to build from source
 -----------------------
 
+**Note: `grok_exporter` is currently switching to [Go 1.11 modules](https://github.com/golang/go/wiki/Modules). The build instructions below are not updated yet. If you need to build from source, please use the latest release tag (v0.2.6), which should have a `vendor/` directory.**
+
 In order to compile `grok_exporter` from source, you need [Go] installed and `$GOPATH` set, and you need the header files for the [Oniguruma] regular expression library.
 
 **Installing the Oniguruma library on OS X**
