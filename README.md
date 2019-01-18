@@ -79,6 +79,8 @@ Prometheus support:
 How to build from source
 -----------------------
 
+**Note: `grok_exporter` is currently refactored to support multiple logfiles, see [#5](https://github.com/fstab/grok_exporter/issues/5). During transition, the `master` branch is unstable. For a stable version, please get the latest release tag.**
+
 In order to compile `grok_exporter` from source, you need
 
 * [Go] installed and `$GOPATH` set.
