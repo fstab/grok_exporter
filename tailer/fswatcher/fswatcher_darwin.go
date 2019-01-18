@@ -39,7 +39,8 @@ var logger2 *logrus.Logger
 
 func init() {
 	logger2 = logrus.New()
-	logger2.Level = logrus.DebugLevel
+	logger2.Level = logrus.ErrorLevel
+	//logger2.Level = logrus.DebugLevel // TODO: Use debug in tests
 }
 
 type watcher struct {
@@ -70,10 +71,23 @@ func Run(globs []string, readall bool, failOnMissingFile bool) (FSWatcher, error
 	var (
 		w   *watcher
 		err error
+		absglob string
+		absglobs = make([]string, 0, len(globs))
 	)
 
+	// make globs absolute paths, because they will be matched against absolute file names
+	// TODO (1): Write tests to make sure this works reliably
+	// TODO (2): This should not be darwin specific, but the same for all OSes.
+	for _, glob := range globs {
+		absglob, err = filepath.Abs(glob)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get absolut path for pattern %q: %v", glob, err)
+		}
+		absglobs = append(absglobs, absglob)
+	}
+
 	// Initializing directory watches happens in the main thread, so we fail immediately if the directories cannot be watched.
-	w, err = initDirs(globs)
+	w, err = initDirs(absglobs)
 	if err != nil {
 		return nil, err
 	}
