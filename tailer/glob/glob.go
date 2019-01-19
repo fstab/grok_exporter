@@ -15,65 +15,54 @@
 package glob
 
 import (
+	"fmt"
+	"path/filepath"
 	"runtime"
 )
 
-type charClassItem int // produced by the lexer lexing character classes (like [a-z]) in a pattern
+type Glob string
 
-const (
-	charItem  charClassItem = iota // regular character, including escaped special characters
-	minusItem                      // minus symbol in a character range, like in 'a-z'
-)
+func Parse(pattern string) (Glob, error) {
+	var (
+		result  Glob
+		absglob string
+		err     error
+	)
+	if !IsPatternValid(pattern) {
+		return "", fmt.Errorf("%q: invalid glob pattern", pattern)
+	}
+	absglob, err = filepath.Abs(pattern)
+	if err != nil {
+		return "", fmt.Errorf("%q: failed to finnd absolute path for glob pattern: %v", pattern, err)
+	}
+	result = Glob(absglob)
+	if containsWildcards(result.Dir()) {
+		return "", fmt.Errorf("%q: wildcards are only allowed in the file name, but not in the directory path", pattern)
+	}
+	return result, nil
+}
 
-// If IsPatternValid(pattern) is true, filepath.Match(pattern, name) will not return an error.
-// See also https://go-review.googlesource.com/c/go/+/143477
-func IsPatternValid(pattern string) bool {
+func (g Glob) Dir() string {
+	return filepath.Dir(string(g))
+}
+
+func (g Glob) Match(path string) bool {
+	matched, _ := filepath.Match(string(g), path)
+	return matched
+}
+
+func containsWildcards(pattern string) bool {
 	p := []rune(pattern)
-	charClassItems := make([]charClassItem, 0) // captures content of '[...]'
-	insideCharClass := false                   // we saw a '[' but no ']' yet
-	escaped := false                           // p[i] is escaped by '\\'
+	escaped := false // p[i] is escaped by '\\'
 	for i := 0; i < len(p); i++ {
-		switch {
-		case p[i] == '\\' && !escaped && runtime.GOOS != "windows":
+		if p[i] == '\\' && !escaped && runtime.GOOS != "windows" {
 			escaped = true
 			continue
-		case !insideCharClass && p[i] == '[' && !escaped:
-			insideCharClass = true
-			if i+1 < len(p) && p[i+1] == '^' {
-				i++ // It doesn't matter if the char class starts with '[' or '[^'.
-			}
-		case insideCharClass && !escaped && p[i] == '-':
-			charClassItems = append(charClassItems, minusItem)
-		case insideCharClass && !escaped && p[i] == ']':
-			if !isCharClassValid(charClassItems) {
-				return false
-			}
-			charClassItems = charClassItems[:0]
-			insideCharClass = false
-		case insideCharClass:
-			charClassItems = append(charClassItems, charItem)
+		}
+		if !escaped && (p[i] == '[' || p[i] == '*' || p[i] == '?') {
+			return false
 		}
 		escaped = false
 	}
-	return !escaped && !insideCharClass
-}
-
-func isCharClassValid(charClassItems []charClassItem) bool {
-	if len(charClassItems) == 0 {
-		return false
-	}
-	for i := 0; i < len(charClassItems); i++ {
-		if charClassItems[i] == minusItem {
-			return false
-		}
-		if i+1 < len(charClassItems) {
-			if charClassItems[i+1] == minusItem {
-				i += 2
-				if i >= len(charClassItems) || charClassItems[i] == minusItem {
-					return false
-				}
-			}
-		}
-	}
-	return true
+	return false
 }

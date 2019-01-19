@@ -15,6 +15,7 @@
 package fswatcher
 
 import (
+	"strings"
 	"syscall"
 )
 
@@ -25,10 +26,13 @@ type keventloop struct {
 	done   chan struct{}
 }
 
+type Kevent syscall.Kevent_t
+
+// Terminate the kevent loop.
+// If the loop hangs in syscall.Kevent(), it will keep hanging there until the next event is read.
+// Therefore, after the consumer called Close(), it should interrupt the kevent() call by closing the kq descriptor.
 func (p *keventloop) Close() {
 	close(p.done)
-	// closing the kq file descriptor will interrupt syscall.Kevent()
-	syscall.Close(p.kq)
 }
 
 func runKeventLoop(kq int) *keventloop {
@@ -72,4 +76,30 @@ func runKeventLoop(kq int) *keventloop {
 		}
 	}(result)
 	return result
+}
+
+func (event Kevent) String() string {
+	result := make([]string, 0, 1)
+	if event.Fflags&syscall.NOTE_DELETE == syscall.NOTE_DELETE {
+		result = append(result, "NOTE_DELETE")
+	}
+	if event.Fflags&syscall.NOTE_WRITE == syscall.NOTE_WRITE {
+		result = append(result, "NOTE_WRITE")
+	}
+	if event.Fflags&syscall.NOTE_EXTEND == syscall.NOTE_EXTEND {
+		result = append(result, "NOTE_EXTEND")
+	}
+	if event.Fflags&syscall.NOTE_ATTRIB == syscall.NOTE_ATTRIB {
+		result = append(result, "NOTE_ATTRIB")
+	}
+	if event.Fflags&syscall.NOTE_LINK == syscall.NOTE_LINK {
+		result = append(result, "NOTE_LINK")
+	}
+	if event.Fflags&syscall.NOTE_RENAME == syscall.NOTE_RENAME {
+		result = append(result, "NOTE_RENAME")
+	}
+	if event.Fflags&syscall.NOTE_REVOKE == syscall.NOTE_REVOKE {
+		result = append(result, "NOTE_REVOKE")
+	}
+	return strings.Join(result, ", ")
 }

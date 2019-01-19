@@ -12,11 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// +build !windows
+
 package tailer
 
 import (
 	"github.com/fstab/grok_exporter/tailer/fswatcher"
+	"github.com/fstab/grok_exporter/tailer/glob"
+	"github.com/sirupsen/logrus"
 )
+
+// TODO: This wrapper will be removed when all OSs are migrated to the new fswatcher, supporting multiple log files.
 
 type tailerWrapper struct {
 	lines  chan string
@@ -38,14 +44,21 @@ func (t *tailerWrapper) Errors() chan Error {
 
 // Switch to the new file tailer implementation which supports watching multiple files.
 // Once we switched for all supported operating systems, we can remove the old implementation and the wrapper.
-func RunFseventFileTailer(path string, readall bool, failOnMissingFile bool, _ interface{}) Tailer {
+func RunFseventFileTailer(path string, readall bool, failOnMissingFile bool, logger logrus.FieldLogger) Tailer {
 	result := &tailerWrapper{
 		lines:  make(chan string),
 		errors: make(chan Error),
 		done:   make(chan struct{}),
 	}
 
-	newTailer, err := fswatcher.Run([]string{path}, readall, failOnMissingFile)
+	pathAsGlob, err := glob.Parse(path)
+	if err != nil {
+		go func() {
+			result.errors <- newError("failed to initialize file system watcher", err)
+		}()
+		return result
+	}
+	newTailer, err := fswatcher.Run([]glob.Glob{pathAsGlob}, readall, failOnMissingFile, logger)
 	if err != nil {
 		go func() {
 			result.errors <- newError("failed to initialize file system watcher", err)

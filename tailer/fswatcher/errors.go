@@ -20,6 +20,7 @@ type ErrorType int
 
 const (
 	NotSpecified = iota
+	DirectoryNotFound
 	FileNotFound
 )
 

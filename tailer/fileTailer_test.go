@@ -16,6 +16,7 @@ package tailer
 
 import (
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
 	"os/user"
@@ -108,13 +109,15 @@ func (opt watcherType) String() string {
 }
 
 func TestFileTailerCloseLogfileAfterEachLine(t *testing.T) {
+	logger := logrus.New()
+	logger.Level = logrus.DebugLevel
 	testRunNumber := 0 // Helps to figure out which debug message belongs to which test run.
 	for _, watcherOpt := range []watcherType{fsevent, polling} {
 		for _, logrotateOpt := range []logrotateOption{_create, _nocreate, _create_from_temp} {
 			for _, mvOpt := range []logrotateMoveOption{mv, cp, rm} {
 				testRunNumber++
 				t.Run(fmt.Sprintf("[%v]", testRunNumber), func(t *testing.T) {
-					testLogrotate(t, NewTestRunLogger(testRunNumber), watcherOpt, logrotateOpt, mvOpt, closeFileAfterEachLine)
+					testLogrotate(t, logger.WithField("test-nr", testRunNumber), watcherOpt, logrotateOpt, mvOpt, closeFileAfterEachLine)
 				})
 			}
 		}
@@ -122,19 +125,21 @@ func TestFileTailerCloseLogfileAfterEachLine(t *testing.T) {
 			// For logrotate options 'copy' and 'copytruncate', only the mvOpt 'cp' makes sense.
 			testRunNumber++
 			t.Run(fmt.Sprintf("[%v]", testRunNumber), func(t *testing.T) {
-				testLogrotate(t, NewTestRunLogger(testRunNumber), watcherOpt, logrotateOpt, cp, closeFileAfterEachLine)
+				testLogrotate(t, logger.WithField("test-nr", testRunNumber), watcherOpt, logrotateOpt, cp, closeFileAfterEachLine)
 			})
 		}
 	}
 }
 
 func TestFileTailerKeepLogfileOpen(t *testing.T) {
+	logger := logrus.New()
+	logger.Level = logrus.DebugLevel
 	testRunNumber := 100
 	// When the logger keeps the file open, only the logrotate options 'copy' and 'copytruncate' make sense.
 	for _, watcherOpt := range []watcherType{fsevent, polling} {
-		testLogrotate(t, NewTestRunLogger(testRunNumber), watcherOpt, _copy, cp, keepOpen) // 100, 102
+		testLogrotate(t, logger.WithField("test-nr", testRunNumber), watcherOpt, _copy, cp, keepOpen) // 100, 102
 		testRunNumber++
-		testLogrotate(t, NewTestRunLogger(testRunNumber), watcherOpt, _copytruncate, cp, keepOpen) // 101, 103
+		testLogrotate(t, logger.WithField("test-nr", testRunNumber), watcherOpt, _copytruncate, cp, keepOpen) // 101, 103
 		testRunNumber++
 	}
 }
@@ -146,7 +151,8 @@ func TestFileTailerKeepLogfileOpen(t *testing.T) {
 // * directories with the xattr com.apple.FinderInfo (like everything in /tmp) are hidden
 // In order to test this, we must create a log file somewhere outside of /tmp, so we use $HOME.
 func TestVisibleInOSXFinder(t *testing.T) {
-	log := NewTestRunLogger(200)
+	log := logrus.New().WithField("test-nr", 200)
+	log.Level = logrus.DebugLevel
 	usr, err := user.Current()
 	if err != nil {
 		t.Fatalf("failed to get current user: %v", err)
@@ -161,7 +167,16 @@ func TestVisibleInOSXFinder(t *testing.T) {
 	defer logFileWriter.close(t)
 	logFileWriter.writeLine(t, log, "test line 1")
 	tail := RunFseventFileTailer(logfile, false, true, log)
-	defer tail.Close()
+	defer func() {
+		tail.Close()
+		// wait until closed
+		select {
+		case <-tail.Lines():
+		case <-time.After(5 * time.Second):
+			fmt.Fprintf(os.Stderr, "failed to shut down the tailer. timeout after 5 seconds")
+			t.Errorf("failed to shut down the tailer. timeout after 5 seconds")
+		}
+	}()
 	go func() {
 		for err := range tail.Errors() {
 			t.Fatalf("Tailer failed: %v", err.Error())
@@ -183,12 +198,23 @@ func TestVisibleInOSXFinder(t *testing.T) {
 // test the "fail_on_missing_logfile: false" configuration
 func TestFileMissingOnStartup(t *testing.T) {
 	const logfileName = "grok_exporter_test_logfile.log"
-	log := NewTestRunLogger(300)
+	log := logrus.New()
+	log.Level = logrus.DebugLevel
+	logger := log.WithField("test-nr", 300)
 	tmpDir := mkTmpDirOrFail(t)
 	defer cleanUp(t, tmpDir)
 	var logfile = fmt.Sprintf("%s%c%s", tmpDir, os.PathSeparator, logfileName)
 	tail := RunFseventFileTailer(logfile, true, false, log)
-	defer tail.Close()
+	defer func() {
+		tail.Close()
+		// wait until closed
+		select {
+		case <-tail.Lines():
+		case <-time.After(5 * time.Second):
+			fmt.Fprintf(os.Stderr, "failed to shut down the tailer. timeout after 5 seconds")
+			t.Errorf("failed to shut down the tailer. timeout after 5 seconds")
+		}
+	}()
 
 	// We don't expect errors. However, start a go-routine listening on
 	// the tailer's errorChannel in case something goes wrong.
@@ -206,10 +232,10 @@ func TestFileMissingOnStartup(t *testing.T) {
 	}
 
 	logFileWriter := newLogFileWriter(t, logfile, closeFileAfterEachLine)
-	logFileWriter.writeLine(t, log, "test line 1")
-	logFileWriter.writeLine(t, log, "test line 2")
-	expect(t, log, tail.Lines(), "test line 1", 1*time.Second)
-	expect(t, log, tail.Lines(), "test line 2", 1*time.Second)
+	logFileWriter.writeLine(t, logger, "test line 1")
+	logFileWriter.writeLine(t, logger, "test line 2")
+	expect(t, logger, tail.Lines(), "test line 1", 1*time.Second)
+	expect(t, logger, tail.Lines(), "test line 2", 1*time.Second)
 }
 
 //func TestShutdownDuringSyscall(t *testing.T) {
@@ -227,14 +253,14 @@ func TestFileMissingOnStartup(t *testing.T) {
 //	}
 //}
 
-func testLogrotate(t *testing.T, log simpleLogger, watcherOpt watcherType, logrotateOpt logrotateOption, logrotateMoveOpt logrotateMoveOption, loggerOpt loggerOption) {
+func testLogrotate(t *testing.T, log logrus.FieldLogger, watcherOpt watcherType, logrotateOpt logrotateOption, logrotateMoveOpt logrotateMoveOption, loggerOpt loggerOption) {
 	tmpDir := mkTmpDirOrFail(t)
 	defer cleanUp(t, tmpDir)
 	logfile := mkTmpFileOrFail(t, tmpDir)
 	logFileWriter := newLogFileWriter(t, logfile, loggerOpt)
 	defer logFileWriter.close(t)
 
-	log.Debug("Running test using logfile %v with watcher option '%v', logrotate option '%v', move option '%v', and logger option '%v'.\n", path.Base(logfile), watcherOpt, logrotateOpt, logrotateMoveOpt, loggerOpt)
+	log.Debugf("Running test using logfile %v with watcher option '%v', logrotate option '%v', move option '%v', and logger option '%v'.\n", path.Base(logfile), watcherOpt, logrotateOpt, logrotateMoveOpt, loggerOpt)
 
 	logFileWriter.writeLine(t, log, "test line 1")
 	logFileWriter.writeLine(t, log, "test line 2")
@@ -247,13 +273,28 @@ func testLogrotate(t *testing.T, log simpleLogger, watcherOpt watcherType, logro
 		tail = RunPollingFileTailer(logfile, true, true, 10*time.Millisecond, log)
 	}
 	tail = BufferedTailer(tail)
-	defer tail.Close()
+	defer func() {
+		tail.Close()
+		// wait until closed
+		select {
+		case <-tail.Lines():
+		case <-time.After(5 * time.Second):
+			fmt.Fprintf(os.Stderr, "failed to shut down the tailer. timeout after 5 seconds")
+			t.Errorf("failed to shut down the tailer. timeout after 5 seconds")
+		}
+	}()
 
 	// We don't expect errors. However, start a go-routine listening on
 	// the tailer's errorChannel in case something goes wrong.
 	go func() {
 		for err := range tail.Errors() {
-			t.Errorf("Tailer failed: %v", err.Error()) // Cannot call t.Fatalf() in other goroutine.
+			if err == nil {
+				return // tailer closed
+			} else {
+				fmt.Fprintf(os.Stderr, "TAILER FAILED: %v\n", err)
+				t.Errorf("Tailer failed: %v", err.Error()) // Cannot call t.Fatalf() in other goroutine.
+				return
+			}
 		}
 	}()
 
@@ -288,7 +329,7 @@ func newLogFileWriter(t *testing.T, logfile string, opt loggerOption) logFileWri
 }
 
 type logFileWriter interface {
-	writeLine(t *testing.T, log simpleLogger, line string)
+	writeLine(t *testing.T, log logrus.FieldLogger, line string)
 	close(t *testing.T)
 }
 
@@ -302,7 +343,7 @@ func newCloseFileAfterEachLineLogFileWriter(t *testing.T, logfile string) logFil
 	}
 }
 
-func (l *closeFileAfterEachLineLogFileWriter) writeLine(t *testing.T, log simpleLogger, line string) {
+func (l *closeFileAfterEachLineLogFileWriter) writeLine(t *testing.T, log logrus.FieldLogger, line string) {
 	f, err := os.OpenFile(l.path, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
 		t.Fatalf("%v: Failed to open file for writing: %v", l.path, err.Error())
@@ -323,7 +364,7 @@ func (l *closeFileAfterEachLineLogFileWriter) writeLine(t *testing.T, log simple
 	if err != nil {
 		t.Fatalf("%v: Failed to close file: %v", l.path, err.Error())
 	}
-	log.Debug("Wrote log line '%v' with closeFileAfterEachLineLogger.\n", line)
+	log.Debugf("Wrote log line '%v' with closeFileAfterEachLineLogger.\n", line)
 }
 
 func (l *closeFileAfterEachLineLogFileWriter) close(t *testing.T) {
@@ -344,7 +385,7 @@ func newKeepOpenLogFileWriter(t *testing.T, logfile string) logFileWriter {
 	}
 }
 
-func (l *keepOpenLogFileWriter) writeLine(t *testing.T, log simpleLogger, line string) {
+func (l *keepOpenLogFileWriter) writeLine(t *testing.T, log logrus.FieldLogger, line string) {
 	_, err := l.file.WriteString(fmt.Sprintf("%v\n", line))
 	if err != nil {
 		t.Fatalf("%v: Failed to write to file: %v", l.file.Name(), err.Error())
@@ -353,7 +394,7 @@ func (l *keepOpenLogFileWriter) writeLine(t *testing.T, log simpleLogger, line s
 	if err != nil {
 		t.Fatalf("%v: Failed to flush the file: %v", l.file.Name(), err.Error())
 	}
-	log.Debug("Wrote log line '%v' with keepOpenLogger.\n", line)
+	log.Debugf("Wrote log line '%v' with keepOpenLogger.\n", line)
 }
 
 func (l *keepOpenLogFileWriter) close(t *testing.T) {
@@ -419,7 +460,7 @@ func ls(t *testing.T, path string) []os.FileInfo {
 	return result
 }
 
-func rotate(t *testing.T, log simpleLogger, logfile string, opt logrotateOption, mvOpt logrotateMoveOption) {
+func rotate(t *testing.T, log logrus.FieldLogger, logfile string, opt logrotateOption, mvOpt logrotateMoveOption) {
 	dir := filepath.Dir(logfile)
 	filename := filepath.Base(logfile)
 	filesBefore := ls(t, dir)
@@ -449,7 +490,7 @@ func rotate(t *testing.T, log simpleLogger, logfile string, opt logrotateOption,
 	default:
 		t.Fatalf("Unknown logrotate option.")
 	}
-	log.Debug("Simulated logrotate with option %v and mvOption %v\n", opt, mvOpt)
+	log.Debugf("Simulated logrotate with option %v and mvOption %v\n", opt, mvOpt)
 }
 
 func moveOrFail(t *testing.T, mvOpt logrotateMoveOption, logfile string) {
@@ -549,7 +590,7 @@ func truncateOrFail(t *testing.T, logfile string) {
 	}
 }
 
-func expect(t *testing.T, log simpleLogger, c chan string, line string, timeout time.Duration) {
+func expect(t *testing.T, log logrus.FieldLogger, c chan string, line string, timeout time.Duration) {
 	timeoutChan := make(chan bool, 1)
 	go func() {
 		time.Sleep(timeout)
@@ -560,26 +601,12 @@ func expect(t *testing.T, log simpleLogger, c chan string, line string, timeout 
 		if result != line {
 			t.Fatalf("Expected '%v', but got '%v'.", line, result)
 		} else {
-			log.Debug("Read expected line '%v'\n", line)
+			log.Debugf("Read expected line '%v'\n", line)
 		}
 	case <-timeoutChan:
-		log.Debug("Timeout after %v while waiting for line '%v'\n", timeout, line)
+		log.Debugf("Timeout after %v while waiting for line '%v'\n", timeout, line)
 		t.Fatalf("Timeout after %v while waiting for line '%v'", timeout, line)
 	}
-}
-
-type testRunLogger struct {
-	testRunNumber int
-}
-
-func NewTestRunLogger(testRunNumber int) *testRunLogger {
-	return &testRunLogger{
-		testRunNumber: testRunNumber,
-	}
-}
-
-func (l *testRunLogger) Debug(format string, a ...interface{}) {
-	fmt.Printf("%v [%v] %v", time.Now().Format("2006-01-02 15:04:05.0000"), l.testRunNumber, fmt.Sprintf(format, a...))
 }
 
 // Commented out until we switched to the new implementation, because this test uses internal API of the old implementation.

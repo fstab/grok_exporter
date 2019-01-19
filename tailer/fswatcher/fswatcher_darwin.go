@@ -15,17 +15,16 @@
 package fswatcher
 
 import (
-	"errors"
 	"fmt"
+	"github.com/fstab/grok_exporter/tailer/glob"
 	"github.com/sirupsen/logrus"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"syscall"
 )
 
-// how will this eventually be configured in the config file:
+// ideas how this might look like in the config file:
 //
 // * input section may specify multiple inputs and use globs
 //
@@ -35,16 +34,8 @@ import (
 // Heads up: filters use globs while matches use regular expressions.
 // Moreover, we should provide vars {{.filename}} and {{.filepath}} for labels.
 
-var logger2 *logrus.Logger
-
-func init() {
-	logger2 = logrus.New()
-	logger2.Level = logrus.ErrorLevel
-	//logger2.Level = logrus.DebugLevel // TODO: Use debug in tests
-}
-
 type watcher struct {
-	globs        []string
+	globs        []glob.Glob
 	watchedDirs  []*os.File
 	watchedFiles []*fileWithReader
 	kq           int
@@ -66,30 +57,23 @@ func (w *watcher) Errors() chan Error {
 	return w.errors
 }
 
-func Run(globs []string, readall bool, failOnMissingFile bool) (FSWatcher, error) {
+func (w *watcher) Close() {
+	// Closing the done channel will stop the consumer loop.
+	// Deferred functions within the consumer loop will close the producer loop.
+	close(w.done)
+}
+
+func Run(globs []glob.Glob, readall bool, failOnMissingFile bool, log logrus.FieldLogger) (FSWatcher, error) {
 
 	var (
 		w   *watcher
 		err error
-		absglob string
-		absglobs = make([]string, 0, len(globs))
+		Err Error
 	)
 
-	// make globs absolute paths, because they will be matched against absolute file names
-	// TODO (1): Write tests to make sure this works reliably
-	// TODO (2): This should not be darwin specific, but the same for all OSes.
-	for _, glob := range globs {
-		absglob, err = filepath.Abs(glob)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get absolut path for pattern %q: %v", glob, err)
-		}
-		absglobs = append(absglobs, absglob)
-	}
-
-	// Initializing directory watches happens in the main thread, so we fail immediately if the directories cannot be watched.
-	w, err = initDirs(absglobs)
-	if err != nil {
-		return nil, err
+	w, Err = initWatcher(globs)
+	if Err != nil {
+		return nil, Err
 	}
 
 	go func() {
@@ -99,19 +83,48 @@ func Run(globs []string, readall bool, failOnMissingFile bool) (FSWatcher, error
 			close(w.lines)
 			close(w.errors)
 
+			warnf := func(format string, args ...interface{}) {
+				log.Warnf("error while shutting down the file system watcher: %v", fmt.Sprint(format, args))
+			}
+
+			// After calling keventProducerLoop.Close(), we need to close the kq descriptor
+			// in order to interrupt the kevent() system call. See keventProducerLoop.Close().
+			err = syscall.Close(w.kq)
+			if err != nil {
+				warnf("closing the kq descriptor failed: %v", err)
+			}
+
 			for _, file := range w.watchedFiles {
-				file.file.Close()
+				err = file.file.Close()
+				if err != nil {
+					warnf("close(%q) failed: %v", file.file.Name(), err)
+				}
 			}
 
 			for _, dir := range w.watchedDirs {
-				dir.Close()
+				err = dir.Close()
+				if err != nil {
+					warnf("close(%q) failed: %v", dir.Name(), err)
+				}
 			}
 		}()
+
+		Err = w.watchDirs(log)
+		if Err != nil {
+			select {
+			case <-w.done:
+			case w.errors <- Err:
+			}
+			return
+		}
+
+		keventProducerLoop := runKeventLoop(w.kq)
+		defer keventProducerLoop.Close()
 
 		// Initializing watches for the files within the directories happens in the goroutine, because with readall=true
 		// this will immediately write lines to the lines channel, so this blocks until the caller starts reading from the lines channel.
 		for _, dir := range w.watchedDirs {
-			dirLogger := logger2.WithField("directory", dir.Name())
+			dirLogger := log.WithField("directory", dir.Name())
 			dirLogger.Debugf("initializing directory")
 			syncFilesErr := w.syncFilesInDir(dir, readall, dirLogger)
 			if syncFilesErr != nil {
@@ -135,15 +148,12 @@ func Run(globs []string, readall bool, failOnMissingFile bool) (FSWatcher, error
 			}
 		}
 
-		keventProducerLoop := runKeventLoop(w.kq)
-		defer keventProducerLoop.Close()
-
 		for { // kevent consumer loop
 			select {
 			case <-w.done:
 				return
 			case event := <-keventProducerLoop.events:
-				processEventError := w.processEvent(event, logger2)
+				processEventError := w.processEvent(event, log)
 				if processEventError != nil {
 					select {
 					case <-w.done:
@@ -163,13 +173,7 @@ func Run(globs []string, readall bool, failOnMissingFile bool) (FSWatcher, error
 	return w, nil
 }
 
-func (w *watcher) Close() {
-	// Closing the done channel will stop the kevent consumer loop.
-	close(w.done)
-	// The producer loop, lines and errors channels, files and directories will be closed once the consumer loop is terminated (via deferred function calls).
-}
-
-func initDirs(globs []string) (*watcher, error) {
+func initWatcher(globs []glob.Glob) (*watcher, Error) {
 	var (
 		w = &watcher{
 			globs:  globs,
@@ -177,35 +181,41 @@ func initDirs(globs []string) (*watcher, error) {
 			errors: make(chan Error),
 			done:   make(chan struct{}),
 		}
+		err error
+	)
+	w.kq, err = syscall.Kqueue()
+	if err != nil {
+		return nil, NewError(NotSpecified, err, "kqueue() failed")
+	}
+	return w, nil
+}
+
+func (w *watcher) watchDirs(log logrus.FieldLogger) Error {
+	var (
 		err         error
+		Err         Error
 		dir         *os.File
 		dirPaths    []string
 		dirPath     string
 		zeroTimeout = syscall.NsecToTimespec(0) // timeout zero means non-blocking kevent() call
 	)
-	w.kq, err = syscall.Kqueue()
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize file system watcher: %v", err)
-	}
-	dirPaths, err = uniqueBaseDirs(globs)
-	if err != nil {
-		w.Close()
-		return nil, err
+	dirPaths, Err = uniqueDirs(w.globs)
+	if Err != nil {
+		return Err
 	}
 	for _, dirPath = range dirPaths {
+		log.Debugf("watching directory %v", dirPath)
 		dir, err = os.Open(dirPath)
 		if err != nil {
-			w.Close()
-			return nil, err
+			return NewErrorf(NotSpecified, err, "%v: open() failed", dirPath)
 		}
 		w.watchedDirs = append(w.watchedDirs, dir)
 		_, err = syscall.Kevent(w.kq, []syscall.Kevent_t{makeEvent(dir)}, nil, &zeroTimeout)
 		if err != nil {
-			w.Close()
-			return nil, err
+			return NewErrorf(NotSpecified, err, "%v: kevent() failed", dirPath)
 		}
 	}
-	return w, nil
+	return nil
 }
 
 // check if files have been added/removed and update kevent file watches accordingly
@@ -218,7 +228,7 @@ func (w *watcher) syncFilesInDir(dir *os.File, readall bool, log logrus.FieldLog
 		fileInfos         []os.FileInfo
 		fileInfo          os.FileInfo
 		err               error
-		tailerErr         Error
+		Err               Error
 		fileLogger        logrus.FieldLogger
 		zeroTimeout       = syscall.NsecToTimespec(0) // timeout zero means non-blocking kevent() call
 	)
@@ -228,9 +238,9 @@ func (w *watcher) syncFilesInDir(dir *os.File, readall bool, log logrus.FieldLog
 	}
 	watchedFilesAfter = make([]*fileWithReader, 0, len(w.watchedFiles))
 	for _, fileInfo = range fileInfos {
-		fullPath := filepath.Join(dir.Name(), fileInfo.Name())
-		fileLogger = log.WithField("file", fullPath)
-		if !anyGlobMatches(w.globs, fullPath) {
+		filePath := filepath.Join(dir.Name(), fileInfo.Name())
+		fileLogger = log.WithField("file", filePath)
+		if !anyGlobMatches(w.globs, filePath) {
 			fileLogger.Debug("skipping file, because no glob matches")
 			continue
 		}
@@ -238,28 +248,28 @@ func (w *watcher) syncFilesInDir(dir *os.File, readall bool, log logrus.FieldLog
 			fileLogger.Debug("skipping, because it is a directory")
 			continue
 		}
-		existingFile, tailerErr = findSameFile(w.watchedFiles, fileInfo)
-		if tailerErr != nil {
-			return tailerErr
+		existingFile, Err = w.findSameFile(fileInfo)
+		if Err != nil {
+			return Err
 		}
 		if existingFile != nil {
-			if existingFile.file.Name() != fullPath {
+			if existingFile.file.Name() != filePath {
 				fileLogger.WithField("fd", existingFile.file.Fd()).Infof("file was moved from %v", existingFile.file.Name())
-				existingFile.file = os.NewFile(existingFile.file.Fd(), fullPath)
+				existingFile.file = os.NewFile(existingFile.file.Fd(), filePath)
 			} else {
 				fileLogger.Debug("skipping, because file is already watched")
 			}
 			watchedFilesAfter = append(watchedFilesAfter, existingFile)
 			continue
 		}
-		newFile, err = os.Open(fullPath)
+		newFile, err = os.Open(filePath)
 		if err != nil {
-			return NewErrorf(NotSpecified, err, "%v: failed to open file", fullPath)
+			return NewErrorf(NotSpecified, err, "%v: failed to open file", filePath)
 		}
 		if !readall {
 			_, err = newFile.Seek(0, io.SeekEnd)
 			if err != nil {
-				return NewErrorf(NotSpecified, err, "%v: failed to seek to end of file", fullPath)
+				return NewErrorf(NotSpecified, err, "%v: failed to seek to end of file", filePath)
 			}
 		}
 		fileLogger = fileLogger.WithField("fd", newFile.Fd())
@@ -270,9 +280,9 @@ func (w *watcher) syncFilesInDir(dir *os.File, readall bool, log logrus.FieldLog
 			return NewErrorf(NotSpecified, err, "%v: failed to watch file", newFile.Name())
 		}
 		newFileWithReader = &fileWithReader{file: newFile, reader: NewLineReader()}
-		tailerErr = w.readNewLines(newFileWithReader, fileLogger)
-		if tailerErr != nil {
-			return tailerErr
+		Err = w.readNewLines(newFileWithReader, fileLogger)
+		if Err != nil {
+			return Err
 		}
 		watchedFilesAfter = append(watchedFilesAfter, newFileWithReader)
 	}
@@ -280,6 +290,7 @@ func (w *watcher) syncFilesInDir(dir *os.File, readall bool, log logrus.FieldLog
 		if !contains(watchedFilesAfter, f) {
 			fileLogger = log.WithField("file", f.file.Name()).WithField("fd", f.file.Fd())
 			fileLogger.Info("file was removed, closing and un-watching")
+			// TODO: explicit un-watch needed, or are kevents for deleted files removed automatically?
 			f.file.Close()
 		}
 	}
@@ -296,20 +307,20 @@ func (w *watcher) processEvent(kevent syscall.Kevent_t, log logrus.FieldLogger) 
 	for _, dir = range w.watchedDirs {
 		if kevent.Ident == fdToInt(dir.Fd()) {
 			dirLogger = log.WithField("directory", dir.Name())
-			dirLogger.Debugf("dir event with fflags %v", fflags2string(kevent))
+			dirLogger.Debugf("dir event: %v", kevent)
 			return w.processDirEvent(kevent, dir, dirLogger)
 		}
 	}
 	for _, file = range w.watchedFiles {
 		if kevent.Ident == fdToInt(file.file.Fd()) {
 			fileLogger = log.WithField("file", file.file.Name()).WithField("fd", file.file.Fd())
-			fileLogger.Debugf("file event with fflags %v", fflags2string(kevent))
+			fileLogger.Debugf("file event: %v", kevent)
 			return w.processFileEvent(kevent, file, fileLogger)
 		}
 	}
 	// Events for unknown file descriptors are ignored. This might happen if syncFilesInDir() already
 	// closed a file while a pending event is still coming in.
-	log.Debugf("event for unknown file descriptor %v with fflags %v", kevent.Ident, fflags2string(kevent))
+	log.Debugf("event for unknown file descriptor %v: %v", kevent.Ident, kevent)
 	return nil
 }
 
@@ -399,51 +410,43 @@ func (w *watcher) readNewLines(file *fileWithReader, log logrus.FieldLogger) Err
 
 func (w *watcher) checkMissingFile() Error {
 OUTER:
-	for _, glob := range w.globs {
+	for _, g := range w.globs {
 		for _, watchedFile := range w.watchedFiles {
-			if match, _ := filepath.Match(glob, watchedFile.file.Name()); match {
+			if g.Match(watchedFile.file.Name()) {
 				continue OUTER
 			}
 		}
-		return NewErrorf(FileNotFound, nil, "%v: no such file", glob)
+		// Error message must be phrased so that it makes sense for globs,
+		// but also if g is a plain path without wildcards.
+		return NewErrorf(FileNotFound, nil, "%v: no such file", g)
 	}
 	return nil
 }
 
-// gets the base directories from the glob expressions,
-// makes sure the paths exist and point to directories.
-func uniqueBaseDirs(globs []string) ([]string, error) {
+// Gets the directory paths from the glob expressions,
+// and makes sure these directories exist.
+func uniqueDirs(globs []glob.Glob) ([]string, Error) {
 	var (
 		result  = make([]string, 0, len(globs))
-		dirPath string
+		g       glob.Glob
+		dirInfo os.FileInfo
 		err     error
-		errMsg  string
-		g       string
 	)
 	for _, g = range globs {
-		dirPath, err = filepath.Abs(filepath.Dir(g))
-		if err != nil {
-			return nil, fmt.Errorf("%q: failed to determine absolute path: %v", filepath.Dir(g), err)
-		}
-		if containsString(result, dirPath) {
+		if containsString(result, g.Dir()) {
 			continue
 		}
-		dirInfo, err := os.Stat(dirPath)
+		dirInfo, err = os.Stat(g.Dir())
 		if err != nil {
 			if os.IsNotExist(err) {
-				errMsg = fmt.Sprintf("%v: no such directory", dirPath)
-				if strings.Contains(dirPath, "*") || strings.Contains(dirPath, "?") || strings.Contains(dirPath, "[") {
-					return nil, fmt.Errorf("%v: note that wildcards are only supported for files but not for directories", errMsg)
-				} else {
-					return nil, errors.New(errMsg)
-				}
+				return nil, NewErrorf(DirectoryNotFound, nil, "%q: no such directory", g.Dir())
 			}
-			return nil, err
+			return nil, NewErrorf(NotSpecified, err, "%q: stat() failed", g.Dir())
 		}
 		if !dirInfo.IsDir() {
-			return nil, fmt.Errorf("%v is not a directory", dirPath)
+			return nil, NewErrorf(NotSpecified, nil, "%q is not a directory", g.Dir())
 		}
-		result = append(result, dirPath)
+		result = append(result, g.Dir())
 	}
 	return result, nil
 }
@@ -460,26 +463,26 @@ func isTruncated(file *os.File) (bool, error) {
 	return currentPos > fileInfo.Size(), nil
 }
 
-func anyGlobMatches(globs []string, path string) bool {
+func anyGlobMatches(globs []glob.Glob, path string) bool {
 	for _, pattern := range globs {
-		if match, _ := filepath.Match(pattern, path); match {
+		if pattern.Match(path) {
 			return true
 		}
 	}
 	return false
 }
 
-func findSameFile(watchedFiles []*fileWithReader, other os.FileInfo) (*fileWithReader, Error) {
+func (w *watcher) findSameFile(file os.FileInfo) (*fileWithReader, Error) {
 	var (
 		fileInfo os.FileInfo
 		err      error
 	)
-	for _, watchedFile := range watchedFiles {
+	for _, watchedFile := range w.watchedFiles {
 		fileInfo, err = watchedFile.file.Stat()
 		if err != nil {
 			return nil, NewErrorf(NotSpecified, err, "%v: stat failed", watchedFile.file.Name())
 		}
-		if os.SameFile(fileInfo, other) {
+		if os.SameFile(fileInfo, file) {
 			return watchedFile, nil
 		}
 	}
@@ -535,30 +538,4 @@ func makeEvent(file *os.File) syscall.Kevent_t {
 		Data:   0,
 		Udata:  nil,
 	}
-}
-
-func fflags2string(event syscall.Kevent_t) string {
-	result := make([]string, 0, 1)
-	if event.Fflags&syscall.NOTE_DELETE == syscall.NOTE_DELETE {
-		result = append(result, "NOTE_DELETE")
-	}
-	if event.Fflags&syscall.NOTE_WRITE == syscall.NOTE_WRITE {
-		result = append(result, "NOTE_WRITE")
-	}
-	if event.Fflags&syscall.NOTE_EXTEND == syscall.NOTE_EXTEND {
-		result = append(result, "NOTE_EXTEND")
-	}
-	if event.Fflags&syscall.NOTE_ATTRIB == syscall.NOTE_ATTRIB {
-		result = append(result, "NOTE_ATTRIB")
-	}
-	if event.Fflags&syscall.NOTE_LINK == syscall.NOTE_LINK {
-		result = append(result, "NOTE_LINK")
-	}
-	if event.Fflags&syscall.NOTE_RENAME == syscall.NOTE_RENAME {
-		result = append(result, "NOTE_RENAME")
-	}
-	if event.Fflags&syscall.NOTE_REVOKE == syscall.NOTE_REVOKE {
-		result = append(result, "NOTE_REVOKE")
-	}
-	return strings.Join(result, ", ")
 }

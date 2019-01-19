@@ -15,6 +15,7 @@
 package tailer
 
 import (
+	"github.com/sirupsen/logrus"
 	"golang.org/x/exp/winfsnotify"
 	"io"
 	"path/filepath"
@@ -105,14 +106,14 @@ func (l *eventLoop) Events() chan Events {
 	return l.events
 }
 
-func (event *event) Process(fileBefore *File, reader *lineReader, abspath string, logger simpleLogger) (file *File, lines []string, err error) {
+func (event *event) Process(fileBefore *File, reader *lineReader, abspath string, logger logrus.FieldLogger) (file *File, lines []string, err error) {
 	file = fileBefore
 	lines = []string{}
 	var (
 		truncated, eof bool
 		line           string
 	)
-	logger.Debug("File system watcher received %v.\n", event.String())
+	logger.Debugf("File system watcher received %v.\n", event.String())
 
 	// MOVED_FROM or DELETE
 	if file != nil && norm(event.Name) == norm(abspath) && (event.Mask&winfsnotify.FS_MOVED_FROM == winfsnotify.FS_MOVED_FROM || event.Mask&winfsnotify.FS_DELETE == winfsnotify.FS_DELETE) {

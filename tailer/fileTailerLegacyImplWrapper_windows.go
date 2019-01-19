@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build !darwin
-
 package tailer
 
+import "github.com/sirupsen/logrus"
+
 // old implementation, darwin is already switched to the new implementation, the other OSes will follow
-func RunFseventFileTailer(path string, readall bool, failOnMissingFile bool, logger simpleLogger) Tailer {
+func RunFseventFileTailer(path string, readall bool, failOnMissingFile bool, logger logrus.FieldLogger) Tailer {
 	return runFileTailer(path, readall, failOnMissingFile, logger, NewFseventWatcher)
 }

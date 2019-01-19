@@ -16,6 +16,7 @@ package tailer
 
 import (
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"io"
 	"os"
 	"path/filepath"
@@ -44,16 +45,18 @@ func (f *fileTailer) Errors() chan Error {
 	return f.errors
 }
 
-func RunPollingFileTailer(path string, readall bool, failOnMissingFile bool, pollIntervall time.Duration, logger simpleLogger) Tailer {
+func RunPollingFileTailer(path string, readall bool, failOnMissingFile bool, pollIntervall time.Duration, logger logrus.FieldLogger) Tailer {
 	makeWatcher := func(abspath string, _ *File) (Watcher, error) {
 		return NewPollingWatcher(abspath, pollIntervall)
 	}
 	return runFileTailer(path, readall, failOnMissingFile, logger, makeWatcher)
 }
 
-func runFileTailer(path string, readall bool, failOnMissingFile bool, logger simpleLogger, makeWatcher func(string, *File) (Watcher, error)) Tailer {
+func runFileTailer(path string, readall bool, failOnMissingFile bool, logger logrus.FieldLogger, makeWatcher func(string, *File) (Watcher, error)) Tailer {
 	if logger == nil {
-		logger = &nilLogger{}
+		log := logrus.New()
+		log.Level = logrus.WarnLevel
+		logger = log
 	}
 
 	lines := make(chan string)
@@ -199,11 +202,3 @@ func writeError(errors chan Error, done chan struct{}, cause error, format strin
 	case <-done:
 	}
 }
-
-type simpleLogger interface {
-	Debug(format string, a ...interface{})
-}
-
-type nilLogger struct{}
-
-func (_ *nilLogger) Debug(_ string, _ ...interface{}) {}

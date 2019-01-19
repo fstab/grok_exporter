@@ -23,6 +23,7 @@ import (
 	"github.com/fstab/grok_exporter/oniguruma"
 	"github.com/fstab/grok_exporter/tailer"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/sirupsen/logrus"
 	"net/http"
 	"os"
 	"time"
@@ -269,13 +270,15 @@ func startServer(cfg v2.ServerConfig, handler http.Handler) chan error {
 }
 
 func startTailer(cfg *v2.Config) (tailer.Tailer, error) {
+	logger := logrus.New()
+	logger.Level = logrus.WarnLevel
 	var tail tailer.Tailer
 	switch {
 	case cfg.Input.Type == "file":
 		if cfg.Input.PollInterval == 0 {
-			tail = tailer.RunFseventFileTailer(cfg.Input.Path, cfg.Input.Readall, cfg.Input.FailOnMissingLogfile, nil)
+			tail = tailer.RunFseventFileTailer(cfg.Input.Path, cfg.Input.Readall, cfg.Input.FailOnMissingLogfile, logger)
 		} else {
-			tail = tailer.RunPollingFileTailer(cfg.Input.Path, cfg.Input.Readall, cfg.Input.FailOnMissingLogfile, cfg.Input.PollInterval, nil)
+			tail = tailer.RunPollingFileTailer(cfg.Input.Path, cfg.Input.Readall, cfg.Input.FailOnMissingLogfile, cfg.Input.PollInterval, logger)
 		}
 	case cfg.Input.Type == "stdin":
 		tail = tailer.RunStdinTailer()

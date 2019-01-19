@@ -15,6 +15,7 @@
 package tailer
 
 import (
+	"github.com/sirupsen/logrus"
 	"io"
 	"time"
 )
@@ -83,7 +84,7 @@ func (l *pollingEventLoop) Events() chan Events {
 	return l.events
 }
 
-func (e *pollingEvent) Process(fileBefore *File, reader *lineReader, abspath string, logger simpleLogger) (file *File, lines []string, err error) {
+func (e *pollingEvent) Process(fileBefore *File, reader *lineReader, abspath string, _ logrus.FieldLogger) (file *File, lines []string, err error) {
 	var (
 		truncated, moved, eof bool
 		filename, line        string
