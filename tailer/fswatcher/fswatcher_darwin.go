@@ -37,7 +37,7 @@ import (
 type watcher struct {
 	globs        []glob.Glob
 	watchedDirs  []*os.File
-	watchedFiles []*fileWithReader
+	watchedFiles map[string]*fileWithReader // path -> fileWithReader
 	kq           int
 	lines        chan Line
 	errors       chan Error
@@ -224,7 +224,7 @@ func (w *watcher) syncFilesInDir(dir *os.File, readall bool, log logrus.FieldLog
 		existingFile      *fileWithReader
 		newFile           *os.File
 		newFileWithReader *fileWithReader
-		watchedFilesAfter []*fileWithReader
+		watchedFilesAfter = make(map[string]*fileWithReader)
 		fileInfos         []os.FileInfo
 		fileInfo          os.FileInfo
 		err               error
@@ -232,14 +232,13 @@ func (w *watcher) syncFilesInDir(dir *os.File, readall bool, log logrus.FieldLog
 		fileLogger        logrus.FieldLogger
 		zeroTimeout       = syscall.NsecToTimespec(0) // timeout zero means non-blocking kevent() call
 	)
-	fileInfos, err = repeatableReaddir(dir)
-	if err != nil {
-		return NewErrorf(NotSpecified, err, "%v: readdir failed", dir.Name())
+	fileInfos, Err = ls(dir)
+	if Err != nil {
+		return Err
 	}
-	watchedFilesAfter = make([]*fileWithReader, 0, len(w.watchedFiles))
 	for _, fileInfo = range fileInfos {
 		filePath := filepath.Join(dir.Name(), fileInfo.Name())
-		fileLogger = log.WithField("file", filePath)
+		fileLogger = log.WithField("file", fileInfo.Name())
 		if !anyGlobMatches(w.globs, filePath) {
 			fileLogger.Debug("skipping file, because no glob matches")
 			continue
@@ -259,7 +258,7 @@ func (w *watcher) syncFilesInDir(dir *os.File, readall bool, log logrus.FieldLog
 			} else {
 				fileLogger.Debug("skipping, because file is already watched")
 			}
-			watchedFilesAfter = append(watchedFilesAfter, existingFile)
+			watchedFilesAfter[filePath] = existingFile
 			continue
 		}
 		newFile, err = os.Open(filePath)
@@ -284,11 +283,11 @@ func (w *watcher) syncFilesInDir(dir *os.File, readall bool, log logrus.FieldLog
 		if Err != nil {
 			return Err
 		}
-		watchedFilesAfter = append(watchedFilesAfter, newFileWithReader)
+		watchedFilesAfter[filePath] = newFileWithReader
 	}
 	for _, f := range w.watchedFiles {
 		if !contains(watchedFilesAfter, f) {
-			fileLogger = log.WithField("file", f.file.Name()).WithField("fd", f.file.Fd())
+			fileLogger = log.WithField("file", filepath.Base(f.file.Name())).WithField("fd", f.file.Fd())
 			fileLogger.Info("file was removed, closing and un-watching")
 			// TODO: explicit un-watch needed, or are kevents for deleted files removed automatically?
 			f.file.Close()
@@ -296,6 +295,18 @@ func (w *watcher) syncFilesInDir(dir *os.File, readall bool, log logrus.FieldLog
 	}
 	w.watchedFiles = watchedFilesAfter
 	return nil
+}
+
+func ls(dir *os.File) ([]os.FileInfo, Error) {
+	_, err := dir.Seek(0, io.SeekStart)
+	if err != nil {
+		return nil, NewError(NotSpecified, os.NewSyscallError("seek", err), dir.Name())
+	}
+	result, err := dir.Readdir(-1)
+	if err != nil {
+		return nil, NewError(NotSpecified, os.NewSyscallError("readdir", err), dir.Name())
+	}
+	return result, nil
 }
 
 func (w *watcher) processEvent(kevent syscall.Kevent_t, log logrus.FieldLogger) Error {
@@ -411,8 +422,8 @@ func (w *watcher) readNewLines(file *fileWithReader, log logrus.FieldLogger) Err
 func (w *watcher) checkMissingFile() Error {
 OUTER:
 	for _, g := range w.globs {
-		for _, watchedFile := range w.watchedFiles {
-			if g.Match(watchedFile.file.Name()) {
+		for watchedFileName, _ := range w.watchedFiles {
+			if g.Match(watchedFileName) {
 				continue OUTER
 			}
 		}
@@ -489,11 +500,6 @@ func (w *watcher) findSameFile(file os.FileInfo) (*fileWithReader, Error) {
 	return nil, nil
 }
 
-func repeatableReaddir(f *os.File) ([]os.FileInfo, error) {
-	defer f.Seek(0, io.SeekStart)
-	return f.Readdir(-1)
-}
-
 func containsString(list []string, s string) bool {
 	for _, existing := range list {
 		if existing == s {
@@ -503,7 +509,7 @@ func containsString(list []string, s string) bool {
 	return false
 }
 
-func contains(list []*fileWithReader, f *fileWithReader) bool {
+func contains(list map[string]*fileWithReader, f *fileWithReader) bool {
 	for _, existing := range list {
 		if existing == f {
 			return true

@@ -18,17 +18,19 @@ import (
 	"fmt"
 	"github.com/fstab/grok_exporter/tailer/glob"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/exp/winfsnotify"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 )
 
 type watcher struct {
 	globs        []glob.Glob
-	watchedDirs  map[int]string             // watch descriptor -> path
+	watchedDirs  []string
 	watchedFiles map[string]*fileWithReader // path -> fileWithReader
-	fd           int
+	winWatcher   *winfsnotify.Watcher
 	lines        chan Line
 	errors       chan Error
 	done         chan struct{}
@@ -37,6 +39,11 @@ type watcher struct {
 type fileWithReader struct {
 	file   *os.File
 	reader *lineReader
+}
+
+type fileInfo struct {
+	filename string
+	ffd      syscall.Win32finddata
 }
 
 func (w *watcher) Lines() chan Line {
@@ -48,13 +55,10 @@ func (w *watcher) Errors() chan Error {
 }
 
 func (w *watcher) Close() {
-	// Closing the done channel will stop the consumer loop.
-	// Deferred functions within the consumer loop will close the producer loop.
 	close(w.done)
 }
 
-func Run(globs []glob.Glob, readall bool, failOnMissingFile bool, log logrus.FieldLogger) (FSWatcher, Error) {
-
+func Run(globs []glob.Glob, readall bool, failOnMissingFile bool, log logrus.FieldLogger) (FSWatcher, error) {
 	var (
 		w   *watcher
 		err error
@@ -67,7 +71,6 @@ func Run(globs []glob.Glob, readall bool, failOnMissingFile bool, log logrus.Fie
 	}
 
 	go func() {
-
 		defer func() {
 
 			close(w.lines)
@@ -77,18 +80,9 @@ func Run(globs []glob.Glob, readall bool, failOnMissingFile bool, log logrus.Fie
 				log.Warnf("error while shutting down the file system watcher: %v", fmt.Sprint(format, args))
 			}
 
-			for wd, dirPath := range w.watchedDirs {
-				// After calling eventProducerLoop.Close(), we need to call inotify_rm_watch()
-				// in order to terminate the inotify loop. See eventProducerLoop.Close().
-				success, err := syscall.InotifyRmWatch(w.fd, uint32(wd))
-				if success != 0 || err != nil {
-					warnf("inotify_rm_watch(%q) failed: status=%v, err=%v", dirPath, success, err)
-				}
-			}
-
-			err = syscall.Close(w.fd)
+			err = w.winWatcher.Close()
 			if err != nil {
-				warnf("failed to close the inotify file descriptor: %v", err)
+				warnf("failed to close winfsnotify.Watcher: %v", err)
 			}
 
 			for _, file := range w.watchedFiles {
@@ -107,9 +101,6 @@ func Run(globs []glob.Glob, readall bool, failOnMissingFile bool, log logrus.Fie
 			}
 			return
 		}
-
-		eventProducerLoop := runInotifyLoop(w.fd)
-		defer eventProducerLoop.Close()
 
 		for _, dirPath := range w.watchedDirs {
 			dirLogger := log.WithField("directory", dirPath)
@@ -136,11 +127,11 @@ func Run(globs []glob.Glob, readall bool, failOnMissingFile bool, log logrus.Fie
 			}
 		}
 
-		for { // inotify event consumer loop
+		for { // event consumer loop
 			select {
 			case <-w.done:
 				return
-			case event := <-eventProducerLoop.events:
+			case event := <-w.winWatcher.Event:
 				processEventError := w.processEvent(event, log)
 				if processEventError != nil {
 					select {
@@ -149,14 +140,15 @@ func Run(globs []glob.Glob, readall bool, failOnMissingFile bool, log logrus.Fie
 					}
 					return
 				}
-			case err := <-eventProducerLoop.errors:
+			case err := <-w.winWatcher.Error:
 				select {
 				case <-w.done:
-				case w.errors <- err:
+				case w.errors <- NewError(NotSpecified, err, "error reading file system events"):
 				}
 				return
 			}
 		}
+
 	}()
 	return w, nil
 }
@@ -164,68 +156,73 @@ func Run(globs []glob.Glob, readall bool, failOnMissingFile bool, log logrus.Fie
 func initWatcher(globs []glob.Glob) (*watcher, Error) {
 	var (
 		w = &watcher{
-			globs:        globs,
-			watchedDirs:  make(map[int]string),
-			watchedFiles: make(map[string]*fileWithReader),
-			lines:        make(chan Line),
-			errors:       make(chan Error),
-			done:         make(chan struct{}),
+			globs:  globs,
+			lines:  make(chan Line),
+			errors: make(chan Error),
+			done:   make(chan struct{}),
 		}
 		err error
 	)
-	w.fd, err = syscall.InotifyInit1(syscall.IN_CLOEXEC)
+	w.winWatcher, err = winfsnotify.NewWatcher()
 	if err != nil {
-		return nil, NewError(NotSpecified, err, "inotify_init1() failed")
+		return nil, NewError(NotSpecified, err, "failed to initialize file system watcher")
 	}
 	return w, nil
 }
 
 func (w *watcher) watchDirs(log logrus.FieldLogger) Error {
 	var (
-		wd       int
+		err      error
+		Err      Error
 		dirPaths []string
 		dirPath  string
-		Err      Error
-		err      error
 	)
+
 	dirPaths, Err = uniqueDirs(w.globs)
 	if Err != nil {
 		return Err
 	}
+
 	for _, dirPath = range dirPaths {
 		log.Debugf("watching directory %v", dirPath)
-		wd, err = syscall.InotifyAddWatch(w.fd, dirPath, syscall.IN_MODIFY|syscall.IN_MOVED_FROM|syscall.IN_MOVED_TO|syscall.IN_DELETE|syscall.IN_CREATE)
+		err = w.winWatcher.Watch(dirPath)
 		if err != nil {
-			w.Close()
-			return NewErrorf(NotSpecified, err, "%q: inotify_add_watch() failed", dirPath)
+			return NewErrorf(NotSpecified, err, "%v: failed to watch directory", dirPath)
 		}
-		w.watchedDirs[wd] = dirPath
+		w.watchedDirs = append(w.watchedDirs, dirPath)
 	}
 	return nil
 }
 
 func (w *watcher) syncFilesInDir(dirPath string, readall bool, log logrus.FieldLogger) Error {
 	var (
+		newFile           *os.File
 		watchedFilesAfter = make(map[string]*fileWithReader)
-		fileInfos         []os.FileInfo
+		fileInfos         []*fileInfo
 		Err               Error
+		err               error
 	)
 	fileInfos, Err = ls(dirPath)
 	if Err != nil {
 		return Err
 	}
 	for _, fileInfo := range fileInfos {
-		filePath := filepath.Join(dirPath, fileInfo.Name())
-		fileLogger := log.WithField("file", fileInfo.Name())
+		filePath := filepath.Join(dirPath, fileInfo.filename)
+		fileLogger := log.WithField("file", fileInfo.filename)
 		if !anyGlobMatches(w.globs, filePath) {
 			fileLogger.Debug("skipping file, because no glob matches")
 			continue
 		}
-		if fileInfo.IsDir() {
+		if fileInfo.ffd.FileAttributes&syscall.FILE_ATTRIBUTE_DIRECTORY == syscall.FILE_ATTRIBUTE_DIRECTORY {
 			fileLogger.Debug("skipping, because it is a directory")
 			continue
 		}
-		existingFilePath, Err := w.findSameFile(fileInfo)
+		newFile, Err = openFile(filePath)
+		if Err != nil {
+			return Err
+		}
+		// TODO: Maybe call syscall.GetFileType(newFile.fileHandle) and skip files other than FILE_TYPE_DISK
+		existingFilePath, Err := w.findSameFile(newFile)
 		if Err != nil {
 			return Err
 		}
@@ -238,17 +235,14 @@ func (w *watcher) syncFilesInDir(dirPath string, readall bool, log logrus.FieldL
 				fileLogger.Debug("skipping, because file is already watched")
 			}
 			watchedFilesAfter[filePath] = existingFile
+			newFile.Close()
 			continue
-		}
-		newFile, err := os.Open(filePath)
-		if err != nil {
-			return NewErrorf(NotSpecified, err, "%v: failed to open file", newFile)
 		}
 		if !readall {
 			_, err = newFile.Seek(0, io.SeekEnd)
 			if err != nil {
 				newFile.Close()
-				return NewErrorf(NotSpecified, err, "%v: failed to seek to end of file", filePath)
+				return NewError(NotSpecified, os.NewSyscallError("seek", err), filePath)
 			}
 		}
 		fileLogger = fileLogger.WithField("fd", newFile.Fd())
@@ -271,56 +265,63 @@ func (w *watcher) syncFilesInDir(dirPath string, readall bool, log logrus.FieldL
 	return nil
 }
 
-func ls(dirPath string) ([]os.FileInfo, Error) {
+// https://docs.microsoft.com/en-us/windows/desktop/FileIO/listing-the-files-in-a-directory
+func ls(dirPath string) ([]*fileInfo, Error) {
 	var (
-		dir       *os.File
-		fileInfos []os.FileInfo
-		err       error
+		ffd      syscall.Win32finddata
+		handle   syscall.Handle
+		result   []*fileInfo
+		filename string
+		err      error
 	)
-	dir, err = os.Open(dirPath)
+	globAll := dirPath + `\*`
+	globAllP, err := syscall.UTF16PtrFromString(globAll)
 	if err != nil {
-		return nil, NewErrorf(NotSpecified, err, "%q: failed to open directory", dirPath)
+		return nil, NewErrorf(NotSpecified, os.NewSyscallError("UTF16PtrFromString", err), "%v: invalid directory name", dirPath)
 	}
-	defer dir.Close()
-	fileInfos, err = dir.Readdir(-1)
-	if err != nil {
-		return nil, NewErrorf(NotSpecified, err, "%q: failed to read directory", dirPath)
+	for handle, err = syscall.FindFirstFile(globAllP, &ffd); err == nil; err = syscall.FindNextFile(handle, &ffd) {
+		filename = syscall.UTF16ToString(ffd.FileName[:])
+		if filename != "." && filename != ".." {
+			result = append(result, &fileInfo{
+				filename: filename,
+				ffd:      ffd,
+			})
+		}
 	}
-	return fileInfos, nil
+	if err != syscall.ERROR_NO_MORE_FILES {
+		return nil, NewErrorf(NotSpecified, err, "%v: failed to read directory", dirPath)
+	}
+	return result, nil
 }
 
-func (w *watcher) processEvent(event inotifyEvent, log logrus.FieldLogger) Error {
-	dirPath, ok := w.watchedDirs[int(event.Wd)]
-	if !ok {
+func (w *watcher) processEvent(event *winfsnotify.Event, log logrus.FieldLogger) Error {
+	dirPath, fileName := w.dirAndFile(event.Name)
+	if len(dirPath) == 0 {
 		return NewError(NotSpecified, nil, "watch list inconsistent: received a file system event for an unknown directory")
 	}
 	log.WithField("directory", dirPath).Debugf("received event: %v", event)
-	if event.Mask&syscall.IN_IGNORED == syscall.IN_IGNORED {
-		delete(w.watchedDirs, int(event.Wd))
-		return NewErrorf(NotSpecified, nil, "%s: directory was removed while being watched", dirPath)
-	}
-	if event.Mask&syscall.IN_MODIFY == syscall.IN_MODIFY {
-		file, ok := w.watchedFiles[filepath.Join(dirPath, event.Name)]
+	if event.Mask&winfsnotify.FS_MODIFY == winfsnotify.FS_MODIFY {
+		file, ok := w.watchedFiles[filepath.Join(dirPath, fileName)]
 		if !ok {
 			return nil // unrelated file was modified
 		}
-		truncated, err := isTruncated(file.file)
-		if err != nil {
-			return NewErrorf(NotSpecified, err, "%v: seek() or stat() failed", file.file.Name())
+		truncated, Err := isTruncated(file.file)
+		if Err != nil {
+			return Err
 		}
 		if truncated {
-			_, err = file.file.Seek(0, io.SeekStart)
+			_, err := file.file.Seek(0, io.SeekStart)
 			if err != nil {
-				return NewErrorf(NotSpecified, err, "%v: seek() failed", file.file.Name())
+				return NewError(NotSpecified, os.NewSyscallError("seek", err), file.file.Name())
 			}
 			file.reader.Clear()
 		}
-		readErr := w.readNewLines(file, log)
-		if readErr != nil {
-			return readErr
+		Err = w.readNewLines(file, log)
+		if Err != nil {
+			return Err
 		}
 	}
-	if event.Mask&syscall.IN_MOVED_FROM == syscall.IN_MOVED_FROM || event.Mask&syscall.IN_DELETE == syscall.IN_DELETE || event.Mask&syscall.IN_CREATE == syscall.IN_CREATE || event.Mask&syscall.IN_MOVED_TO == syscall.IN_MOVED_TO {
+	if event.Mask&winfsnotify.FS_MOVED_FROM == winfsnotify.FS_MOVED_FROM || event.Mask&winfsnotify.FS_DELETE == winfsnotify.FS_DELETE || event.Mask&winfsnotify.FS_CREATE == winfsnotify.FS_CREATE || event.Mask&winfsnotify.FS_MOVED_TO == winfsnotify.FS_MOVED_TO {
 		// There are a lot of corner cases here:
 		// * a file is renamed, but still matches the pattern so we continue watching it (MOVED_FROM followed by MOVED_TO)
 		// * a file is created overwriting an existing file
@@ -402,14 +403,14 @@ func uniqueDirs(globs []glob.Glob) ([]string, Error) {
 	return result, nil
 }
 
-func isTruncated(file *os.File) (bool, error) {
+func isTruncated(file *os.File) (bool, Error) {
 	currentPos, err := file.Seek(0, io.SeekCurrent)
 	if err != nil {
-		return false, err
+		return false, NewError(NotSpecified, os.NewSyscallError("seek", err), file.Name())
 	}
 	fileInfo, err := file.Stat()
 	if err != nil {
-		return false, err
+		return false, NewError(NotSpecified, os.NewSyscallError("stat", err), file.Name())
 	}
 	return currentPos > fileInfo.Size(), nil
 }
@@ -423,17 +424,17 @@ func anyGlobMatches(globs []glob.Glob, path string) bool {
 	return false
 }
 
-func (w *watcher) findSameFile(file os.FileInfo) (string, Error) {
-	var (
-		fileInfo os.FileInfo
-		err      error
-	)
+func (w *watcher) findSameFile(newFile *os.File) (string, Error) {
+	newFileStat, err := newFile.Stat()
+	if err != nil {
+		return "", NewError(NotSpecified, os.NewSyscallError("stat", err), newFile.Name())
+	}
 	for watchedFilePath, watchedFile := range w.watchedFiles {
-		fileInfo, err = watchedFile.file.Stat()
+		watchedFileStat, err := watchedFile.file.Stat()
 		if err != nil {
-			return "", NewErrorf(NotSpecified, err, "%v: stat failed", watchedFile.file.Name())
+			return "", NewError(NotSpecified, os.NewSyscallError("stat", err), watchedFilePath)
 		}
-		if os.SameFile(fileInfo, file) {
+		if os.SameFile(watchedFileStat, newFileStat) {
 			return watchedFilePath, nil
 		}
 	}
@@ -456,4 +457,47 @@ func contains(list map[string]*fileWithReader, f *fileWithReader) bool {
 		}
 	}
 	return false
+}
+
+func (w *watcher) dirAndFile(fileOrDir string) (string, string) {
+	var (
+		dirPath  = ""
+		fileName = ""
+	)
+	for _, dir := range w.watchedDirs {
+		if strings.HasPrefix(fileOrDir, dir) && len(dir) > len(dirPath) {
+			dirPath = dir
+			fileName = strings.TrimLeft(fileOrDir[len(dirPath):], "\\/")
+		}
+	}
+	return dirPath, fileName
+}
+
+// Don't use os.Open(), because we want to set the Windows file share flags.
+func openFile(filePath string) (*os.File, Error) {
+	var (
+		filePathPtr *uint16
+		fileHandle  syscall.Handle
+		err         error
+	)
+	filePathPtr, err = syscall.UTF16PtrFromString(filePath)
+	if err != nil {
+		return nil, NewErrorf(NotSpecified, os.NewSyscallError("UTF16PtrFromString", err), "%q: illegal file name", filePath)
+	}
+	fileHandle, err = syscall.CreateFile(
+		filePathPtr,
+		syscall.GENERIC_READ,
+		uint32(syscall.FILE_SHARE_READ|syscall.FILE_SHARE_WRITE|syscall.FILE_SHARE_DELETE),
+		nil,
+		syscall.OPEN_EXISTING,
+		syscall.FILE_ATTRIBUTE_NORMAL,
+		0)
+	if err != nil {
+		if err == syscall.ERROR_FILE_NOT_FOUND {
+			return nil, NewError(FileNotFound, os.NewSyscallError("CreateFile", err), filePath)
+		} else {
+			return nil, NewErrorf(NotSpecified, os.NewSyscallError("CreateFile", err), "%q: cannot open file", filePath)
+		}
+	}
+	return os.NewFile(uintptr(fileHandle), filePath), nil
 }

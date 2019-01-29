@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build !windows
-
 package tailer
 
 import (
@@ -22,7 +20,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// TODO: This wrapper will be removed when all OSs are migrated to the new fswatcher, supporting multiple log files.
+// TODO: This wrapper will be removed when all tailers are migrated to the new fswatcher.
+//       Status: polling file tailer still missing, all others migrated.
 
 type tailerWrapper struct {
 	lines  chan string
