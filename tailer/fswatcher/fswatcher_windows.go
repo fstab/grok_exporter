@@ -210,7 +210,7 @@ func (w *watcher) syncFilesInDir(dirPath string, readall bool, log logrus.FieldL
 		filePath := filepath.Join(dirPath, fileInfo.filename)
 		fileLogger := log.WithField("file", fileInfo.filename)
 		if !anyGlobMatches(w.globs, filePath) {
-			fileLogger.Debug("skipping file, because no glob matches")
+			fileLogger.Debug("skipping file, because file name does not match")
 			continue
 		}
 		if fileInfo.ffd.FileAttributes&syscall.FILE_ATTRIBUTE_DIRECTORY == syscall.FILE_ATTRIBUTE_DIRECTORY {

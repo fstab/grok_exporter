@@ -469,12 +469,12 @@ func rotate(t *testing.T, log logrus.FieldLogger, logfile string, opt logrotateO
 	}
 	switch {
 	case opt == _nocreate:
-		moveOrFail(t, mvOpt, logfile)
+		moveOrFail(t, mvOpt, logfile, log)
 	case opt == _create:
-		moveOrFail(t, mvOpt, logfile)
+		moveOrFail(t, mvOpt, logfile, log)
 		createOrFail(t, logfile)
 	case opt == _create_from_temp:
-		moveOrFail(t, mvOpt, logfile)
+		moveOrFail(t, mvOpt, logfile, log)
 		createFromTemp(t, logfile)
 	case opt == _copytruncate:
 		if mvOpt != cp {
@@ -493,22 +493,40 @@ func rotate(t *testing.T, log logrus.FieldLogger, logfile string, opt logrotateO
 	log.Debugf("Simulated logrotate with option %v and mvOption %v\n", opt, mvOpt)
 }
 
-func moveOrFail(t *testing.T, mvOpt logrotateMoveOption, logfile string) {
+func moveOrFail(t *testing.T, mvOpt logrotateMoveOption, logfile string, log logrus.FieldLogger) {
 	dir := filepath.Dir(logfile)
 	filename := filepath.Base(logfile)
 	switch {
 	case mvOpt == mv:
+		log.Debugf("file list before: %#v", filenames(ls(t, dir)))
+		log.Debugf("mv %v %v", logfile, fmt.Sprintf("%v.1", logfile))
 		mvOrFail(t, logfile, fmt.Sprintf("%v.1", logfile))
+		log.Debugf("file list after: %#v", filenames(ls(t, dir)))
 	case mvOpt == cp:
+		log.Debugf("file list before: %#v", filenames(ls(t, dir)))
+		log.Debugf("cp %v %v", logfile, fmt.Sprintf("%v.1", logfile))
+		log.Debugf("rm %v", logfile)
 		cpOrFail(t, logfile, fmt.Sprintf("%v.1", logfile))
 		rmOrFail(t, logfile)
+		log.Debugf("file list after: %#v", filenames(ls(t, dir)))
 	case mvOpt == rm:
+		log.Debugf("file list before: %#v", filenames(ls(t, dir)))
+		log.Debugf("rm %v", logfile)
 		rmOrFail(t, logfile)
+		log.Debugf("file list after: %#v", filenames(ls(t, dir)))
 	}
 	filesAfterRename := ls(t, dir)
 	if containsFile(filesAfterRename, filename) {
 		t.Fatalf("%v still contains file %v after mv.", dir, filename)
 	}
+}
+
+func filenames(fileInfos []os.FileInfo) []string {
+	result := make([]string, 0, len(fileInfos))
+	for _, fileInfo := range fileInfos {
+		result = append(result, fileInfo.Name())
+	}
+	return result
 }
 
 func mvOrFail(t *testing.T, fromPath string, toPath string) {
