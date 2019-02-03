@@ -37,7 +37,7 @@ type watcher struct {
 }
 
 type fileWithReader struct {
-	file   *os.File
+	file   *File
 	reader *lineReader
 }
 
@@ -196,7 +196,7 @@ func (w *watcher) watchDirs(log logrus.FieldLogger) Error {
 
 func (w *watcher) syncFilesInDir(dirPath string, readall bool, log logrus.FieldLogger) Error {
 	var (
-		newFile           *os.File
+		newFile           *File
 		watchedFilesAfter = make(map[string]*fileWithReader)
 		fileInfos         []*fileInfo
 		Err               Error
@@ -217,20 +217,17 @@ func (w *watcher) syncFilesInDir(dirPath string, readall bool, log logrus.FieldL
 			fileLogger.Debug("skipping, because it is a directory")
 			continue
 		}
-		newFile, Err = openFile(filePath)
+		newFile, Err = open(filePath)
 		if Err != nil {
 			return Err
 		}
 		// TODO: Maybe call syscall.GetFileType(newFile.fileHandle) and skip files other than FILE_TYPE_DISK
-		existingFilePath, Err := w.findSameFile(newFile)
-		if Err != nil {
-			return Err
-		}
+		existingFilePath := w.findSameFile(newFile)
 		if len(existingFilePath) > 0 {
 			existingFile := w.watchedFiles[existingFilePath]
 			if existingFilePath != filePath {
 				fileLogger.WithField("fd", existingFile.file.Fd()).Infof("file was moved from %v", existingFilePath)
-				existingFile.file = os.NewFile(existingFile.file.Fd(), filePath)
+				existingFile.file = NewFile(existingFile.file, filePath)
 			} else {
 				fileLogger.Debug("skipping, because file is already watched")
 			}
@@ -305,9 +302,13 @@ func (w *watcher) processEvent(event *winfsnotify.Event, log logrus.FieldLogger)
 		if !ok {
 			return nil // unrelated file was modified
 		}
-		truncated, Err := isTruncated(file.file)
+		truncated, Err := file.file.CheckTruncated()
 		if Err != nil {
-			return Err
+			if Err.Type() == WinFileRemoved {
+				return w.syncFilesInDir(dirPath, true, log)
+			} else {
+				return Err
+			}
 		}
 		if truncated {
 			_, err := file.file.Seek(0, io.SeekStart)
@@ -424,21 +425,13 @@ func anyGlobMatches(globs []glob.Glob, path string) bool {
 	return false
 }
 
-func (w *watcher) findSameFile(newFile *os.File) (string, Error) {
-	newFileStat, err := newFile.Stat()
-	if err != nil {
-		return "", NewError(NotSpecified, os.NewSyscallError("stat", err), newFile.Name())
-	}
+func (w *watcher) findSameFile(newFile *File) string {
 	for watchedFilePath, watchedFile := range w.watchedFiles {
-		watchedFileStat, err := watchedFile.file.Stat()
-		if err != nil {
-			return "", NewError(NotSpecified, os.NewSyscallError("stat", err), watchedFilePath)
-		}
-		if os.SameFile(watchedFileStat, newFileStat) {
-			return watchedFilePath, nil
+		if watchedFile.file.SameFile(newFile) {
+			return watchedFilePath
 		}
 	}
-	return "", nil
+	return ""
 }
 
 func containsString(list []string, s string) bool {
@@ -471,33 +464,4 @@ func (w *watcher) dirAndFile(fileOrDir string) (string, string) {
 		}
 	}
 	return dirPath, fileName
-}
-
-// Don't use os.Open(), because we want to set the Windows file share flags.
-func openFile(filePath string) (*os.File, Error) {
-	var (
-		filePathPtr *uint16
-		fileHandle  syscall.Handle
-		err         error
-	)
-	filePathPtr, err = syscall.UTF16PtrFromString(filePath)
-	if err != nil {
-		return nil, NewErrorf(NotSpecified, os.NewSyscallError("UTF16PtrFromString", err), "%q: illegal file name", filePath)
-	}
-	fileHandle, err = syscall.CreateFile(
-		filePathPtr,
-		syscall.GENERIC_READ,
-		uint32(syscall.FILE_SHARE_READ|syscall.FILE_SHARE_WRITE|syscall.FILE_SHARE_DELETE),
-		nil,
-		syscall.OPEN_EXISTING,
-		syscall.FILE_ATTRIBUTE_NORMAL,
-		0)
-	if err != nil {
-		if err == syscall.ERROR_FILE_NOT_FOUND {
-			return nil, NewError(FileNotFound, os.NewSyscallError("CreateFile", err), filePath)
-		} else {
-			return nil, NewErrorf(NotSpecified, os.NewSyscallError("CreateFile", err), "%q: cannot open file", filePath)
-		}
-	}
-	return os.NewFile(uintptr(fileHandle), filePath), nil
 }

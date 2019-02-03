@@ -22,6 +22,13 @@ const (
 	NotSpecified = iota
 	DirectoryNotFound
 	FileNotFound
+
+	// As we cannot keep files open on Windows (see comment in file_windows.go),
+	// it might happen that a file is removed between two reads.
+	// We signal this using the WinFileRemoved error and handle it by calling syncFilesInDir.
+	// This error is never sent through the errors channel, it's only used internally.
+	// TODO: Refactor error handling and make this an internal error.
+	WinFileRemoved
 )
 
 type Error interface {
