@@ -17,6 +17,7 @@ package fswatcher
 import (
 	"fmt"
 	"github.com/fstab/grok_exporter/tailer/glob"
+	"github.com/prometheus/common/log"
 	"github.com/sirupsen/logrus"
 	"io"
 	"os"
@@ -63,114 +64,39 @@ func (w *watcher) Close() {
 	close(w.done)
 }
 
-func Run(globs []glob.Glob, readall bool, failOnMissingFile bool, log logrus.FieldLogger) (FSWatcher, error) {
+func (w *watcher) shutdown() {
 
-	var (
-		w   *watcher
-		err error
-		Err Error
-	)
+	close(w.lines)
+	close(w.errors)
 
-	w, Err = initWatcher(globs)
-	if Err != nil {
-		return nil, Err
+	warnf := func(format string, args ...interface{}) {
+		log.Warnf("error while shutting down the file system watcher: %v", fmt.Sprint(format, args))
 	}
 
-	go func() {
+	// After calling keventProducerLoop.Close(), we need to close the kq descriptor
+	// in order to interrupt the kevent() system call. See keventProducerLoop.Close().
+	err := syscall.Close(w.kq)
+	if err != nil {
+		warnf("closing the kq descriptor failed: %v", err)
+	}
 
-		defer func() {
-
-			close(w.lines)
-			close(w.errors)
-
-			warnf := func(format string, args ...interface{}) {
-				log.Warnf("error while shutting down the file system watcher: %v", fmt.Sprint(format, args))
-			}
-
-			// After calling keventProducerLoop.Close(), we need to close the kq descriptor
-			// in order to interrupt the kevent() system call. See keventProducerLoop.Close().
-			err = syscall.Close(w.kq)
-			if err != nil {
-				warnf("closing the kq descriptor failed: %v", err)
-			}
-
-			for _, file := range w.watchedFiles {
-				err = file.file.Close()
-				if err != nil {
-					warnf("close(%q) failed: %v", file.file.Name(), err)
-				}
-			}
-
-			for _, dir := range w.watchedDirs {
-				err = dir.Close()
-				if err != nil {
-					warnf("close(%q) failed: %v", dir.Name(), err)
-				}
-			}
-		}()
-
-		Err = w.watchDirs(log)
-		if Err != nil {
-			select {
-			case <-w.done:
-			case w.errors <- Err:
-			}
-			return
+	for _, file := range w.watchedFiles {
+		err = file.file.Close()
+		if err != nil {
+			warnf("close(%q) failed: %v", file.file.Name(), err)
 		}
+	}
 
-		keventProducerLoop := runKeventLoop(w.kq)
-		defer keventProducerLoop.Close()
-
-		// Initializing watches for the files within the directories happens in the goroutine, because with readall=true
-		// this will immediately write lines to the lines channel, so this blocks until the caller starts reading from the lines channel.
-		for _, dir := range w.watchedDirs {
-			dirLogger := log.WithField("directory", dir.Name())
-			dirLogger.Debugf("initializing directory")
-			syncFilesErr := w.syncFilesInDir(dir, readall, dirLogger)
-			if syncFilesErr != nil {
-				select {
-				case <-w.done:
-				case w.errors <- syncFilesErr:
-				}
-				return
-			}
+	for _, dir := range w.watchedDirs {
+		err = dir.Close()
+		if err != nil {
+			warnf("close(%q) failed: %v", dir.Name(), err)
 		}
+	}
+}
 
-		// make sure at least one logfile was found for each glob
-		if failOnMissingFile {
-			missingFileError := w.checkMissingFile()
-			if missingFileError != nil {
-				select {
-				case <-w.done:
-				case w.errors <- missingFileError:
-				}
-				return
-			}
-		}
-
-		for { // kevent consumer loop
-			select {
-			case <-w.done:
-				return
-			case event := <-keventProducerLoop.events:
-				processEventError := w.processEvent(event, log)
-				if processEventError != nil {
-					select {
-					case <-w.done:
-					case w.errors <- processEventError:
-					}
-					return
-				}
-			case err := <-keventProducerLoop.errors:
-				select {
-				case <-w.done:
-				case w.errors <- err:
-				}
-				return
-			}
-		}
-	}()
-	return w, nil
+func (w *watcher) runFseventProducerLoop() *keventloop {
+	return runKeventLoop(w.kq)
 }
 
 func initWatcher(globs []glob.Glob) (*watcher, Error) {

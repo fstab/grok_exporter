@@ -17,6 +17,7 @@ package fswatcher
 import (
 	"fmt"
 	"github.com/fstab/grok_exporter/tailer/glob"
+	"github.com/prometheus/common/log"
 	"github.com/sirupsen/logrus"
 	"io"
 	"os"
@@ -53,112 +54,39 @@ func (w *watcher) Close() {
 	close(w.done)
 }
 
-func Run(globs []glob.Glob, readall bool, failOnMissingFile bool, log logrus.FieldLogger) (FSWatcher, Error) {
+func (w *watcher) shutdown() {
 
-	var (
-		w   *watcher
-		err error
-		Err Error
-	)
+	close(w.lines)
+	close(w.errors)
 
-	w, Err = initWatcher(globs)
-	if Err != nil {
-		return nil, Err
+	warnf := func(format string, args ...interface{}) {
+		log.Warnf("error while shutting down the file system watcher: %v", fmt.Sprint(format, args))
 	}
 
-	go func() {
-
-		defer func() {
-
-			close(w.lines)
-			close(w.errors)
-
-			warnf := func(format string, args ...interface{}) {
-				log.Warnf("error while shutting down the file system watcher: %v", fmt.Sprint(format, args))
-			}
-
-			for wd, dirPath := range w.watchedDirs {
-				// After calling eventProducerLoop.Close(), we need to call inotify_rm_watch()
-				// in order to terminate the inotify loop. See eventProducerLoop.Close().
-				success, err := syscall.InotifyRmWatch(w.fd, uint32(wd))
-				if success != 0 || err != nil {
-					warnf("inotify_rm_watch(%q) failed: status=%v, err=%v", dirPath, success, err)
-				}
-			}
-
-			err = syscall.Close(w.fd)
-			if err != nil {
-				warnf("failed to close the inotify file descriptor: %v", err)
-			}
-
-			for _, file := range w.watchedFiles {
-				err = file.file.Close()
-				if err != nil {
-					warnf("close(%q) failed: %v", file.file.Name(), err)
-				}
-			}
-		}()
-
-		Err = w.watchDirs(log)
-		if Err != nil {
-			select {
-			case <-w.done:
-			case w.errors <- Err:
-			}
-			return
+	for wd, dirPath := range w.watchedDirs {
+		// After calling eventProducerLoop.Close(), we need to call inotify_rm_watch()
+		// in order to terminate the inotify loop. See eventProducerLoop.Close().
+		success, err := syscall.InotifyRmWatch(w.fd, uint32(wd))
+		if success != 0 || err != nil {
+			warnf("inotify_rm_watch(%q) failed: status=%v, err=%v", dirPath, success, err)
 		}
+	}
 
-		eventProducerLoop := runInotifyLoop(w.fd)
-		defer eventProducerLoop.Close()
+	err := syscall.Close(w.fd)
+	if err != nil {
+		warnf("failed to close the inotify file descriptor: %v", err)
+	}
 
-		for _, dirPath := range w.watchedDirs {
-			dirLogger := log.WithField("directory", dirPath)
-			dirLogger.Debugf("initializing directory")
-			Err = w.syncFilesInDir(dirPath, readall, dirLogger)
-			if Err != nil {
-				select {
-				case <-w.done:
-				case w.errors <- Err:
-					return
-				}
-			}
+	for _, file := range w.watchedFiles {
+		err = file.file.Close()
+		if err != nil {
+			warnf("close(%q) failed: %v", file.file.Name(), err)
 		}
+	}
+}
 
-		// make sure at least one logfile was found for each glob
-		if failOnMissingFile {
-			missingFileError := w.checkMissingFile()
-			if missingFileError != nil {
-				select {
-				case <-w.done:
-				case w.errors <- missingFileError:
-				}
-				return
-			}
-		}
-
-		for { // inotify event consumer loop
-			select {
-			case <-w.done:
-				return
-			case event := <-eventProducerLoop.events:
-				processEventError := w.processEvent(event, log)
-				if processEventError != nil {
-					select {
-					case <-w.done:
-					case w.errors <- processEventError:
-					}
-					return
-				}
-			case err := <-eventProducerLoop.errors:
-				select {
-				case <-w.done:
-				case w.errors <- err:
-				}
-				return
-			}
-		}
-	}()
-	return w, nil
+func (w *watcher) runFseventProducerLoop() *inotifyloop {
+	return runInotifyLoop(w.fd)
 }
 
 func initWatcher(globs []glob.Glob) (*watcher, Error) {

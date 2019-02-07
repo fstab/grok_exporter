@@ -17,6 +17,7 @@ package fswatcher
 import (
 	"fmt"
 	"github.com/fstab/grok_exporter/tailer/glob"
+	"github.com/prometheus/common/log"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/exp/winfsnotify"
 	"io"
@@ -58,99 +59,42 @@ func (w *watcher) Close() {
 	close(w.done)
 }
 
-func Run(globs []glob.Glob, readall bool, failOnMissingFile bool, log logrus.FieldLogger) (FSWatcher, error) {
-	var (
-		w   *watcher
-		err error
-		Err Error
-	)
+func (w *watcher) shutdown() {
 
-	w, Err = initWatcher(globs)
-	if Err != nil {
-		return nil, Err
+	close(w.lines)
+	close(w.errors)
+
+	warnf := func(format string, args ...interface{}) {
+		log.Warnf("error while shutting down the file system watcher: %v", fmt.Sprint(format, args))
 	}
 
-	go func() {
-		defer func() {
+	err := w.winWatcher.Close()
+	if err != nil {
+		warnf("failed to close winfsnotify.Watcher: %v", err)
+	}
 
-			close(w.lines)
-			close(w.errors)
-
-			warnf := func(format string, args ...interface{}) {
-				log.Warnf("error while shutting down the file system watcher: %v", fmt.Sprint(format, args))
-			}
-
-			err = w.winWatcher.Close()
-			if err != nil {
-				warnf("failed to close winfsnotify.Watcher: %v", err)
-			}
-
-			for _, file := range w.watchedFiles {
-				err = file.file.Close()
-				if err != nil {
-					warnf("close(%q) failed: %v", file.file.Name(), err)
-				}
-			}
-		}()
-
-		Err = w.watchDirs(log)
-		if Err != nil {
-			select {
-			case <-w.done:
-			case w.errors <- Err:
-			}
-			return
+	for _, file := range w.watchedFiles {
+		err = file.file.Close()
+		if err != nil {
+			warnf("close(%q) failed: %v", file.file.Name(), err)
 		}
+	}
+}
 
-		for _, dirPath := range w.watchedDirs {
-			dirLogger := log.WithField("directory", dirPath)
-			dirLogger.Debugf("initializing directory")
-			Err = w.syncFilesInDir(dirPath, readall, dirLogger)
-			if Err != nil {
-				select {
-				case <-w.done:
-				case w.errors <- Err:
-					return
-				}
-			}
-		}
+func (w *watcher) runFseventProducerLoop() *winwatcherloop {
+	return &winwatcherloop{
+		events: w.winWatcher.Event,
+		errors: w.winWatcher.Error,
+	}
+}
 
-		// make sure at least one logfile was found for each glob
-		if failOnMissingFile {
-			missingFileError := w.checkMissingFile()
-			if missingFileError != nil {
-				select {
-				case <-w.done:
-				case w.errors <- missingFileError:
-				}
-				return
-			}
-		}
+type winwatcherloop struct {
+	events chan *winfsnotify.Event
+	errors chan error
+}
 
-		for { // event consumer loop
-			select {
-			case <-w.done:
-				return
-			case event := <-w.winWatcher.Event:
-				processEventError := w.processEvent(event, log)
-				if processEventError != nil {
-					select {
-					case <-w.done:
-					case w.errors <- processEventError:
-					}
-					return
-				}
-			case err := <-w.winWatcher.Error:
-				select {
-				case <-w.done:
-				case w.errors <- NewError(NotSpecified, err, "error reading file system events"):
-				}
-				return
-			}
-		}
-
-	}()
-	return w, nil
+func (l *winwatcherloop) Close() {
+	// noop, winwatcher.Close() called in shutdown()
 }
 
 func initWatcher(globs []glob.Glob) (*watcher, Error) {
