@@ -37,7 +37,7 @@ import (
 
 type watcher struct {
 	globs        []glob.Glob
-	watchedDirs  []*os.File
+	watchedDirs  []*Dir
 	watchedFiles map[string]*fileWithReader // path -> fileWithReader
 	kq           int
 	lines        chan Line
@@ -88,9 +88,9 @@ func (w *watcher) shutdown() {
 	}
 
 	for _, dir := range w.watchedDirs {
-		err = dir.Close()
+		err = dir.file.Close()
 		if err != nil {
-			warnf("close(%q) failed: %v", dir.Name(), err)
+			warnf("close(%q) failed: %v", dir.file.Name(), err)
 		}
 	}
 }
@@ -135,7 +135,7 @@ func (w *watcher) watchDirs(log logrus.FieldLogger) Error {
 		if err != nil {
 			return NewErrorf(NotSpecified, err, "%v: open() failed", dirPath)
 		}
-		w.watchedDirs = append(w.watchedDirs, dir)
+		w.watchedDirs = append(w.watchedDirs, &Dir{file: dir})
 		_, err = syscall.Kevent(w.kq, []syscall.Kevent_t{makeEvent(dir)}, nil, &zeroTimeout)
 		if err != nil {
 			return NewErrorf(NotSpecified, err, "%v: kevent() failed", dirPath)
@@ -145,7 +145,7 @@ func (w *watcher) watchDirs(log logrus.FieldLogger) Error {
 }
 
 // check if files have been added/removed and update kevent file watches accordingly
-func (w *watcher) syncFilesInDir(dir *os.File, readall bool, log logrus.FieldLogger) Error {
+func (w *watcher) syncFilesInDir(dir *Dir, readall bool, log logrus.FieldLogger) Error {
 	var (
 		existingFile      *fileWithReader
 		newFile           *os.File
@@ -158,12 +158,12 @@ func (w *watcher) syncFilesInDir(dir *os.File, readall bool, log logrus.FieldLog
 		fileLogger        logrus.FieldLogger
 		zeroTimeout       = syscall.NsecToTimespec(0) // timeout zero means non-blocking kevent() call
 	)
-	fileInfos, Err = ls(dir)
+	fileInfos, Err = dir.ls()
 	if Err != nil {
 		return Err
 	}
 	for _, fileInfo = range fileInfos {
-		filePath := filepath.Join(dir.Name(), fileInfo.Name())
+		filePath := filepath.Join(dir.file.Name(), fileInfo.Name())
 		fileLogger = log.WithField("file", fileInfo.Name())
 		if !anyGlobMatches(w.globs, filePath) {
 			fileLogger.Debug("skipping file, because file name does not match")
@@ -223,27 +223,15 @@ func (w *watcher) syncFilesInDir(dir *os.File, readall bool, log logrus.FieldLog
 	return nil
 }
 
-func ls(dir *os.File) ([]os.FileInfo, Error) {
-	_, err := dir.Seek(0, io.SeekStart)
-	if err != nil {
-		return nil, NewError(NotSpecified, os.NewSyscallError("seek", err), dir.Name())
-	}
-	result, err := dir.Readdir(-1)
-	if err != nil {
-		return nil, NewError(NotSpecified, os.NewSyscallError("readdir", err), dir.Name())
-	}
-	return result, nil
-}
-
 func (w *watcher) processEvent(kevent syscall.Kevent_t, log logrus.FieldLogger) Error {
 	var (
-		dir                   *os.File
+		dir                   *Dir
 		file                  *fileWithReader
 		dirLogger, fileLogger logrus.FieldLogger
 	)
 	for _, dir = range w.watchedDirs {
-		if kevent.Ident == fdToInt(dir.Fd()) {
-			dirLogger = log.WithField("directory", dir.Name())
+		if kevent.Ident == fdToInt(dir.file.Fd()) {
+			dirLogger = log.WithField("directory", dir.file.Name())
 			dirLogger.Debugf("dir event: %v", kevent)
 			return w.processDirEvent(kevent, dir, dirLogger)
 		}
@@ -261,24 +249,24 @@ func (w *watcher) processEvent(kevent syscall.Kevent_t, log logrus.FieldLogger) 
 	return nil
 }
 
-func (w *watcher) processDirEvent(kevent syscall.Kevent_t, dir *os.File, dirLogger logrus.FieldLogger) Error {
+func (w *watcher) processDirEvent(kevent syscall.Kevent_t, dir *Dir, dirLogger logrus.FieldLogger) Error {
 	if kevent.Fflags&syscall.NOTE_WRITE == syscall.NOTE_WRITE || kevent.Fflags&syscall.NOTE_EXTEND == syscall.NOTE_EXTEND {
 		// NOTE_WRITE on the directory's fd means a file was created, deleted, or moved. This covers inotify's MOVED_TO.
 		// NOTE_EXTEND reports that a directory entry was added	or removed as the result of rename operation.
 		dirLogger.Debugf("checking for new/deleted/moved files")
 		err := w.syncFilesInDir(dir, true, dirLogger)
 		if err != nil {
-			return NewErrorf(NotSpecified, err, "%v: failed to update list of files in directory", dir.Name())
+			return NewErrorf(NotSpecified, err, "%v: failed to update list of files in directory", dir.file.Name())
 		}
 	}
 	if kevent.Fflags&syscall.NOTE_DELETE == syscall.NOTE_DELETE {
-		return NewErrorf(NotSpecified, nil, "%v: directory was deleted", dir.Name())
+		return NewErrorf(NotSpecified, nil, "%v: directory was deleted", dir.file.Name())
 	}
 	if kevent.Fflags&syscall.NOTE_RENAME == syscall.NOTE_RENAME {
-		return NewErrorf(NotSpecified, nil, "%v: directory was moved", dir.Name())
+		return NewErrorf(NotSpecified, nil, "%v: directory was moved", dir.file.Name())
 	}
 	if kevent.Fflags&syscall.NOTE_REVOKE == syscall.NOTE_REVOKE {
-		return NewErrorf(NotSpecified, nil, "%v: filesystem was unmounted", dir.Name())
+		return NewErrorf(NotSpecified, nil, "%v: filesystem was unmounted", dir.file.Name())
 	}
 	// NOTE_LINK (sub directory created) and NOTE_ATTRIB (attributes changed) are ignored.
 	return nil

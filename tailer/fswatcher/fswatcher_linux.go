@@ -27,7 +27,7 @@ import (
 
 type watcher struct {
 	globs        []glob.Glob
-	watchedDirs  map[int]string             // watch descriptor -> path
+	watchedDirs  []*Dir
 	watchedFiles map[string]*fileWithReader // path -> fileWithReader
 	fd           int
 	lines        chan Line
@@ -93,7 +93,6 @@ func initWatcher(globs []glob.Glob) (*watcher, Error) {
 	var (
 		w = &watcher{
 			globs:        globs,
-			watchedDirs:  make(map[int]string),
 			watchedFiles: make(map[string]*fileWithReader),
 			lines:        make(chan Line),
 			errors:       make(chan Error),
@@ -127,23 +126,23 @@ func (w *watcher) watchDirs(log logrus.FieldLogger) Error {
 			w.Close()
 			return NewErrorf(NotSpecified, err, "%q: inotify_add_watch() failed", dirPath)
 		}
-		w.watchedDirs[wd] = dirPath
+		w.watchedDirs = append(w.watchedDirs, &Dir{wd: wd, path: dirPath})
 	}
 	return nil
 }
 
-func (w *watcher) syncFilesInDir(dirPath string, readall bool, log logrus.FieldLogger) Error {
+func (w *watcher) syncFilesInDir(dir *Dir, readall bool, log logrus.FieldLogger) Error {
 	var (
 		watchedFilesAfter = make(map[string]*fileWithReader)
 		fileInfos         []os.FileInfo
 		Err               Error
 	)
-	fileInfos, Err = ls(dirPath)
+	fileInfos, Err = dir.ls()
 	if Err != nil {
 		return Err
 	}
 	for _, fileInfo := range fileInfos {
-		filePath := filepath.Join(dirPath, fileInfo.Name())
+		filePath := filepath.Join(dir.path, fileInfo.Name())
 		fileLogger := log.WithField("file", fileInfo.Name())
 		if !anyGlobMatches(w.globs, filePath) {
 			fileLogger.Debug("skipping file, because file name does not match")
@@ -199,37 +198,37 @@ func (w *watcher) syncFilesInDir(dirPath string, readall bool, log logrus.FieldL
 	return nil
 }
 
-// TODO: Replace with ioutil.Readdir
-func ls(dirPath string) ([]os.FileInfo, Error) {
-	var (
-		dir       *os.File
-		fileInfos []os.FileInfo
-		err       error
-	)
-	dir, err = os.Open(dirPath)
-	if err != nil {
-		return nil, NewErrorf(NotSpecified, err, "%q: failed to open directory", dirPath)
+func (w *watcher) findDir(event inotifyEvent) *Dir {
+	for _, dir := range w.watchedDirs {
+		if dir.wd == int(event.Wd) {
+			return dir
+		}
 	}
-	defer dir.Close()
-	fileInfos, err = dir.Readdir(-1)
-	if err != nil {
-		return nil, NewErrorf(NotSpecified, err, "%q: failed to read directory", dirPath)
+	return nil
+}
+
+func (w *watcher) unwatchDir(event inotifyEvent) {
+	watchedDirsAfter := make([]*Dir, 0, len(w.watchedDirs)-1)
+	for _, existing := range w.watchedDirs {
+		if existing.wd != int(event.Wd) {
+			watchedDirsAfter = append(watchedDirsAfter, existing)
+		}
 	}
-	return fileInfos, nil
+	w.watchedDirs = watchedDirsAfter
 }
 
 func (w *watcher) processEvent(event inotifyEvent, log logrus.FieldLogger) Error {
-	dirPath, ok := w.watchedDirs[int(event.Wd)]
-	if !ok {
+	dir := w.findDir(event)
+	if dir == nil {
 		return NewError(NotSpecified, nil, "watch list inconsistent: received a file system event for an unknown directory")
 	}
-	log.WithField("directory", dirPath).Debugf("received event: %v", event)
+	log.WithField("directory", dir.path).Debugf("received event: %v", event)
 	if event.Mask&syscall.IN_IGNORED == syscall.IN_IGNORED {
-		delete(w.watchedDirs, int(event.Wd))
-		return NewErrorf(NotSpecified, nil, "%s: directory was removed while being watched", dirPath)
+		w.unwatchDir(event) // need to remove it from watchedDirs, because otherwise we close the removed dir on shutdown which causes an error
+		return NewErrorf(NotSpecified, nil, "%s: directory was removed while being watched", dir.path)
 	}
 	if event.Mask&syscall.IN_MODIFY == syscall.IN_MODIFY {
-		file, ok := w.watchedFiles[filepath.Join(dirPath, event.Name)]
+		file, ok := w.watchedFiles[filepath.Join(dir.path, event.Name)]
 		if !ok {
 			return nil // unrelated file was modified
 		}
@@ -257,7 +256,7 @@ func (w *watcher) processEvent(event inotifyEvent, log logrus.FieldLogger) Error
 		// Trying to figure out what happened from the events would be error prone.
 		// Therefore, we don't care which of the above events we received, we just update our watched files with the current
 		// state of the watched directory.
-		err := w.syncFilesInDir(dirPath, true, log)
+		err := w.syncFilesInDir(dir, true, log)
 		if err != nil {
 			return err
 		}

@@ -33,6 +33,39 @@ type File struct {
 	fileIndexHigh uint32
 }
 
+type Dir struct {
+	path string
+}
+
+// https://docs.microsoft.com/en-us/windows/desktop/FileIO/listing-the-files-in-a-directory
+func (d *Dir) ls() ([]*fileInfo, Error) {
+	var (
+		ffd      syscall.Win32finddata
+		handle   syscall.Handle
+		result   []*fileInfo
+		filename string
+		err      error
+	)
+	globAll := d.path + `\*`
+	globAllP, err := syscall.UTF16PtrFromString(globAll)
+	if err != nil {
+		return nil, NewErrorf(NotSpecified, os.NewSyscallError("UTF16PtrFromString", err), "%v: invalid directory name", d.path)
+	}
+	for handle, err = syscall.FindFirstFile(globAllP, &ffd); err == nil; err = syscall.FindNextFile(handle, &ffd) {
+		filename = syscall.UTF16ToString(ffd.FileName[:])
+		if filename != "." && filename != ".." {
+			result = append(result, &fileInfo{
+				filename: filename,
+				ffd:      ffd,
+			})
+		}
+	}
+	if err != syscall.ERROR_NO_MORE_FILES {
+		return nil, NewErrorf(NotSpecified, err, "%v: failed to read directory", d.path)
+	}
+	return result, nil
+}
+
 // like os.NewFile()
 func NewFile(orig *File, newPath string) *File {
 	return &File{

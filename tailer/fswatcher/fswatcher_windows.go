@@ -29,7 +29,7 @@ import (
 
 type watcher struct {
 	globs        []glob.Glob
-	watchedDirs  []string
+	watchedDirs  []*Dir
 	watchedFiles map[string]*fileWithReader // path -> fileWithReader
 	winWatcher   *winfsnotify.Watcher
 	lines        chan Line
@@ -133,12 +133,12 @@ func (w *watcher) watchDirs(log logrus.FieldLogger) Error {
 		if err != nil {
 			return NewErrorf(NotSpecified, err, "%v: failed to watch directory", dirPath)
 		}
-		w.watchedDirs = append(w.watchedDirs, dirPath)
+		w.watchedDirs = append(w.watchedDirs, &Dir{path: dirPath})
 	}
 	return nil
 }
 
-func (w *watcher) syncFilesInDir(dirPath string, readall bool, log logrus.FieldLogger) Error {
+func (w *watcher) syncFilesInDir(dir *Dir, readall bool, log logrus.FieldLogger) Error {
 	var (
 		newFile           *File
 		watchedFilesAfter = make(map[string]*fileWithReader)
@@ -146,12 +146,12 @@ func (w *watcher) syncFilesInDir(dirPath string, readall bool, log logrus.FieldL
 		Err               Error
 		err               error
 	)
-	fileInfos, Err = ls(dirPath)
+	fileInfos, Err = dir.ls()
 	if Err != nil {
 		return Err
 	}
 	for _, fileInfo := range fileInfos {
-		filePath := filepath.Join(dirPath, fileInfo.filename)
+		filePath := filepath.Join(dir.path, fileInfo.filename)
 		fileLogger := log.WithField("file", fileInfo.filename)
 		if !anyGlobMatches(w.globs, filePath) {
 			fileLogger.Debug("skipping file, because file name does not match")
@@ -206,50 +206,21 @@ func (w *watcher) syncFilesInDir(dirPath string, readall bool, log logrus.FieldL
 	return nil
 }
 
-// https://docs.microsoft.com/en-us/windows/desktop/FileIO/listing-the-files-in-a-directory
-func ls(dirPath string) ([]*fileInfo, Error) {
-	var (
-		ffd      syscall.Win32finddata
-		handle   syscall.Handle
-		result   []*fileInfo
-		filename string
-		err      error
-	)
-	globAll := dirPath + `\*`
-	globAllP, err := syscall.UTF16PtrFromString(globAll)
-	if err != nil {
-		return nil, NewErrorf(NotSpecified, os.NewSyscallError("UTF16PtrFromString", err), "%v: invalid directory name", dirPath)
-	}
-	for handle, err = syscall.FindFirstFile(globAllP, &ffd); err == nil; err = syscall.FindNextFile(handle, &ffd) {
-		filename = syscall.UTF16ToString(ffd.FileName[:])
-		if filename != "." && filename != ".." {
-			result = append(result, &fileInfo{
-				filename: filename,
-				ffd:      ffd,
-			})
-		}
-	}
-	if err != syscall.ERROR_NO_MORE_FILES {
-		return nil, NewErrorf(NotSpecified, err, "%v: failed to read directory", dirPath)
-	}
-	return result, nil
-}
-
 func (w *watcher) processEvent(event *winfsnotify.Event, log logrus.FieldLogger) Error {
-	dirPath, fileName := w.dirAndFile(event.Name)
-	if len(dirPath) == 0 {
+	dir, fileName := w.dirAndFile(event.Name)
+	if dir == nil {
 		return NewError(NotSpecified, nil, "watch list inconsistent: received a file system event for an unknown directory")
 	}
-	log.WithField("directory", dirPath).Debugf("received event: %v", event)
+	log.WithField("directory", dir.path).Debugf("received event: %v", event)
 	if event.Mask&winfsnotify.FS_MODIFY == winfsnotify.FS_MODIFY {
-		file, ok := w.watchedFiles[filepath.Join(dirPath, fileName)]
+		file, ok := w.watchedFiles[filepath.Join(dir.path, fileName)]
 		if !ok {
 			return nil // unrelated file was modified
 		}
 		truncated, Err := file.file.CheckTruncated()
 		if Err != nil {
 			if Err.Type() == WinFileRemoved {
-				return w.syncFilesInDir(dirPath, true, log)
+				return w.syncFilesInDir(dir, true, log)
 			} else {
 				return Err
 			}
@@ -274,7 +245,7 @@ func (w *watcher) processEvent(event *winfsnotify.Event, log logrus.FieldLogger)
 		// Trying to figure out what happened from the events would be error prone.
 		// Therefore, we don't care which of the above events we received, we just update our watched files with the current
 		// state of the watched directory.
-		err := w.syncFilesInDir(dirPath, true, log)
+		err := w.syncFilesInDir(dir, true, log)
 		if err != nil {
 			return err
 		}
@@ -396,16 +367,16 @@ func contains(list map[string]*fileWithReader, f *fileWithReader) bool {
 	return false
 }
 
-func (w *watcher) dirAndFile(fileOrDir string) (string, string) {
+func (w *watcher) dirAndFile(fileOrDir string) (*Dir, string) {
 	var (
-		dirPath  = ""
-		fileName = ""
+		found *Dir
 	)
 	for _, dir := range w.watchedDirs {
-		if strings.HasPrefix(fileOrDir, dir) && len(dir) > len(dirPath) {
-			dirPath = dir
-			fileName = strings.TrimLeft(fileOrDir[len(dirPath):], "\\/")
+		if strings.HasPrefix(fileOrDir, dir.path) {
+			if found == nil || len(dir.path) > len(found.path) {
+				found = dir
+			}
 		}
 	}
-	return dirPath, fileName
+	return found, strings.TrimLeft(fileOrDir[len(found.path):], "\\/")
 }
