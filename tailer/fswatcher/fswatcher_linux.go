@@ -131,70 +131,8 @@ func (w *watcher) watchDirs(log logrus.FieldLogger) Error {
 	return nil
 }
 
-func (w *watcher) syncFilesInDir(dir *Dir, readall bool, log logrus.FieldLogger) Error {
-	var (
-		watchedFilesAfter = make(map[string]*fileWithReader)
-		fileInfos         []os.FileInfo
-		Err               Error
-	)
-	fileInfos, Err = dir.ls()
-	if Err != nil {
-		return Err
-	}
-	for _, fileInfo := range fileInfos {
-		filePath := filepath.Join(dir.path, fileInfo.Name())
-		fileLogger := log.WithField("file", fileInfo.Name())
-		if !anyGlobMatches(w.globs, filePath) {
-			fileLogger.Debug("skipping file, because file name does not match")
-			continue
-		}
-		if fileInfo.IsDir() {
-			fileLogger.Debug("skipping, because it is a directory")
-			continue
-		}
-		existingFilePath, Err := w.findSameFile(fileInfo)
-		if Err != nil {
-			return Err
-		}
-		if len(existingFilePath) > 0 {
-			existingFile := w.watchedFiles[existingFilePath]
-			if existingFilePath != filePath {
-				fileLogger.WithField("fd", existingFile.file.Fd()).Infof("file was moved from %v", existingFilePath)
-				existingFile.file = os.NewFile(existingFile.file.Fd(), filePath)
-			} else {
-				fileLogger.Debug("skipping, because file is already watched")
-			}
-			watchedFilesAfter[filePath] = existingFile
-			continue
-		}
-		newFile, err := os.Open(filePath)
-		if err != nil {
-			return NewErrorf(NotSpecified, err, "%v: failed to open file", newFile)
-		}
-		if !readall {
-			_, err = newFile.Seek(0, io.SeekEnd)
-			if err != nil {
-				newFile.Close()
-				return NewErrorf(NotSpecified, err, "%v: failed to seek to end of file", filePath)
-			}
-		}
-		fileLogger = fileLogger.WithField("fd", newFile.Fd())
-		fileLogger.Info("watching new file")
-		newFileWithReader := &fileWithReader{file: newFile, reader: NewLineReader()}
-		Err = w.readNewLines(newFileWithReader, fileLogger)
-		if Err != nil {
-			return Err
-		}
-		watchedFilesAfter[filePath] = newFileWithReader
-	}
-	for _, f := range w.watchedFiles {
-		if !contains(watchedFilesAfter, f) {
-			fileLogger := log.WithField("file", filepath.Base(f.file.Name())).WithField("fd", f.file.Fd())
-			fileLogger.Info("file was removed, closing and un-watching")
-			f.file.Close()
-		}
-	}
-	w.watchedFiles = watchedFilesAfter
+func (w *watcher) watchNewFile(newFile *os.File) Error {
+	// nothing to do, because on Linux we watch the directory and don't need to watch individual files.
 	return nil
 }
 
@@ -351,21 +289,21 @@ func anyGlobMatches(globs []glob.Glob, path string) bool {
 	return false
 }
 
-func (w *watcher) findSameFile(file os.FileInfo) (string, Error) {
+func (w *watcher) findSameFile(file os.FileInfo, _ string) (*fileWithReader, Error) {
 	var (
 		fileInfo os.FileInfo
 		err      error
 	)
-	for watchedFilePath, watchedFile := range w.watchedFiles {
+	for _, watchedFile := range w.watchedFiles {
 		fileInfo, err = watchedFile.file.Stat()
 		if err != nil {
-			return "", NewErrorf(NotSpecified, err, "%v: stat failed", watchedFile.file.Name())
+			return nil, NewErrorf(NotSpecified, err, "%v: stat failed", watchedFile.file.Name())
 		}
 		if os.SameFile(fileInfo, file) {
-			return watchedFilePath, nil
+			return watchedFile, nil
 		}
 	}
-	return "", nil
+	return nil, nil
 }
 
 func containsString(list []string, s string) bool {

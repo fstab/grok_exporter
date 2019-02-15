@@ -22,6 +22,10 @@ type Dir struct {
 	path string
 }
 
+func (d *Dir) Path() string {
+	return d.path
+}
+
 // TODO: Replace with ioutil.Readdir
 func (d *Dir) ls() ([]os.FileInfo, Error) {
 	var (
@@ -39,4 +43,12 @@ func (d *Dir) ls() ([]os.FileInfo, Error) {
 		return nil, NewErrorf(NotSpecified, err, "%q: failed to read directory", d.path)
 	}
 	return fileInfos, nil
+}
+
+func NewFile(orig *os.File, newPath string) *os.File {
+	return os.NewFile(orig.Fd(), newPath)
+}
+
+func open(path string) (*os.File, error) {
+	return os.Open(path)
 }

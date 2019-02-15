@@ -37,6 +37,10 @@ type Dir struct {
 	path string
 }
 
+func (d *Dir) Path() string {
+	return d.path
+}
+
 // https://docs.microsoft.com/en-us/windows/desktop/FileIO/listing-the-files-in-a-directory
 func (d *Dir) ls() ([]*fileInfo, Error) {
 	var (

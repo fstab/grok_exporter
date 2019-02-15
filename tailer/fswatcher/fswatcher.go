@@ -17,6 +17,9 @@ package fswatcher
 import (
 	"github.com/fstab/grok_exporter/tailer/glob"
 	"github.com/sirupsen/logrus"
+	"io"
+	"os"
+	"path/filepath"
 )
 
 type Line struct {
@@ -107,4 +110,74 @@ func Run(globs []glob.Glob, readall bool, failOnMissingFile bool, log logrus.Fie
 
 	}()
 	return w, nil
+}
+
+func (w *watcher) syncFilesInDir(dir *Dir, readall bool, log logrus.FieldLogger) Error {
+	watchedFilesAfter := make(map[string]*fileWithReader)
+	fileInfos, Err := dir.ls()
+	if Err != nil {
+		return Err
+	}
+	for _, fileInfo := range fileInfos {
+		filePath := filepath.Join(dir.Path(), fileInfo.Name())
+		fileLogger := log.WithField("file", fileInfo.Name())
+		if !anyGlobMatches(w.globs, filePath) {
+			fileLogger.Debug("skipping file, because file name does not match")
+			continue
+		}
+		if fileInfo.IsDir() {
+			fileLogger.Debug("skipping, because it is a directory")
+			continue
+		}
+		alreadyWatched, Err := w.findSameFile(fileInfo, filePath)
+		if Err != nil {
+			return Err
+		}
+		if alreadyWatched != nil {
+			if alreadyWatched.file.Name() != filePath {
+				fileLogger.WithField("fd", alreadyWatched.file.Fd()).Infof("file was moved from %v", alreadyWatched.file.Name())
+				alreadyWatched.file = NewFile(alreadyWatched.file, filePath)
+			} else {
+				fileLogger.Debug("skipping, because file is already watched")
+			}
+			watchedFilesAfter[filePath] = alreadyWatched
+			continue
+		}
+		newFile, err := open(filePath)
+		if err != nil {
+			return NewErrorf(NotSpecified, err, "%v: failed to open file", filePath)
+		}
+		if !readall {
+			_, err = newFile.Seek(0, io.SeekEnd)
+			if err != nil {
+				newFile.Close()
+				return NewError(NotSpecified, os.NewSyscallError("seek", err), filePath)
+			}
+		}
+		fileLogger = fileLogger.WithField("fd", newFile.Fd())
+		fileLogger.Info("watching new file")
+
+		Err = w.watchNewFile(newFile)
+		if Err != nil {
+			newFile.Close()
+			return Err
+		}
+
+		newFileWithReader := &fileWithReader{file: newFile, reader: NewLineReader()}
+		Err = w.readNewLines(newFileWithReader, fileLogger)
+		if Err != nil {
+			newFile.Close()
+			return Err
+		}
+		watchedFilesAfter[filePath] = newFileWithReader
+	}
+	for _, f := range w.watchedFiles {
+		if !contains(watchedFilesAfter, f) {
+			fileLogger := log.WithField("file", filepath.Base(f.file.Name())).WithField("fd", f.file.Fd())
+			fileLogger.Info("file was removed, closing and un-watching")
+			f.file.Close()
+		}
+	}
+	w.watchedFiles = watchedFilesAfter
+	return nil
 }

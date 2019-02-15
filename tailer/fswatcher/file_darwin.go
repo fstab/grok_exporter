@@ -24,6 +24,10 @@ type Dir struct {
 	file *os.File
 }
 
+func (d *Dir) Path() string {
+	return d.file.Name()
+}
+
 func (d *Dir) ls() ([]os.FileInfo, Error) {
 	var (
 		fileInfos []os.FileInfo
@@ -38,4 +42,12 @@ func (d *Dir) ls() ([]os.FileInfo, Error) {
 		return nil, NewError(NotSpecified, os.NewSyscallError("readdir", err), d.file.Name())
 	}
 	return fileInfos, nil
+}
+
+func NewFile(orig *os.File, newPath string) *os.File {
+	return os.NewFile(orig.Fd(), newPath)
+}
+
+func open(path string) (*os.File, error) {
+	return os.Open(path)
 }

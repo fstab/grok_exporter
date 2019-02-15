@@ -47,6 +47,14 @@ type fileInfo struct {
 	ffd      syscall.Win32finddata
 }
 
+func (f *fileInfo) Name() string {
+	return f.filename
+}
+
+func (f *fileInfo) IsDir() bool {
+	return f.ffd.FileAttributes&syscall.FILE_ATTRIBUTE_DIRECTORY == syscall.FILE_ATTRIBUTE_DIRECTORY
+}
+
 func (w *watcher) Lines() chan Line {
 	return w.lines
 }
@@ -138,71 +146,8 @@ func (w *watcher) watchDirs(log logrus.FieldLogger) Error {
 	return nil
 }
 
-func (w *watcher) syncFilesInDir(dir *Dir, readall bool, log logrus.FieldLogger) Error {
-	var (
-		newFile           *File
-		watchedFilesAfter = make(map[string]*fileWithReader)
-		fileInfos         []*fileInfo
-		Err               Error
-		err               error
-	)
-	fileInfos, Err = dir.ls()
-	if Err != nil {
-		return Err
-	}
-	for _, fileInfo := range fileInfos {
-		filePath := filepath.Join(dir.path, fileInfo.filename)
-		fileLogger := log.WithField("file", fileInfo.filename)
-		if !anyGlobMatches(w.globs, filePath) {
-			fileLogger.Debug("skipping file, because file name does not match")
-			continue
-		}
-		if fileInfo.ffd.FileAttributes&syscall.FILE_ATTRIBUTE_DIRECTORY == syscall.FILE_ATTRIBUTE_DIRECTORY {
-			fileLogger.Debug("skipping, because it is a directory")
-			continue
-		}
-		newFile, Err = open(filePath)
-		if Err != nil {
-			return Err
-		}
-		// TODO: Maybe call syscall.GetFileType(newFile.fileHandle) and skip files other than FILE_TYPE_DISK
-		existingFilePath := w.findSameFile(newFile)
-		if len(existingFilePath) > 0 {
-			existingFile := w.watchedFiles[existingFilePath]
-			if existingFilePath != filePath {
-				fileLogger.WithField("fd", existingFile.file.Fd()).Infof("file was moved from %v", existingFilePath)
-				existingFile.file = NewFile(existingFile.file, filePath)
-			} else {
-				fileLogger.Debug("skipping, because file is already watched")
-			}
-			watchedFilesAfter[filePath] = existingFile
-			newFile.Close()
-			continue
-		}
-		if !readall {
-			_, err = newFile.Seek(0, io.SeekEnd)
-			if err != nil {
-				newFile.Close()
-				return NewError(NotSpecified, os.NewSyscallError("seek", err), filePath)
-			}
-		}
-		fileLogger = fileLogger.WithField("fd", newFile.Fd())
-		fileLogger.Info("watching new file")
-		newFileWithReader := &fileWithReader{file: newFile, reader: NewLineReader()}
-		Err = w.readNewLines(newFileWithReader, fileLogger)
-		if Err != nil {
-			return Err
-		}
-		watchedFilesAfter[filePath] = newFileWithReader
-	}
-	for _, f := range w.watchedFiles {
-		if !contains(watchedFilesAfter, f) {
-			fileLogger := log.WithField("file", filepath.Base(f.file.Name())).WithField("fd", f.file.Fd())
-			fileLogger.Info("file was removed, closing and un-watching")
-			f.file.Close()
-		}
-	}
-	w.watchedFiles = watchedFilesAfter
+func (w *watcher) watchNewFile(newFile *File) Error {
+	// nothing to do, because on Windows we watch the directory and don't need to watch individual files.
 	return nil
 }
 
@@ -340,13 +285,18 @@ func anyGlobMatches(globs []glob.Glob, path string) bool {
 	return false
 }
 
-func (w *watcher) findSameFile(newFile *File) string {
-	for watchedFilePath, watchedFile := range w.watchedFiles {
+func (w *watcher) findSameFile(newFileInfo *fileInfo, path string) (*fileWithReader, Error) {
+	newFile, Err := open(path)
+	if Err != nil {
+		return nil, Err
+	}
+	defer newFile.Close()
+	for _, watchedFile := range w.watchedFiles {
 		if watchedFile.file.SameFile(newFile) {
-			return watchedFilePath
+			return watchedFile, nil
 		}
 	}
-	return ""
+	return nil, nil
 }
 
 func containsString(list []string, s string) bool {

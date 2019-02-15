@@ -21,7 +21,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"io"
 	"os"
-	"path/filepath"
 	"syscall"
 )
 
@@ -144,82 +143,12 @@ func (w *watcher) watchDirs(log logrus.FieldLogger) Error {
 	return nil
 }
 
-// check if files have been added/removed and update kevent file watches accordingly
-func (w *watcher) syncFilesInDir(dir *Dir, readall bool, log logrus.FieldLogger) Error {
-	var (
-		existingFile      *fileWithReader
-		newFile           *os.File
-		newFileWithReader *fileWithReader
-		watchedFilesAfter = make(map[string]*fileWithReader)
-		fileInfos         []os.FileInfo
-		fileInfo          os.FileInfo
-		err               error
-		Err               Error
-		fileLogger        logrus.FieldLogger
-		zeroTimeout       = syscall.NsecToTimespec(0) // timeout zero means non-blocking kevent() call
-	)
-	fileInfos, Err = dir.ls()
-	if Err != nil {
-		return Err
+func (w *watcher) watchNewFile(newFile *os.File) Error {
+	zeroTimeout := syscall.NsecToTimespec(0) // timeout zero means non-blocking kevent() call
+	_, err := syscall.Kevent(w.kq, []syscall.Kevent_t{makeEvent(newFile)}, nil, &zeroTimeout)
+	if err != nil {
+		return NewErrorf(NotSpecified, err, "%v: failed to watch file", newFile.Name())
 	}
-	for _, fileInfo = range fileInfos {
-		filePath := filepath.Join(dir.file.Name(), fileInfo.Name())
-		fileLogger = log.WithField("file", fileInfo.Name())
-		if !anyGlobMatches(w.globs, filePath) {
-			fileLogger.Debug("skipping file, because file name does not match")
-			continue
-		}
-		if fileInfo.IsDir() {
-			fileLogger.Debug("skipping, because it is a directory")
-			continue
-		}
-		existingFile, Err = w.findSameFile(fileInfo)
-		if Err != nil {
-			return Err
-		}
-		if existingFile != nil {
-			if existingFile.file.Name() != filePath {
-				fileLogger.WithField("fd", existingFile.file.Fd()).Infof("file was moved from %v", existingFile.file.Name())
-				existingFile.file = os.NewFile(existingFile.file.Fd(), filePath)
-			} else {
-				fileLogger.Debug("skipping, because file is already watched")
-			}
-			watchedFilesAfter[filePath] = existingFile
-			continue
-		}
-		newFile, err = os.Open(filePath)
-		if err != nil {
-			return NewErrorf(NotSpecified, err, "%v: failed to open file", filePath)
-		}
-		if !readall {
-			_, err = newFile.Seek(0, io.SeekEnd)
-			if err != nil {
-				return NewErrorf(NotSpecified, err, "%v: failed to seek to end of file", filePath)
-			}
-		}
-		fileLogger = fileLogger.WithField("fd", newFile.Fd())
-		fileLogger.Info("watching new file")
-		_, err = syscall.Kevent(w.kq, []syscall.Kevent_t{makeEvent(newFile)}, nil, &zeroTimeout)
-		if err != nil {
-			_ = newFile.Close()
-			return NewErrorf(NotSpecified, err, "%v: failed to watch file", newFile.Name())
-		}
-		newFileWithReader = &fileWithReader{file: newFile, reader: NewLineReader()}
-		Err = w.readNewLines(newFileWithReader, fileLogger)
-		if Err != nil {
-			return Err
-		}
-		watchedFilesAfter[filePath] = newFileWithReader
-	}
-	for _, f := range w.watchedFiles {
-		if !contains(watchedFilesAfter, f) {
-			fileLogger = log.WithField("file", filepath.Base(f.file.Name())).WithField("fd", f.file.Fd())
-			fileLogger.Info("file was removed, closing and un-watching")
-			// TODO: explicit un-watch needed, or are kevents for deleted files removed automatically?
-			f.file.Close()
-		}
-	}
-	w.watchedFiles = watchedFilesAfter
 	return nil
 }
 
@@ -397,7 +326,7 @@ func anyGlobMatches(globs []glob.Glob, path string) bool {
 	return false
 }
 
-func (w *watcher) findSameFile(file os.FileInfo) (*fileWithReader, Error) {
+func (w *watcher) findSameFile(file os.FileInfo, _ string) (*fileWithReader, Error) {
 	var (
 		fileInfo os.FileInfo
 		err      error
