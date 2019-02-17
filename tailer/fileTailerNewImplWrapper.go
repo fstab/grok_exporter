@@ -57,7 +57,7 @@ func RunFseventFileTailer(path string, readall bool, failOnMissingFile bool, log
 		}()
 		return result
 	}
-	newTailer, err := fswatcher.Run([]glob.Glob{pathAsGlob}, readall, failOnMissingFile, logger)
+	newTailer, err := fswatcher.RunFileTailer([]glob.Glob{pathAsGlob}, readall, failOnMissingFile, logger)
 	if err != nil {
 		go func() {
 			result.errors <- newError("failed to initialize file system watcher", err)

@@ -27,13 +27,13 @@ type Line struct {
 	File string
 }
 
-type FSWatcher interface {
+type FileTailer interface {
 	Lines() chan Line
 	Errors() chan Error
 	Close()
 }
 
-func Run(globs []glob.Glob, readall bool, failOnMissingFile bool, log logrus.FieldLogger) (FSWatcher, error) {
+func RunFileTailer(globs []glob.Glob, readall bool, failOnMissingFile bool, log logrus.FieldLogger) (FileTailer, error) {
 
 	var (
 		w   *watcher
