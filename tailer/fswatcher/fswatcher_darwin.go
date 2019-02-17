@@ -16,32 +16,14 @@ package fswatcher
 
 import (
 	"fmt"
-	"github.com/fstab/grok_exporter/tailer/glob"
-	"github.com/prometheus/common/log"
 	"github.com/sirupsen/logrus"
 	"io"
 	"os"
 	"syscall"
 )
 
-// ideas how this might look like in the config file:
-//
-// * input section may specify multiple inputs and use globs
-//
-// * metrics may define filters to specify which files they apply to:
-//   - filename_filter: filter file names, like *server1*
-//   - filepath_filter: filter path, like /logs/server1/*
-// Heads up: filters use globs while matches use regular expressions.
-// Moreover, we should provide vars {{.filename}} and {{.filepath}} for labels.
-
 type watcher struct {
-	globs        []glob.Glob
-	watchedDirs  []*Dir
-	watchedFiles map[string]*fileWithReader // path -> fileWithReader
-	kq           int
-	lines        chan Line
-	errors       chan Error
-	done         chan struct{}
+	kq int
 }
 
 type fileWithReader struct {
@@ -49,48 +31,23 @@ type fileWithReader struct {
 	reader *lineReader
 }
 
-func (w *watcher) Lines() chan Line {
-	return w.lines
-}
-
-func (w *watcher) Errors() chan Error {
-	return w.errors
-}
-
-func (w *watcher) Close() {
-	// Closing the done channel will stop the consumer loop.
-	// Deferred functions within the consumer loop will close the producer loop.
-	close(w.done)
-}
-
-func (w *watcher) shutdown() {
-
-	close(w.lines)
-	close(w.errors)
-
-	warnf := func(format string, args ...interface{}) {
-		log.Warnf("error while shutting down the file system watcher: %v", fmt.Sprint(format, args))
+func (w *watcher) unwatchDir(dir *Dir) error {
+	err := dir.file.Close()
+	if err != nil {
+		return fmt.Errorf("close(%q) failed: %v", dir.file.Name(), err)
+	} else {
+		return nil
 	}
+}
 
+func (w *watcher) Close() error {
 	// After calling keventProducerLoop.Close(), we need to close the kq descriptor
 	// in order to interrupt the kevent() system call. See keventProducerLoop.Close().
 	err := syscall.Close(w.kq)
 	if err != nil {
-		warnf("closing the kq descriptor failed: %v", err)
-	}
-
-	for _, file := range w.watchedFiles {
-		err = file.file.Close()
-		if err != nil {
-			warnf("close(%q) failed: %v", file.file.Name(), err)
-		}
-	}
-
-	for _, dir := range w.watchedDirs {
-		err = dir.file.Close()
-		if err != nil {
-			warnf("close(%q) failed: %v", dir.file.Name(), err)
-		}
+		return fmt.Errorf("closing the kevent file descriptor failed: %v", err)
+	} else {
+		return nil
 	}
 }
 
@@ -98,49 +55,30 @@ func (w *watcher) runFseventProducerLoop() *keventloop {
 	return runKeventLoop(w.kq)
 }
 
-func initWatcher(globs []glob.Glob) (*watcher, Error) {
-	var (
-		w = &watcher{
-			globs:  globs,
-			lines:  make(chan Line),
-			errors: make(chan Error),
-			done:   make(chan struct{}),
-		}
-		err error
-	)
-	w.kq, err = syscall.Kqueue()
+func initWatcher() (*watcher, Error) {
+	kq, err := syscall.Kqueue()
 	if err != nil {
 		return nil, NewError(NotSpecified, err, "kqueue() failed")
 	}
-	return w, nil
+	return &watcher{kq: kq}, nil
 }
 
-func (w *watcher) watchDirs(log logrus.FieldLogger) Error {
+func (w *watcher) watchDir(path string) (*Dir, Error) {
 	var (
 		err         error
-		Err         Error
 		dir         *os.File
-		dirPaths    []string
-		dirPath     string
 		zeroTimeout = syscall.NsecToTimespec(0) // timeout zero means non-blocking kevent() call
 	)
-	dirPaths, Err = uniqueDirs(w.globs)
-	if Err != nil {
-		return Err
+	dir, err = os.Open(path)
+	if err != nil {
+		return nil, NewErrorf(NotSpecified, err, "%v: open() failed", path)
 	}
-	for _, dirPath = range dirPaths {
-		log.Debugf("watching directory %v", dirPath)
-		dir, err = os.Open(dirPath)
-		if err != nil {
-			return NewErrorf(NotSpecified, err, "%v: open() failed", dirPath)
-		}
-		w.watchedDirs = append(w.watchedDirs, &Dir{file: dir})
-		_, err = syscall.Kevent(w.kq, []syscall.Kevent_t{makeEvent(dir)}, nil, &zeroTimeout)
-		if err != nil {
-			return NewErrorf(NotSpecified, err, "%v: kevent() failed", dirPath)
-		}
+	_, err = syscall.Kevent(w.kq, []syscall.Kevent_t{makeEvent(dir)}, nil, &zeroTimeout)
+	if err != nil {
+		dir.Close()
+		return nil, NewErrorf(NotSpecified, err, "%v: kevent() failed", path)
 	}
-	return nil
+	return &Dir{dir}, nil
 }
 
 func (w *watcher) watchNewFile(newFile *os.File) Error {
@@ -152,24 +90,24 @@ func (w *watcher) watchNewFile(newFile *os.File) Error {
 	return nil
 }
 
-func (w *watcher) processEvent(kevent syscall.Kevent_t, log logrus.FieldLogger) Error {
+func (w *watcher) processEvent(t *fileTailer, kevent syscall.Kevent_t, log logrus.FieldLogger) Error {
 	var (
 		dir                   *Dir
 		file                  *fileWithReader
 		dirLogger, fileLogger logrus.FieldLogger
 	)
-	for _, dir = range w.watchedDirs {
+	for _, dir = range t.watchedDirs {
 		if kevent.Ident == fdToInt(dir.file.Fd()) {
 			dirLogger = log.WithField("directory", dir.file.Name())
 			dirLogger.Debugf("dir event: %v", kevent)
-			return w.processDirEvent(kevent, dir, dirLogger)
+			return w.processDirEvent(t, kevent, dir, dirLogger)
 		}
 	}
-	for _, file = range w.watchedFiles {
+	for _, file = range t.watchedFiles {
 		if kevent.Ident == fdToInt(file.file.Fd()) {
 			fileLogger = log.WithField("file", file.file.Name()).WithField("fd", file.file.Fd())
 			fileLogger.Debugf("file event: %v", kevent)
-			return w.processFileEvent(kevent, file, fileLogger)
+			return w.processFileEvent(t, kevent, file, fileLogger)
 		}
 	}
 	// Events for unknown file descriptors are ignored. This might happen if syncFilesInDir() already
@@ -178,12 +116,12 @@ func (w *watcher) processEvent(kevent syscall.Kevent_t, log logrus.FieldLogger) 
 	return nil
 }
 
-func (w *watcher) processDirEvent(kevent syscall.Kevent_t, dir *Dir, dirLogger logrus.FieldLogger) Error {
+func (w *watcher) processDirEvent(t *fileTailer, kevent syscall.Kevent_t, dir *Dir, dirLogger logrus.FieldLogger) Error {
 	if kevent.Fflags&syscall.NOTE_WRITE == syscall.NOTE_WRITE || kevent.Fflags&syscall.NOTE_EXTEND == syscall.NOTE_EXTEND {
 		// NOTE_WRITE on the directory's fd means a file was created, deleted, or moved. This covers inotify's MOVED_TO.
 		// NOTE_EXTEND reports that a directory entry was added	or removed as the result of rename operation.
 		dirLogger.Debugf("checking for new/deleted/moved files")
-		err := w.syncFilesInDir(dir, true, dirLogger)
+		err := t.syncFilesInDir(dir, true, dirLogger)
 		if err != nil {
 			return NewErrorf(NotSpecified, err, "%v: failed to update list of files in directory", dir.file.Name())
 		}
@@ -201,7 +139,7 @@ func (w *watcher) processDirEvent(kevent syscall.Kevent_t, dir *Dir, dirLogger l
 	return nil
 }
 
-func (w *watcher) processFileEvent(kevent syscall.Kevent_t, file *fileWithReader, log logrus.FieldLogger) Error {
+func (w *watcher) processFileEvent(t *fileTailer, kevent syscall.Kevent_t, file *fileWithReader, log logrus.FieldLogger) Error {
 	var (
 		truncated bool
 		err       error
@@ -225,7 +163,7 @@ func (w *watcher) processFileEvent(kevent syscall.Kevent_t, file *fileWithReader
 
 	// Handle write event.
 	if kevent.Fflags&syscall.NOTE_WRITE == syscall.NOTE_WRITE {
-		readErr = w.readNewLines(file, log)
+		readErr = t.readNewLines(file, log)
 		if readErr != nil {
 			return readErr
 		}
@@ -251,12 +189,12 @@ func isTruncated(file *os.File) (bool, error) {
 	return currentPos > fileInfo.Size(), nil
 }
 
-func (w *watcher) findSameFile(file os.FileInfo, _ string) (*fileWithReader, Error) {
+func (w *watcher) findSameFile(t *fileTailer, file os.FileInfo, _ string) (*fileWithReader, Error) {
 	var (
 		fileInfo os.FileInfo
 		err      error
 	)
-	for _, watchedFile := range w.watchedFiles {
+	for _, watchedFile := range t.watchedFiles {
 		fileInfo, err = watchedFile.file.Stat()
 		if err != nil {
 			return nil, NewErrorf(NotSpecified, err, "%v: stat failed", watchedFile.file.Name())

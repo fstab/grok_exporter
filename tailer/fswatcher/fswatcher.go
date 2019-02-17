@@ -15,17 +15,14 @@
 package fswatcher
 
 import (
+	"fmt"
 	"github.com/fstab/grok_exporter/tailer/glob"
+	"github.com/prometheus/common/log"
 	"github.com/sirupsen/logrus"
 	"io"
 	"os"
 	"path/filepath"
 )
-
-type Line struct {
-	Line string
-	File string
-}
 
 type FileTailer interface {
 	Lines() chan Line
@@ -33,42 +30,89 @@ type FileTailer interface {
 	Close()
 }
 
+type Line struct {
+	Line string
+	File string
+}
+
+// ideas how this might look like in the config file:
+//
+// * input section may specify multiple inputs and use globs
+//
+// * metrics may define filters to specify which files they apply to:
+//   - filename_filter: filter file names, like *server1*
+//   - filepath_filter: filter path, like /logs/server1/*
+// Heads up: filters use globs while matches use regular expressions.
+// Moreover, we should provide vars {{.filename}} and {{.filepath}} for labels.
+
+type fileTailer struct {
+	globs        []glob.Glob
+	watchedDirs  []*Dir
+	watchedFiles map[string]*fileWithReader // path -> fileWithReader
+	osSpecific   *watcher
+	lines        chan Line
+	errors       chan Error
+	done         chan struct{}
+}
+
+func (t *fileTailer) Lines() chan Line {
+	return t.lines
+}
+
+func (t *fileTailer) Errors() chan Error {
+	return t.errors
+}
+
+func (t *fileTailer) Close() {
+	// Closing the done channel will stop the consumer loop.
+	// Deferred functions within the consumer loop will close the producer loop.
+	close(t.done)
+}
+
 func RunFileTailer(globs []glob.Glob, readall bool, failOnMissingFile bool, log logrus.FieldLogger) (FileTailer, error) {
 
 	var (
-		w   *watcher
+		t   *fileTailer
 		Err Error
 	)
 
-	w, Err = initWatcher(globs)
+	t = &fileTailer{
+		globs:        globs,
+		watchedFiles: make(map[string]*fileWithReader),
+		lines:        make(chan Line),
+		errors:       make(chan Error),
+		done:         make(chan struct{}),
+	}
+
+	t.osSpecific, Err = initWatcher()
 	if Err != nil {
 		return nil, Err
 	}
 
 	go func() {
 
-		defer w.shutdown()
+		defer t.shutdown()
 
-		Err = w.watchDirs(log)
+		Err = t.watchDirs(log)
 		if Err != nil {
 			select {
-			case <-w.done:
-			case w.errors <- Err:
+			case <-t.done:
+			case t.errors <- Err:
 			}
 			return
 		}
 
-		eventProducerLoop := w.runFseventProducerLoop()
+		eventProducerLoop := t.osSpecific.runFseventProducerLoop()
 		defer eventProducerLoop.Close()
 
-		for _, dirPath := range w.watchedDirs {
+		for _, dirPath := range t.watchedDirs {
 			dirLogger := log.WithField("directory", dirPath)
 			dirLogger.Debugf("initializing directory")
-			Err = w.syncFilesInDir(dirPath, readall, dirLogger)
+			Err = t.syncFilesInDir(dirPath, readall, dirLogger)
 			if Err != nil {
 				select {
-				case <-w.done:
-				case w.errors <- Err:
+				case <-t.done:
+				case t.errors <- Err:
 					return
 				}
 			}
@@ -76,11 +120,11 @@ func RunFileTailer(globs []glob.Glob, readall bool, failOnMissingFile bool, log 
 
 		// make sure at least one logfile was found for each glob
 		if failOnMissingFile {
-			missingFileError := w.checkMissingFile()
+			missingFileError := t.checkMissingFile()
 			if missingFileError != nil {
 				select {
-				case <-w.done:
-				case w.errors <- missingFileError:
+				case <-t.done:
+				case t.errors <- missingFileError:
 				}
 				return
 			}
@@ -88,31 +132,82 @@ func RunFileTailer(globs []glob.Glob, readall bool, failOnMissingFile bool, log 
 
 		for { // event consumer loop
 			select {
-			case <-w.done:
+			case <-t.done:
 				return
 			case event := <-eventProducerLoop.events:
-				processEventError := w.processEvent(event, log)
+				processEventError := t.osSpecific.processEvent(t, event, log)
 				if processEventError != nil {
 					select {
-					case <-w.done:
-					case w.errors <- processEventError:
+					case <-t.done:
+					case t.errors <- processEventError:
 					}
 					return
 				}
 			case err := <-eventProducerLoop.errors:
 				select {
-				case <-w.done:
-				case w.errors <- NewError(NotSpecified, err, "error reading file system events"):
+				case <-t.done:
+				case t.errors <- NewError(NotSpecified, err, "error reading file system events"):
 				}
 				return
 			}
 		}
 
 	}()
-	return w, nil
+	return t, nil
 }
 
-func (w *watcher) syncFilesInDir(dir *Dir, readall bool, log logrus.FieldLogger) Error {
+func (t *fileTailer) shutdown() {
+
+	close(t.lines)
+	close(t.errors)
+
+	warnf := func(format string, args ...interface{}) {
+		log.Warnf("error while shutting down the file system watcher: %v", fmt.Sprint(format, args))
+	}
+
+	for _, dir := range t.watchedDirs {
+		err := t.osSpecific.unwatchDir(dir)
+		if err != nil {
+			warnf("%v", err)
+		}
+	}
+
+	err := t.osSpecific.Close()
+	if err != nil {
+		warnf("%v", err)
+	}
+
+	for _, file := range t.watchedFiles {
+		err = file.file.Close()
+		if err != nil {
+			warnf("close(%q) failed: %v", file.file.Name(), err)
+		}
+	}
+}
+
+func (t *fileTailer) watchDirs(log logrus.FieldLogger) Error {
+	var (
+		err      error
+		Err      Error
+		dirPaths []string
+		dirPath  string
+	)
+	dirPaths, Err = uniqueDirs(t.globs)
+	if Err != nil {
+		return Err
+	}
+	for _, dirPath = range dirPaths {
+		log.Debugf("watching directory %v", dirPath)
+		dir, Err := t.osSpecific.watchDir(dirPath)
+		if err != nil {
+			return Err
+		}
+		t.watchedDirs = append(t.watchedDirs, dir)
+	}
+	return nil
+}
+
+func (t *fileTailer) syncFilesInDir(dir *Dir, readall bool, log logrus.FieldLogger) Error {
 	watchedFilesAfter := make(map[string]*fileWithReader)
 	fileInfos, Err := dir.ls()
 	if Err != nil {
@@ -121,7 +216,7 @@ func (w *watcher) syncFilesInDir(dir *Dir, readall bool, log logrus.FieldLogger)
 	for _, fileInfo := range fileInfos {
 		filePath := filepath.Join(dir.Path(), fileInfo.Name())
 		fileLogger := log.WithField("file", fileInfo.Name())
-		if !anyGlobMatches(w.globs, filePath) {
+		if !anyGlobMatches(t.globs, filePath) {
 			fileLogger.Debug("skipping file, because file name does not match")
 			continue
 		}
@@ -129,7 +224,7 @@ func (w *watcher) syncFilesInDir(dir *Dir, readall bool, log logrus.FieldLogger)
 			fileLogger.Debug("skipping, because it is a directory")
 			continue
 		}
-		alreadyWatched, Err := w.findSameFile(fileInfo, filePath)
+		alreadyWatched, Err := t.osSpecific.findSameFile(t, fileInfo, filePath)
 		if Err != nil {
 			return Err
 		}
@@ -157,32 +252,32 @@ func (w *watcher) syncFilesInDir(dir *Dir, readall bool, log logrus.FieldLogger)
 		fileLogger = fileLogger.WithField("fd", newFile.Fd())
 		fileLogger.Info("watching new file")
 
-		Err = w.watchNewFile(newFile)
+		Err = t.osSpecific.watchNewFile(newFile)
 		if Err != nil {
 			newFile.Close()
 			return Err
 		}
 
 		newFileWithReader := &fileWithReader{file: newFile, reader: NewLineReader()}
-		Err = w.readNewLines(newFileWithReader, fileLogger)
+		Err = t.readNewLines(newFileWithReader, fileLogger)
 		if Err != nil {
 			newFile.Close()
 			return Err
 		}
 		watchedFilesAfter[filePath] = newFileWithReader
 	}
-	for _, f := range w.watchedFiles {
+	for _, f := range t.watchedFiles {
 		if !contains(watchedFilesAfter, f) {
 			fileLogger := log.WithField("file", filepath.Base(f.file.Name())).WithField("fd", f.file.Fd())
 			fileLogger.Info("file was removed, closing and un-watching")
 			f.file.Close()
 		}
 	}
-	w.watchedFiles = watchedFilesAfter
+	t.watchedFiles = watchedFilesAfter
 	return nil
 }
 
-func (w *watcher) readNewLines(file *fileWithReader, log logrus.FieldLogger) Error {
+func (t *fileTailer) readNewLines(file *fileWithReader, log logrus.FieldLogger) Error {
 	var (
 		line string
 		eof  bool
@@ -198,17 +293,17 @@ func (w *watcher) readNewLines(file *fileWithReader, log logrus.FieldLogger) Err
 		}
 		log.Debugf("read line %q", line)
 		select {
-		case <-w.done:
+		case <-t.done:
 			return nil
-		case w.lines <- Line{Line: line, File: file.file.Name()}:
+		case t.lines <- Line{Line: line, File: file.file.Name()}:
 		}
 	}
 }
 
-func (w *watcher) checkMissingFile() Error {
+func (t *fileTailer) checkMissingFile() Error {
 OUTER:
-	for _, g := range w.globs {
-		for watchedFileName, _ := range w.watchedFiles {
+	for _, g := range t.globs {
+		for watchedFileName, _ := range t.watchedFiles {
 			if g.Match(watchedFileName) {
 				continue OUTER
 			}

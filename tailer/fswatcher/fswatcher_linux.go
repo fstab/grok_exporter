@@ -16,8 +16,6 @@ package fswatcher
 
 import (
 	"fmt"
-	"github.com/fstab/grok_exporter/tailer/glob"
-	"github.com/prometheus/common/log"
 	"github.com/sirupsen/logrus"
 	"io"
 	"os"
@@ -26,13 +24,7 @@ import (
 )
 
 type watcher struct {
-	globs        []glob.Glob
-	watchedDirs  []*Dir
-	watchedFiles map[string]*fileWithReader // path -> fileWithReader
-	fd           int
-	lines        chan Line
-	errors       chan Error
-	done         chan struct{}
+	fd int
 }
 
 type fileWithReader struct {
@@ -40,95 +32,58 @@ type fileWithReader struct {
 	reader *lineReader
 }
 
-func (w *watcher) Lines() chan Line {
-	return w.lines
-}
-
-func (w *watcher) Errors() chan Error {
-	return w.errors
-}
-
-func (w *watcher) Close() {
-	// Closing the done channel will stop the consumer loop.
-	// Deferred functions within the consumer loop will close the producer loop.
-	close(w.done)
-}
-
-func (w *watcher) shutdown() {
-
-	close(w.lines)
-	close(w.errors)
-
-	warnf := func(format string, args ...interface{}) {
-		log.Warnf("error while shutting down the file system watcher: %v", fmt.Sprint(format, args))
+func (w *watcher) unwatchDir(dir *Dir) error {
+	// After calling eventProducerLoop.Close(), we need to call inotify_rm_watch()
+	// in order to terminate the inotify loop. See eventProducerLoop.Close().
+	success, err := syscall.InotifyRmWatch(w.fd, uint32(dir.wd))
+	if success != 0 || err != nil {
+		return fmt.Errorf("inotify_rm_watch(%q) failed: status=%v, err=%v", dir.path, success, err)
+	} else {
+		return nil
 	}
+}
 
-	for wd, dirPath := range w.watchedDirs {
-		// After calling eventProducerLoop.Close(), we need to call inotify_rm_watch()
-		// in order to terminate the inotify loop. See eventProducerLoop.Close().
-		success, err := syscall.InotifyRmWatch(w.fd, uint32(wd))
-		if success != 0 || err != nil {
-			warnf("inotify_rm_watch(%q) failed: status=%v, err=%v", dirPath, success, err)
-		}
-	}
-
+func (w *watcher) Close() error {
 	err := syscall.Close(w.fd)
 	if err != nil {
-		warnf("failed to close the inotify file descriptor: %v", err)
+		return fmt.Errorf("failed to close the inotify file descriptor: %v", err)
+	} else {
+		return nil
 	}
+}
 
-	for _, file := range w.watchedFiles {
-		err = file.file.Close()
-		if err != nil {
-			warnf("close(%q) failed: %v", file.file.Name(), err)
+func unwatchDirByEvent(t *fileTailer, event inotifyEvent) {
+	watchedDirsAfter := make([]*Dir, 0, len(t.watchedDirs)-1)
+	for _, existing := range t.watchedDirs {
+		if existing.wd != int(event.Wd) {
+			watchedDirsAfter = append(watchedDirsAfter, existing)
 		}
 	}
+	t.watchedDirs = watchedDirsAfter
 }
 
 func (w *watcher) runFseventProducerLoop() *inotifyloop {
 	return runInotifyLoop(w.fd)
 }
 
-func initWatcher(globs []glob.Glob) (*watcher, Error) {
-	var (
-		w = &watcher{
-			globs:        globs,
-			watchedFiles: make(map[string]*fileWithReader),
-			lines:        make(chan Line),
-			errors:       make(chan Error),
-			done:         make(chan struct{}),
-		}
-		err error
-	)
-	w.fd, err = syscall.InotifyInit1(syscall.IN_CLOEXEC)
+func initWatcher() (*watcher, Error) {
+	fd, err := syscall.InotifyInit1(syscall.IN_CLOEXEC)
 	if err != nil {
 		return nil, NewError(NotSpecified, err, "inotify_init1() failed")
 	}
-	return w, nil
+	return &watcher{fd: fd}, nil
 }
 
-func (w *watcher) watchDirs(log logrus.FieldLogger) Error {
+func (w *watcher) watchDir(path string) (*Dir, Error) {
 	var (
-		wd       int
-		dirPaths []string
-		dirPath  string
-		Err      Error
-		err      error
+		wd  int
+		err error
 	)
-	dirPaths, Err = uniqueDirs(w.globs)
-	if Err != nil {
-		return Err
+	wd, err = syscall.InotifyAddWatch(w.fd, path, syscall.IN_MODIFY|syscall.IN_MOVED_FROM|syscall.IN_MOVED_TO|syscall.IN_DELETE|syscall.IN_CREATE)
+	if err != nil {
+		return nil, NewErrorf(NotSpecified, err, "%q: inotify_add_watch() failed", path)
 	}
-	for _, dirPath = range dirPaths {
-		log.Debugf("watching directory %v", dirPath)
-		wd, err = syscall.InotifyAddWatch(w.fd, dirPath, syscall.IN_MODIFY|syscall.IN_MOVED_FROM|syscall.IN_MOVED_TO|syscall.IN_DELETE|syscall.IN_CREATE)
-		if err != nil {
-			w.Close()
-			return NewErrorf(NotSpecified, err, "%q: inotify_add_watch() failed", dirPath)
-		}
-		w.watchedDirs = append(w.watchedDirs, &Dir{wd: wd, path: dirPath})
-	}
-	return nil
+	return &Dir{wd: wd, path: path}, nil
 }
 
 func (w *watcher) watchNewFile(newFile *os.File) Error {
@@ -136,8 +91,8 @@ func (w *watcher) watchNewFile(newFile *os.File) Error {
 	return nil
 }
 
-func (w *watcher) findDir(event inotifyEvent) *Dir {
-	for _, dir := range w.watchedDirs {
+func findDir(t *fileTailer, event inotifyEvent) *Dir {
+	for _, dir := range t.watchedDirs {
 		if dir.wd == int(event.Wd) {
 			return dir
 		}
@@ -145,28 +100,18 @@ func (w *watcher) findDir(event inotifyEvent) *Dir {
 	return nil
 }
 
-func (w *watcher) unwatchDir(event inotifyEvent) {
-	watchedDirsAfter := make([]*Dir, 0, len(w.watchedDirs)-1)
-	for _, existing := range w.watchedDirs {
-		if existing.wd != int(event.Wd) {
-			watchedDirsAfter = append(watchedDirsAfter, existing)
-		}
-	}
-	w.watchedDirs = watchedDirsAfter
-}
-
-func (w *watcher) processEvent(event inotifyEvent, log logrus.FieldLogger) Error {
-	dir := w.findDir(event)
+func (w *watcher) processEvent(t *fileTailer, event inotifyEvent, log logrus.FieldLogger) Error {
+	dir := findDir(t, event)
 	if dir == nil {
 		return NewError(NotSpecified, nil, "watch list inconsistent: received a file system event for an unknown directory")
 	}
 	log.WithField("directory", dir.path).Debugf("received event: %v", event)
 	if event.Mask&syscall.IN_IGNORED == syscall.IN_IGNORED {
-		w.unwatchDir(event) // need to remove it from watchedDirs, because otherwise we close the removed dir on shutdown which causes an error
+		unwatchDirByEvent(t, event) // need to remove it from watchedDirs, because otherwise we close the removed dir on shutdown which causes an error
 		return NewErrorf(NotSpecified, nil, "%s: directory was removed while being watched", dir.path)
 	}
 	if event.Mask&syscall.IN_MODIFY == syscall.IN_MODIFY {
-		file, ok := w.watchedFiles[filepath.Join(dir.path, event.Name)]
+		file, ok := t.watchedFiles[filepath.Join(dir.path, event.Name)]
 		if !ok {
 			return nil // unrelated file was modified
 		}
@@ -181,7 +126,7 @@ func (w *watcher) processEvent(event inotifyEvent, log logrus.FieldLogger) Error
 			}
 			file.reader.Clear()
 		}
-		readErr := w.readNewLines(file, log)
+		readErr := t.readNewLines(file, log)
 		if readErr != nil {
 			return readErr
 		}
@@ -194,7 +139,7 @@ func (w *watcher) processEvent(event inotifyEvent, log logrus.FieldLogger) Error
 		// Trying to figure out what happened from the events would be error prone.
 		// Therefore, we don't care which of the above events we received, we just update our watched files with the current
 		// state of the watched directory.
-		err := w.syncFilesInDir(dir, true, log)
+		err := t.syncFilesInDir(dir, true, log)
 		if err != nil {
 			return err
 		}
@@ -214,12 +159,12 @@ func isTruncated(file *os.File) (bool, error) {
 	return currentPos > fileInfo.Size(), nil
 }
 
-func (w *watcher) findSameFile(file os.FileInfo, _ string) (*fileWithReader, Error) {
+func (w *watcher) findSameFile(t *fileTailer, file os.FileInfo, _ string) (*fileWithReader, Error) {
 	var (
 		fileInfo os.FileInfo
 		err      error
 	)
-	for _, watchedFile := range w.watchedFiles {
+	for _, watchedFile := range t.watchedFiles {
 		fileInfo, err = watchedFile.file.Stat()
 		if err != nil {
 			return nil, NewErrorf(NotSpecified, err, "%v: stat failed", watchedFile.file.Name())

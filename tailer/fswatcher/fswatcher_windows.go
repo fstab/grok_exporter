@@ -16,8 +16,6 @@ package fswatcher
 
 import (
 	"fmt"
-	"github.com/fstab/grok_exporter/tailer/glob"
-	"github.com/prometheus/common/log"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/exp/winfsnotify"
 	"io"
@@ -28,13 +26,7 @@ import (
 )
 
 type watcher struct {
-	globs        []glob.Glob
-	watchedDirs  []*Dir
-	watchedFiles map[string]*fileWithReader // path -> fileWithReader
-	winWatcher   *winfsnotify.Watcher
-	lines        chan Line
-	errors       chan Error
-	done         chan struct{}
+	winWatcher *winfsnotify.Watcher
 }
 
 type fileWithReader struct {
@@ -55,37 +47,16 @@ func (f *fileInfo) IsDir() bool {
 	return f.ffd.FileAttributes&syscall.FILE_ATTRIBUTE_DIRECTORY == syscall.FILE_ATTRIBUTE_DIRECTORY
 }
 
-func (w *watcher) Lines() chan Line {
-	return w.lines
+func (w *watcher) unwatchDir(dir *Dir) error {
+	return nil
 }
 
-func (w *watcher) Errors() chan Error {
-	return w.errors
-}
-
-func (w *watcher) Close() {
-	close(w.done)
-}
-
-func (w *watcher) shutdown() {
-
-	close(w.lines)
-	close(w.errors)
-
-	warnf := func(format string, args ...interface{}) {
-		log.Warnf("error while shutting down the file system watcher: %v", fmt.Sprint(format, args))
-	}
-
+func (w *watcher) Close() error {
 	err := w.winWatcher.Close()
 	if err != nil {
-		warnf("failed to close winfsnotify.Watcher: %v", err)
-	}
-
-	for _, file := range w.watchedFiles {
-		err = file.file.Close()
-		if err != nil {
-			warnf("close(%q) failed: %v", file.file.Name(), err)
-		}
+		return fmt.Errorf("failed to close winfsnotify.Watcher: %v", err)
+	} else {
+		return nil
 	}
 }
 
@@ -105,45 +76,20 @@ func (l *winwatcherloop) Close() {
 	// noop, winwatcher.Close() called in shutdown()
 }
 
-func initWatcher(globs []glob.Glob) (*watcher, Error) {
-	var (
-		w = &watcher{
-			globs:  globs,
-			lines:  make(chan Line),
-			errors: make(chan Error),
-			done:   make(chan struct{}),
-		}
-		err error
-	)
-	w.winWatcher, err = winfsnotify.NewWatcher()
+func initWatcher() (*watcher, Error) {
+	winWatcher, err := winfsnotify.NewWatcher()
 	if err != nil {
 		return nil, NewError(NotSpecified, err, "failed to initialize file system watcher")
 	}
-	return w, nil
+	return &watcher{winWatcher: winWatcher}, nil
 }
 
-func (w *watcher) watchDirs(log logrus.FieldLogger) Error {
-	var (
-		err      error
-		Err      Error
-		dirPaths []string
-		dirPath  string
-	)
-
-	dirPaths, Err = uniqueDirs(w.globs)
-	if Err != nil {
-		return Err
+func (w *watcher) watchDir(path string) (*Dir, Error) {
+	err := w.winWatcher.Watch(path)
+	if err != nil {
+		return nil, NewErrorf(NotSpecified, err, "%v: failed to watch directory", path)
 	}
-
-	for _, dirPath = range dirPaths {
-		log.Debugf("watching directory %v", dirPath)
-		err = w.winWatcher.Watch(dirPath)
-		if err != nil {
-			return NewErrorf(NotSpecified, err, "%v: failed to watch directory", dirPath)
-		}
-		w.watchedDirs = append(w.watchedDirs, &Dir{path: dirPath})
-	}
-	return nil
+	return &Dir{path: path}, nil
 }
 
 func (w *watcher) watchNewFile(newFile *File) Error {
@@ -151,21 +97,21 @@ func (w *watcher) watchNewFile(newFile *File) Error {
 	return nil
 }
 
-func (w *watcher) processEvent(event *winfsnotify.Event, log logrus.FieldLogger) Error {
-	dir, fileName := w.dirAndFile(event.Name)
+func (w *watcher) processEvent(t *fileTailer, event *winfsnotify.Event, log logrus.FieldLogger) Error {
+	dir, fileName := dirAndFile(t, event.Name)
 	if dir == nil {
 		return NewError(NotSpecified, nil, "watch list inconsistent: received a file system event for an unknown directory")
 	}
 	log.WithField("directory", dir.path).Debugf("received event: %v", event)
 	if event.Mask&winfsnotify.FS_MODIFY == winfsnotify.FS_MODIFY {
-		file, ok := w.watchedFiles[filepath.Join(dir.path, fileName)]
+		file, ok := t.watchedFiles[filepath.Join(dir.path, fileName)]
 		if !ok {
 			return nil // unrelated file was modified
 		}
 		truncated, Err := file.file.CheckTruncated()
 		if Err != nil {
 			if Err.Type() == WinFileRemoved {
-				return w.syncFilesInDir(dir, true, log)
+				return t.syncFilesInDir(dir, true, log)
 			} else {
 				return Err
 			}
@@ -177,7 +123,7 @@ func (w *watcher) processEvent(event *winfsnotify.Event, log logrus.FieldLogger)
 			}
 			file.reader.Clear()
 		}
-		Err = w.readNewLines(file, log)
+		Err = t.readNewLines(file, log)
 		if Err != nil {
 			return Err
 		}
@@ -190,7 +136,7 @@ func (w *watcher) processEvent(event *winfsnotify.Event, log logrus.FieldLogger)
 		// Trying to figure out what happened from the events would be error prone.
 		// Therefore, we don't care which of the above events we received, we just update our watched files with the current
 		// state of the watched directory.
-		err := w.syncFilesInDir(dir, true, log)
+		err := t.syncFilesInDir(dir, true, log)
 		if err != nil {
 			return err
 		}
@@ -210,13 +156,13 @@ func isTruncated(file *os.File) (bool, Error) {
 	return currentPos > fileInfo.Size(), nil
 }
 
-func (w *watcher) findSameFile(newFileInfo *fileInfo, path string) (*fileWithReader, Error) {
+func (w *watcher) findSameFile(t *fileTailer, newFileInfo *fileInfo, path string) (*fileWithReader, Error) {
 	newFile, Err := open(path)
 	if Err != nil {
 		return nil, Err
 	}
 	defer newFile.Close()
-	for _, watchedFile := range w.watchedFiles {
+	for _, watchedFile := range t.watchedFiles {
 		if watchedFile.file.SameFile(newFile) {
 			return watchedFile, nil
 		}
@@ -224,11 +170,11 @@ func (w *watcher) findSameFile(newFileInfo *fileInfo, path string) (*fileWithRea
 	return nil, nil
 }
 
-func (w *watcher) dirAndFile(fileOrDir string) (*Dir, string) {
+func dirAndFile(t *fileTailer, fileOrDir string) (*Dir, string) {
 	var (
 		found *Dir
 	)
-	for _, dir := range w.watchedDirs {
+	for _, dir := range t.watchedDirs {
 		if strings.HasPrefix(fileOrDir, dir.path) {
 			if found == nil || len(dir.path) > len(found.path) {
 				found = dir
