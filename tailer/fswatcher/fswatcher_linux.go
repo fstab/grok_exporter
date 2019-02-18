@@ -62,11 +62,11 @@ func unwatchDirByEvent(t *fileTailer, event inotifyEvent) {
 	t.watchedDirs = watchedDirsAfter
 }
 
-func (w *watcher) runFseventProducerLoop() *inotifyloop {
+func (w *watcher) runFseventProducerLoop() fseventProducerLoop {
 	return runInotifyLoop(w.fd)
 }
 
-func initWatcher() (*watcher, Error) {
+func initWatcher() (fswatcher, Error) {
 	fd, err := syscall.InotifyInit1(syscall.IN_CLOEXEC)
 	if err != nil {
 		return nil, NewError(NotSpecified, err, "inotify_init1() failed")
@@ -86,7 +86,7 @@ func (w *watcher) watchDir(path string) (*Dir, Error) {
 	return &Dir{wd: wd, path: path}, nil
 }
 
-func (w *watcher) watchNewFile(newFile *os.File) Error {
+func (w *watcher) watchFile(_ fileMeta) Error {
 	// nothing to do, because on Linux we watch the directory and don't need to watch individual files.
 	return nil
 }
@@ -100,7 +100,11 @@ func findDir(t *fileTailer, event inotifyEvent) *Dir {
 	return nil
 }
 
-func (w *watcher) processEvent(t *fileTailer, event inotifyEvent, log logrus.FieldLogger) Error {
+func (w *watcher) processEvent(t *fileTailer, fsevent fsevent, log logrus.FieldLogger) Error {
+	event, ok := fsevent.(inotifyEvent)
+	if !ok {
+		return NewErrorf(NotSpecified, nil, "received a file system event of unknown type %T", event)
+	}
 	dir := findDir(t, event)
 	if dir == nil {
 		return NewError(NotSpecified, nil, "watch list inconsistent: received a file system event for an unknown directory")
@@ -159,7 +163,7 @@ func isTruncated(file *os.File) (bool, error) {
 	return currentPos > fileInfo.Size(), nil
 }
 
-func (w *watcher) findSameFile(t *fileTailer, file os.FileInfo, _ string) (*fileWithReader, Error) {
+func findSameFile(t *fileTailer, file os.FileInfo, _ string) (*fileWithReader, Error) {
 	var (
 		fileInfo os.FileInfo
 		err      error

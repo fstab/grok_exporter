@@ -21,7 +21,7 @@ import (
 
 type keventloop struct {
 	kq     int
-	events chan syscall.Kevent_t
+	events chan fsevent
 	errors chan Error
 	done   chan struct{}
 }
@@ -35,10 +35,18 @@ func (p *keventloop) Close() {
 	close(p.done)
 }
 
+func (p *keventloop) Events() chan fsevent {
+	return p.events
+}
+
+func (p *keventloop) Errors() chan Error {
+	return p.errors
+}
+
 func runKeventLoop(kq int) *keventloop {
 	var result = &keventloop{
 		kq:     kq,
-		events: make(chan syscall.Kevent_t),
+		events: make(chan fsevent),
 		errors: make(chan Error),
 		done:   make(chan struct{}),
 	}

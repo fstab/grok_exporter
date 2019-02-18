@@ -1,4 +1,4 @@
-// Copyright 2018 The grok_exporter Authors
+// Copyright 2018-2019 The grok_exporter Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -49,10 +49,32 @@ type fileTailer struct {
 	globs        []glob.Glob
 	watchedDirs  []*Dir
 	watchedFiles map[string]*fileWithReader // path -> fileWithReader
-	osSpecific   *watcher
+	osSpecific   fswatcher
 	lines        chan Line
 	errors       chan Error
 	done         chan struct{}
+}
+
+type fswatcher interface {
+	io.Closer
+	runFseventProducerLoop() fseventProducerLoop
+	processEvent(t *fileTailer, event fsevent, log logrus.FieldLogger) Error
+	watchDir(path string) (*Dir, Error)
+	unwatchDir(dir *Dir) error
+	watchFile(file fileMeta) Error
+}
+
+type fseventProducerLoop interface {
+	Close()
+	Events() chan fsevent
+	Errors() chan Error
+}
+
+type fsevent interface{}
+
+type fileMeta interface {
+	Fd() uintptr
+	Name() string
 }
 
 func (t *fileTailer) Lines() chan Line {
@@ -134,7 +156,7 @@ func RunFileTailer(globs []glob.Glob, readall bool, failOnMissingFile bool, log 
 			select {
 			case <-t.done:
 				return
-			case event := <-eventProducerLoop.events:
+			case event := <-eventProducerLoop.Events():
 				processEventError := t.osSpecific.processEvent(t, event, log)
 				if processEventError != nil {
 					select {
@@ -143,7 +165,7 @@ func RunFileTailer(globs []glob.Glob, readall bool, failOnMissingFile bool, log 
 					}
 					return
 				}
-			case err := <-eventProducerLoop.errors:
+			case err := <-eventProducerLoop.Errors():
 				select {
 				case <-t.done:
 				case t.errors <- NewError(NotSpecified, err, "error reading file system events"):
@@ -224,7 +246,7 @@ func (t *fileTailer) syncFilesInDir(dir *Dir, readall bool, log logrus.FieldLogg
 			fileLogger.Debug("skipping, because it is a directory")
 			continue
 		}
-		alreadyWatched, Err := t.osSpecific.findSameFile(t, fileInfo, filePath)
+		alreadyWatched, Err := findSameFile(t, fileInfo, filePath)
 		if Err != nil {
 			return Err
 		}
@@ -252,7 +274,7 @@ func (t *fileTailer) syncFilesInDir(dir *Dir, readall bool, log logrus.FieldLogg
 		fileLogger = fileLogger.WithField("fd", newFile.Fd())
 		fileLogger.Info("watching new file")
 
-		Err = t.osSpecific.watchNewFile(newFile)
+		Err = t.osSpecific.watchFile(newFile)
 		if Err != nil {
 			newFile.Close()
 			return Err

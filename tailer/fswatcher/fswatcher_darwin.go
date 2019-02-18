@@ -51,11 +51,11 @@ func (w *watcher) Close() error {
 	}
 }
 
-func (w *watcher) runFseventProducerLoop() *keventloop {
+func (w *watcher) runFseventProducerLoop() fseventProducerLoop {
 	return runKeventLoop(w.kq)
 }
 
-func initWatcher() (*watcher, Error) {
+func initWatcher() (fswatcher, Error) {
 	kq, err := syscall.Kqueue()
 	if err != nil {
 		return nil, NewError(NotSpecified, err, "kqueue() failed")
@@ -81,7 +81,7 @@ func (w *watcher) watchDir(path string) (*Dir, Error) {
 	return &Dir{dir}, nil
 }
 
-func (w *watcher) watchNewFile(newFile *os.File) Error {
+func (w *watcher) watchFile(newFile fileMeta) Error {
 	zeroTimeout := syscall.NsecToTimespec(0) // timeout zero means non-blocking kevent() call
 	_, err := syscall.Kevent(w.kq, []syscall.Kevent_t{makeEvent(newFile)}, nil, &zeroTimeout)
 	if err != nil {
@@ -90,12 +90,20 @@ func (w *watcher) watchNewFile(newFile *os.File) Error {
 	return nil
 }
 
-func (w *watcher) processEvent(t *fileTailer, kevent syscall.Kevent_t, log logrus.FieldLogger) Error {
+func (w *watcher) processEvent(t *fileTailer, event fsevent, log logrus.FieldLogger) Error {
 	var (
 		dir                   *Dir
 		file                  *fileWithReader
 		dirLogger, fileLogger logrus.FieldLogger
+		kevent                syscall.Kevent_t
+		ok                    bool
 	)
+
+	kevent, ok = event.(syscall.Kevent_t)
+	if !ok {
+		return NewErrorf(NotSpecified, nil, "received a file system event of unknown type %T", event)
+	}
+
 	for _, dir = range t.watchedDirs {
 		if kevent.Ident == fdToInt(dir.file.Fd()) {
 			dirLogger = log.WithField("directory", dir.file.Name())
@@ -189,7 +197,7 @@ func isTruncated(file *os.File) (bool, error) {
 	return currentPos > fileInfo.Size(), nil
 }
 
-func (w *watcher) findSameFile(t *fileTailer, file os.FileInfo, _ string) (*fileWithReader, Error) {
+func findSameFile(t *fileTailer, file os.FileInfo, _ string) (*fileWithReader, Error) {
 	var (
 		fileInfo os.FileInfo
 		err      error
@@ -206,7 +214,11 @@ func (w *watcher) findSameFile(t *fileTailer, file os.FileInfo, _ string) (*file
 	return nil, nil
 }
 
-func makeEvent(file *os.File) syscall.Kevent_t {
+type withFd interface {
+	Fd() uintptr
+}
+
+func makeEvent(file withFd) syscall.Kevent_t {
 
 	// Note about the EV_CLEAR flag:
 	//

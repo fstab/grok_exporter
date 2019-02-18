@@ -23,7 +23,7 @@ import (
 
 type inotifyloop struct {
 	fd     int
-	events chan inotifyEvent
+	events chan fsevent
 	errors chan Error
 	done   chan struct{}
 }
@@ -31,6 +31,14 @@ type inotifyloop struct {
 type inotifyEvent struct {
 	syscall.InotifyEvent
 	Name string
+}
+
+func (l *inotifyloop) Events() chan fsevent {
+	return l.events
+}
+
+func (l *inotifyloop) Errors() chan Error {
+	return l.errors
 }
 
 // Terminate the inotify loop.
@@ -44,7 +52,7 @@ func (l *inotifyloop) Close() {
 func runInotifyLoop(fd int) *inotifyloop {
 	var result = &inotifyloop{
 		fd:     fd,
-		events: make(chan inotifyEvent),
+		events: make(chan fsevent),
 		errors: make(chan Error),
 		done:   make(chan struct{}),
 	}

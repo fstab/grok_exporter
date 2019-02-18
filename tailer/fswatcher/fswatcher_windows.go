@@ -60,23 +60,11 @@ func (w *watcher) Close() error {
 	}
 }
 
-func (w *watcher) runFseventProducerLoop() *winwatcherloop {
-	return &winwatcherloop{
-		events: w.winWatcher.Event,
-		errors: w.winWatcher.Error,
-	}
+func (w *watcher) runFseventProducerLoop() fseventProducerLoop {
+	return runWinWatcherLoop(w.winWatcher)
 }
 
-type winwatcherloop struct {
-	events chan *winfsnotify.Event
-	errors chan error
-}
-
-func (l *winwatcherloop) Close() {
-	// noop, winwatcher.Close() called in shutdown()
-}
-
-func initWatcher() (*watcher, Error) {
+func initWatcher() (fswatcher, Error) {
 	winWatcher, err := winfsnotify.NewWatcher()
 	if err != nil {
 		return nil, NewError(NotSpecified, err, "failed to initialize file system watcher")
@@ -92,12 +80,17 @@ func (w *watcher) watchDir(path string) (*Dir, Error) {
 	return &Dir{path: path}, nil
 }
 
-func (w *watcher) watchNewFile(newFile *File) Error {
+func (w *watcher) watchFile(_ fileMeta) Error {
 	// nothing to do, because on Windows we watch the directory and don't need to watch individual files.
 	return nil
 }
 
-func (w *watcher) processEvent(t *fileTailer, event *winfsnotify.Event, log logrus.FieldLogger) Error {
+func (w *watcher) processEvent(t *fileTailer, fsevent fsevent, log logrus.FieldLogger) Error {
+	event, ok := fsevent.(*winfsnotify.Event)
+	if !ok {
+		return NewErrorf(NotSpecified, nil, "received a file system event of unknown type %T", event)
+	}
+
 	dir, fileName := dirAndFile(t, event.Name)
 	if dir == nil {
 		return NewError(NotSpecified, nil, "watch list inconsistent: received a file system event for an unknown directory")
@@ -156,7 +149,7 @@ func isTruncated(file *os.File) (bool, Error) {
 	return currentPos > fileInfo.Size(), nil
 }
 
-func (w *watcher) findSameFile(t *fileTailer, newFileInfo *fileInfo, path string) (*fileWithReader, Error) {
+func findSameFile(t *fileTailer, newFileInfo *fileInfo, path string) (*fileWithReader, Error) {
 	newFile, Err := open(path)
 	if Err != nil {
 		return nil, Err
