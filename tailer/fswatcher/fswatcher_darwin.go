@@ -65,18 +65,31 @@ func initWatcher() (fswatcher, Error) {
 
 func (w *watcher) watchDir(path string) (*Dir, Error) {
 	var (
+		dir         *Dir
 		err         error
-		dir         *os.File
+		Err         Error
 		zeroTimeout = syscall.NsecToTimespec(0) // timeout zero means non-blocking kevent() call
+	)
+	dir, Err = newDir(path)
+	if Err != nil {
+		return nil, Err
+	}
+	_, err = syscall.Kevent(w.kq, []syscall.Kevent_t{makeEvent(dir.file)}, nil, &zeroTimeout)
+	if err != nil {
+		dir.file.Close()
+		return nil, NewErrorf(NotSpecified, err, "%v: kevent() failed", path)
+	}
+	return dir, nil
+}
+
+func newDir(path string) (*Dir, Error) {
+	var (
+		err error
+		dir *os.File
 	)
 	dir, err = os.Open(path)
 	if err != nil {
 		return nil, NewErrorf(NotSpecified, err, "%v: open() failed", path)
-	}
-	_, err = syscall.Kevent(w.kq, []syscall.Kevent_t{makeEvent(dir)}, nil, &zeroTimeout)
-	if err != nil {
-		dir.Close()
-		return nil, NewErrorf(NotSpecified, err, "%v: kevent() failed", path)
 	}
 	return &Dir{dir}, nil
 }

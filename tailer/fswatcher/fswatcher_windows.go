@@ -73,10 +73,23 @@ func initWatcher() (fswatcher, Error) {
 }
 
 func (w *watcher) watchDir(path string) (*Dir, Error) {
-	err := w.winWatcher.Watch(path)
+	var (
+		dir *Dir
+		err error
+		Err Error
+	)
+	dir, Err = newDir(path)
+	if Err != nil {
+		return nil, Err
+	}
+	err = w.winWatcher.Watch(path)
 	if err != nil {
 		return nil, NewErrorf(NotSpecified, err, "%v: failed to watch directory", path)
 	}
+	return dir, nil
+}
+
+func newDir(path string) (*Dir, Error) {
 	return &Dir{path: path}, nil
 }
 

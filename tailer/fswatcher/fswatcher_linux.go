@@ -76,14 +76,23 @@ func initWatcher() (fswatcher, Error) {
 
 func (w *watcher) watchDir(path string) (*Dir, Error) {
 	var (
-		wd  int
+		dir *Dir
 		err error
+		Err Error
 	)
-	wd, err = syscall.InotifyAddWatch(w.fd, path, syscall.IN_MODIFY|syscall.IN_MOVED_FROM|syscall.IN_MOVED_TO|syscall.IN_DELETE|syscall.IN_CREATE)
+	dir, Err = newDir(path)
+	if Err != nil {
+		return nil, Err
+	}
+	dir.wd, err = syscall.InotifyAddWatch(w.fd, path, syscall.IN_MODIFY|syscall.IN_MOVED_FROM|syscall.IN_MOVED_TO|syscall.IN_DELETE|syscall.IN_CREATE)
 	if err != nil {
 		return nil, NewErrorf(NotSpecified, err, "%q: inotify_add_watch() failed", path)
 	}
-	return &Dir{wd: wd, path: path}, nil
+	return dir, nil
+}
+
+func newDir(path string) (*Dir, Error) {
+	return &Dir{path: path}, nil
 }
 
 func (w *watcher) watchFile(_ fileMeta) Error {

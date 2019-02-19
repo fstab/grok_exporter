@@ -22,6 +22,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 type FileTailer interface {
@@ -92,6 +93,17 @@ func (t *fileTailer) Close() {
 }
 
 func RunFileTailer(globs []glob.Glob, readall bool, failOnMissingFile bool, log logrus.FieldLogger) (FileTailer, error) {
+	return runFileTailer(initWatcher, globs, readall, failOnMissingFile, log)
+}
+
+func RunPollingFileTailer(globs []glob.Glob, readall bool, failOnMissingFile bool, pollInterval time.Duration, log logrus.FieldLogger) (FileTailer, error) {
+	initFunc := func() (fswatcher, Error) {
+		return initPollingWatcher(pollInterval)
+	}
+	return runFileTailer(initFunc, globs, readall, failOnMissingFile, log)
+}
+
+func runFileTailer(initFunc func() (fswatcher, Error), globs []glob.Glob, readall bool, failOnMissingFile bool, log logrus.FieldLogger) (FileTailer, error) {
 
 	var (
 		t   *fileTailer
@@ -106,7 +118,7 @@ func RunFileTailer(globs []glob.Glob, readall bool, failOnMissingFile bool, log 
 		done:         make(chan struct{}),
 	}
 
-	t.osSpecific, Err = initWatcher()
+	t.osSpecific, Err = initFunc()
 	if Err != nil {
 		return nil, Err
 	}
@@ -127,10 +139,10 @@ func RunFileTailer(globs []glob.Glob, readall bool, failOnMissingFile bool, log 
 		eventProducerLoop := t.osSpecific.runFseventProducerLoop()
 		defer eventProducerLoop.Close()
 
-		for _, dirPath := range t.watchedDirs {
-			dirLogger := log.WithField("directory", dirPath)
+		for _, dir := range t.watchedDirs {
+			dirLogger := log.WithField("directory", dir.Path())
 			dirLogger.Debugf("initializing directory")
-			Err = t.syncFilesInDir(dirPath, readall, dirLogger)
+			Err = t.syncFilesInDir(dir, readall, dirLogger)
 			if Err != nil {
 				select {
 				case <-t.done:
