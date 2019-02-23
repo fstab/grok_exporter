@@ -51,6 +51,17 @@ func (g Glob) Match(path string) bool {
 	return matched
 }
 
+// The file tailer implementation switched from watching single paths to globs,
+// but the rest of grok_exporter just supports single files.
+// FromPath creates a Glob from a file path, so that we can use the new file
+// tailers but be sure only a single file is watched.
+func FromPath(path string) (Glob, error) {
+	if containsWildcards(path) {
+		return "", fmt.Errorf("%v: illegal file name", path)
+	}
+	return Parse(path)
+}
+
 func containsWildcards(pattern string) bool {
 	p := []rune(pattern)
 	escaped := false // p[i] is escaped by '\\'

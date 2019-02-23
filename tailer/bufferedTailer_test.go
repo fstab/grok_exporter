@@ -16,6 +16,7 @@ package tailer
 
 import (
 	"fmt"
+	"github.com/fstab/grok_exporter/tailer/fswatcher"
 	"math/rand"
 	"sync"
 	"testing"
@@ -23,14 +24,14 @@ import (
 )
 
 type sourceTailer struct {
-	lines chan string
+	lines chan fswatcher.Line
 }
 
-func (tail *sourceTailer) Lines() chan string {
+func (tail *sourceTailer) Lines() chan fswatcher.Line {
 	return tail.lines
 }
 
-func (tail *sourceTailer) Errors() chan Error {
+func (tail *sourceTailer) Errors() chan fswatcher.Error {
 	return nil
 }
 
@@ -40,15 +41,15 @@ func (tail *sourceTailer) Close() {
 
 // First produce 10,000 lines, then consume 10,000 lines.
 func TestLineBufferSequential(t *testing.T) {
-	src := &sourceTailer{lines: make(chan string)}
+	src := &sourceTailer{lines: make(chan fswatcher.Line)}
 	metric := &peakLoadMetric{}
 	buffered := BufferedTailerWithMetrics(src, metric)
 	for i := 1; i <= 10000; i++ {
-		src.lines <- fmt.Sprintf("This is line number %v.", i)
+		src.lines <- fswatcher.Line{Line: fmt.Sprintf("This is line number %v.", i)}
 	}
 	for i := 1; i <= 10000; i++ {
 		line := <-buffered.Lines()
-		if line != fmt.Sprintf("This is line number %v.", i) {
+		if line.Line != fmt.Sprintf("This is line number %v.", i) {
 			t.Errorf("Expected 'This is line number %v', but got '%v'.", i, line)
 		}
 	}
@@ -76,14 +77,14 @@ func TestLineBufferSequential(t *testing.T) {
 
 // Produce and consume in parallel.
 func TestLineBufferParallel(t *testing.T) {
-	src := &sourceTailer{lines: make(chan string)}
+	src := &sourceTailer{lines: make(chan fswatcher.Line)}
 	metric := &peakLoadMetric{}
 	buffered := BufferedTailerWithMetrics(src, metric)
 	var wg sync.WaitGroup
 	go func() {
 		start := time.Now()
 		for i := 1; i <= 10000; i++ {
-			src.lines <- fmt.Sprintf("This is line number %v.", i)
+			src.lines <- fswatcher.Line{Line: fmt.Sprintf("This is line number %v.", i)}
 			if rand.Int()%64 == 0 { // Sleep from time to time
 				time.Sleep(10 * time.Millisecond)
 			}
@@ -95,7 +96,7 @@ func TestLineBufferParallel(t *testing.T) {
 		start := time.Now()
 		for i := 1; i <= 10000; i++ {
 			line := <-buffered.Lines()
-			if line != fmt.Sprintf("This is line number %v.", i) {
+			if line.Line != fmt.Sprintf("This is line number %v.", i) {
 				t.Errorf("Expected 'This is line number %v', but got '%v'.", i, line)
 			}
 			if rand.Int()%64 == 0 { // Sleep from time to time

@@ -2,6 +2,7 @@ package fswatcher
 
 import (
 	"github.com/sirupsen/logrus"
+	"io"
 	"time"
 )
 
@@ -24,6 +25,23 @@ func (w *pollingWatcher) processEvent(t *fileTailer, fsevent fsevent, log logrus
 		err := t.syncFilesInDir(dir, true, log)
 		if err != nil {
 			return err
+		}
+	}
+	for _, file := range t.watchedFiles {
+		truncated, err := isTruncated(file.file)
+		if err != nil {
+			return NewErrorf(NotSpecified, err, "%v: seek() or stat() failed", file.file.Name())
+		}
+		if truncated {
+			_, err = file.file.Seek(0, io.SeekStart)
+			if err != nil {
+				return NewErrorf(NotSpecified, err, "%v: seek() failed", file.file.Name())
+			}
+			file.reader.Clear()
+		}
+		readErr := t.readNewLines(file, log)
+		if readErr != nil {
+			return readErr
 		}
 	}
 	return nil

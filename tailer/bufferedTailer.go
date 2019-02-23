@@ -16,22 +16,23 @@ package tailer
 
 import (
 	"container/list"
+	"github.com/fstab/grok_exporter/tailer/fswatcher"
 	"log"
 	"sync"
 	"time"
 )
 
-// implements Tailer
+// implements fswatcher.FileTailer
 type bufferedTailer struct {
-	out  chan string
-	orig Tailer
+	out  chan fswatcher.Line
+	orig fswatcher.FileTailer
 }
 
-func (b *bufferedTailer) Lines() chan string {
+func (b *bufferedTailer) Lines() chan fswatcher.Line {
 	return b.out
 }
 
-func (b *bufferedTailer) Errors() chan Error {
+func (b *bufferedTailer) Errors() chan fswatcher.Error {
 	return b.orig.Errors()
 }
 
@@ -39,7 +40,7 @@ func (b *bufferedTailer) Close() {
 	b.orig.Close()
 }
 
-func BufferedTailer(orig Tailer) Tailer {
+func BufferedTailer(orig fswatcher.FileTailer) fswatcher.FileTailer {
 	return BufferedTailerWithMetrics(orig, &noopMetric{})
 }
 
@@ -102,10 +103,10 @@ func BufferedTailer(orig Tailer) Tailer {
 //
 // To minimize the risk, use the buffered tailer to make sure file system events are handled
 // as quickly as possible without waiting for the grok patterns to be processed.
-func BufferedTailerWithMetrics(orig Tailer, bufferLoadMetric BufferLoadMetric) Tailer {
+func BufferedTailerWithMetrics(orig fswatcher.FileTailer, bufferLoadMetric BufferLoadMetric) fswatcher.FileTailer {
 	buffer := list.New()
 	bufferSync := sync.NewCond(&sync.Mutex{}) // coordinate producer and consumer
-	out := make(chan string)
+	out := make(chan fswatcher.Line)
 
 	// producer
 	go func() {
@@ -155,7 +156,7 @@ func BufferedTailerWithMetrics(orig Tailer, bufferLoadMetric BufferLoadMetric) T
 			buffer.Remove(first)
 			bufferSync.L.Unlock()
 			switch line := first.Value.(type) {
-			case string:
+			case fswatcher.Line:
 				out <- line
 			default:
 				// this cannot happen

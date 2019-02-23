@@ -150,16 +150,8 @@ func (w *watcher) processEvent(t *fileTailer, fsevent fsevent, log logrus.FieldL
 	return nil
 }
 
-func isTruncated(file *os.File) (bool, Error) {
-	currentPos, err := file.Seek(0, io.SeekCurrent)
-	if err != nil {
-		return false, NewError(NotSpecified, os.NewSyscallError("seek", err), file.Name())
-	}
-	fileInfo, err := file.Stat()
-	if err != nil {
-		return false, NewError(NotSpecified, os.NewSyscallError("stat", err), file.Name())
-	}
-	return currentPos > fileInfo.Size(), nil
+func isTruncated(file *File) (bool, Error) {
+	return file.CheckTruncated()
 }
 
 func findSameFile(t *fileTailer, newFileInfo *fileInfo, path string) (*fileWithReader, Error) {

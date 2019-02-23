@@ -16,6 +16,8 @@ package tailer
 
 import (
 	"fmt"
+	"github.com/fstab/grok_exporter/tailer/fswatcher"
+	"github.com/fstab/grok_exporter/tailer/glob"
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
@@ -166,7 +168,14 @@ func TestVisibleInOSXFinder(t *testing.T) {
 	logFileWriter := newLogFileWriter(t, logfile, closeFileAfterEachLine)
 	defer logFileWriter.close(t)
 	logFileWriter.writeLine(t, log, "test line 1")
-	tail := RunFseventFileTailer(logfile, false, true, log)
+	g, err := glob.FromPath(logfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tail, err := fswatcher.RunFileTailer([]glob.Glob{g}, false, true, log)
+	if err != nil {
+		t.Fatalf("failed to start file tailer: %v", err)
+	}
 	defer func() {
 		tail.Close()
 		// wait until closed
@@ -204,7 +213,14 @@ func TestFileMissingOnStartup(t *testing.T) {
 	tmpDir := mkTmpDirOrFail(t)
 	defer cleanUp(t, tmpDir)
 	var logfile = fmt.Sprintf("%s%c%s", tmpDir, os.PathSeparator, logfileName)
-	tail := RunFseventFileTailer(logfile, true, false, log)
+	g, err := glob.FromPath(logfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tail, err := fswatcher.RunFileTailer([]glob.Glob{g}, true, false, log)
+	if err != nil {
+		t.Fatalf("failed to start file system tailer: %v", err)
+	}
 	defer func() {
 		tail.Close()
 		// wait until closed
@@ -226,7 +242,7 @@ func TestFileMissingOnStartup(t *testing.T) {
 	}()
 
 	// Double check that file does not exist yet
-	_, err := os.Stat(logfile)
+	_, err = os.Stat(logfile)
 	if err == nil || !os.IsNotExist(err) {
 		t.Fatalf("%v should not exist yet", logfile)
 	}
@@ -265,12 +281,19 @@ func testLogrotate(t *testing.T, log logrus.FieldLogger, watcherOpt watcherType,
 	logFileWriter.writeLine(t, log, "test line 1")
 	logFileWriter.writeLine(t, log, "test line 2")
 
-	var tail Tailer
+	var tail fswatcher.FileTailer
+	g, err := glob.FromPath(logfile)
+	if err != nil {
+		t.Fatal(err)
+	}
 	switch watcherOpt {
 	case fsevent:
-		tail = RunFseventFileTailer(logfile, true, true, log)
+		tail, err = fswatcher.RunFileTailer([]glob.Glob{g}, true, true, log)
 	case polling:
-		tail = RunPollingFileTailer(logfile, true, true, 10*time.Millisecond, log)
+		tail, err = fswatcher.RunPollingFileTailer([]glob.Glob{g}, true, true, 10*time.Millisecond, log)
+	}
+	if err != nil {
+		t.Fatalf("failed to start file system watcher: %v", err)
 	}
 	tail = BufferedTailer(tail)
 	defer func() {
@@ -608,15 +631,15 @@ func truncateOrFail(t *testing.T, logfile string) {
 	}
 }
 
-func expect(t *testing.T, log logrus.FieldLogger, c chan string, line string, timeout time.Duration) {
+func expect(t *testing.T, log logrus.FieldLogger, lines chan fswatcher.Line, line string, timeout time.Duration) {
 	timeoutChan := make(chan bool, 1)
 	go func() {
 		time.Sleep(timeout)
 		close(timeoutChan)
 	}()
 	select {
-	case result := <-c:
-		if result != line {
+	case result := <-lines:
+		if result.Line != line {
 			t.Fatalf("Expected '%v', but got '%v'.", line, result)
 		} else {
 			log.Debugf("Read expected line '%v'\n", line)

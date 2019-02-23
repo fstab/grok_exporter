@@ -1,4 +1,4 @@
-// Copyright 2016-2018 The grok_exporter Authors
+// Copyright 2016-2019 The grok_exporter Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,20 +16,21 @@ package tailer
 
 import (
 	"bufio"
+	"github.com/fstab/grok_exporter/tailer/fswatcher"
 	"os"
 	"strings"
 )
 
 type stdinTailer struct {
-	lines  chan string
-	errors chan Error
+	lines  chan fswatcher.Line
+	errors chan fswatcher.Error
 }
 
-func (t *stdinTailer) Lines() chan string {
+func (t *stdinTailer) Lines() chan fswatcher.Line {
 	return t.lines
 }
 
-func (t *stdinTailer) Errors() chan Error {
+func (t *stdinTailer) Errors() chan fswatcher.Error {
 	return t.errors
 }
 
@@ -37,19 +38,19 @@ func (t *stdinTailer) Close() {
 	// TODO: How to stop the go-routine reading on stdin?
 }
 
-func RunStdinTailer() Tailer {
-	lineChan := make(chan string)
-	errorChan := make(chan Error)
+func RunStdinTailer() fswatcher.FileTailer {
+	lineChan := make(chan fswatcher.Line)
+	errorChan := make(chan fswatcher.Error)
 	go func() {
 		reader := bufio.NewReader(os.Stdin)
 		for {
 			line, err := reader.ReadString('\n')
 			if err != nil {
-				errorChan <- newError("", err)
+				errorChan <- fswatcher.NewError(fswatcher.NotSpecified, err, "")
 				return
 			}
 			line = strings.TrimRight(line, "\r\n")
-			lineChan <- line
+			lineChan <- fswatcher.Line{Line: line}
 		}
 	}()
 	return &stdinTailer{
