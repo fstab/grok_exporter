@@ -168,7 +168,10 @@ func runFileTailer(initFunc func() (fswatcher, Error), globs []glob.Glob, readal
 			select {
 			case <-t.done:
 				return
-			case event := <-eventProducerLoop.Events():
+			case event, open := <-eventProducerLoop.Events():
+				if !open {
+					return
+				}
 				processEventError := t.osSpecific.processEvent(t, event, log)
 				if processEventError != nil {
 					select {
@@ -177,7 +180,10 @@ func runFileTailer(initFunc func() (fswatcher, Error), globs []glob.Glob, readal
 					}
 					return
 				}
-			case err := <-eventProducerLoop.Errors():
+			case err, open := <-eventProducerLoop.Errors():
+				if !open {
+					return
+				}
 				select {
 				case <-t.done:
 				case t.errors <- NewError(NotSpecified, err, "error reading file system events"):
@@ -185,7 +191,6 @@ func runFileTailer(initFunc func() (fswatcher, Error), globs []glob.Glob, readal
 				return
 			}
 		}
-
 	}()
 	return t, nil
 }
