@@ -86,6 +86,9 @@ func (t *fileTailer) Errors() chan Error {
 	return t.errors
 }
 
+// Close() triggers the shutdown of the file tailer.
+// The file tailer will eventually terminate,
+// but after Close() returns it might still be running in the background for a few milliseconds.
 func (t *fileTailer) Close() {
 	// Closing the done channel will stop the consumer loop.
 	// Deferred functions within the consumer loop will close the producer loop.

@@ -95,26 +95,30 @@ func TestAll(t *testing.T) {
 // * directories with the xattr com.apple.FinderInfo (like everything in /tmp) are hidden
 // In order to test this, we must create a log file somewhere outside of /tmp, so we use $HOME.
 func TestVisibleInOSXFinder(t *testing.T) {
+	ctx := setUp(t, "visible in macOS finder", closeFileAfterEachLine, fseventTailer, _nocreate, mv)
+
+	// replace ctx.basedir with a directory in $HOME
 	currentUser, err := user.Current()
 	if err != nil {
-		t.Fatalf("failed to get current user: %v", err)
+		fatalf(t, ctx, "failed to get current user: %v", err)
 	}
 	testDir, err := ioutil.TempDir(currentUser.HomeDir, "grok_exporter_test_dir_")
 	if err != nil {
-		t.Fatalf("failed to create test directory: %v", err.Error())
+		fatalf(t, ctx, "failed to create test directory: %v", err.Error())
 	}
 	defer func() {
 		err := os.RemoveAll(testDir)
 		if err != nil {
-			t.Fatalf("%v: Failed to remove test directory after running the tests: %v", testDir, err.Error())
+			fatalf(t, ctx, "%v: Failed to remove test directory after running the tests: %v", testDir, err.Error())
 		}
 	}()
-	ctx := setUp(t, "visible in macOS finder", closeFileAfterEachLine, fseventTailer, _nocreate, mv)
 	err = os.RemoveAll(ctx.basedir)
 	if err != nil {
-		t.Fatalf("%v: failed to remove temp dir: %v", ctx.basedir, err)
+		fatalf(t, ctx, "%v: failed to remove temp dir: %v", ctx.basedir, err)
 	}
 	ctx.basedir = testDir
+
+	// run simple test in the new directory
 	test := [][]string{
 		{"log", "line 1", "test.log"},
 		{"start file tailer", "test.log"},
@@ -151,31 +155,39 @@ func runTest(t *testing.T, ctx *context, cmds [][]string) {
 		}
 		closeTailer(t, ctx)
 		assertGoroutinesTerminated(t, ctx, nGoroutinesBefore)
+		for _, writer := range ctx.logFileWriters {
+			writer.close(t, ctx)
+		}
 		fmt.Println()
 	})
 }
 
 func closeTailer(t *testing.T, ctx *context) {
+	// Note: This function checks if the Lines() channel gets closed.
+	// While it's good to check this, it doesn't guarantee that the tailer is
+	// fully shut down. There might be an fseventProducerLoop running in the
+	// background, or a hanging system call keeping the log directory open.
+	// There are tests for that like counting the number of goroutines
+	// in assertGoroutinesTerminated() or making sure the log directory
+	// can be removed in tearDown().
 	timeout := 5 * time.Second
 	if ctx.tailer != nil {
 		ctx.tailer.Close()
-		// wait until closed
+		// check if the lines channel gets closed
 		select {
 		case line, open := <-ctx.tailer.Lines():
 			if open {
-				msg := fmt.Sprintf("read unexpected line line from file %q: %q", line.File, line.Line)
-				ctx.log.Error(msg)
-				t.Fatal(msg)
+				fatalf(t, ctx, "read unexpected line line from file %q: %q", line.File, line.Line)
 			}
 		case <-time.After(timeout):
-			msg := fmt.Sprintf("failed to shut down the tailer. timeout after %v seconds", timeout)
-			ctx.log.Error(msg)
-			fatalf(t, ctx, msg)
+			fatalf(t, ctx, "failed to shut down the tailer. timeout after %v seconds", timeout)
 		}
 	}
 }
 
 func assertGoroutinesTerminated(t *testing.T, ctx *context, nGoroutinesBefore int) {
+	// Timeout of 2 seconds, because after FileTailer.Close() returns the tailer is still
+	// shutting down in the background.
 	timeout := 2 * time.Second
 	for nGoroutinesBefore < runtime.NumGoroutine() && timeout > 0 {
 		timeout = timeout - 50*time.Millisecond
@@ -468,7 +480,7 @@ func startFileTailer(t *testing.T, ctx *context, params []string) {
 	for _, g := range globs {
 		parsedGlob, err := glob.Parse(filepath.Join(ctx.basedir, g))
 		if err != nil {
-			t.Fatal(err)
+			fatalf(t, ctx, "%v", err)
 		}
 		parsedGlobs = append(parsedGlobs, parsedGlob)
 	}
@@ -723,9 +735,56 @@ func (l *keepOpenLogFileWriter) close(t *testing.T, ctx *context) {
 }
 
 func tearDown(t *testing.T, ctx *context) {
-	err := os.RemoveAll(ctx.basedir)
+	deleteRecursively(t, ctx, ctx.basedir)
+}
+
+// Verbose implementation of os.RemoveAll() to debug a Windows "Access is denied" issue.
+func deleteRecursively(t *testing.T, ctx *context, file string) {
+	fileInfo, err := os.Stat(file)
 	if err != nil {
-		fatalf(t, ctx, "%v: failed to remove the test directory after running the tests: %v", ctx.basedir, err)
+		fatalf(t, ctx, "tearDown: stat(%q) failed: %v", file, err)
+	}
+	if fileInfo.IsDir() {
+		for _, childInfo := range ls(t, ctx, file) {
+			deleteRecursively(t, ctx, path.Join(file, childInfo.Name()))
+		}
+	}
+	ctx.log.Debugf("tearDown: removing %q", file)
+	delete(t, ctx, file)
+}
+
+// Verbose implementation of os.Remove() to debug a Windows "Access is denied" issue.
+func delete(t *testing.T, ctx *context, file string) {
+	var (
+		err, statErr error
+		timeout      = 5 * time.Second
+		timePassed   = 0 * time.Second
+	)
+	// Repeat a few times to ensure the Windows issue is not caused by a slow file tailer shutdown.
+	// It's unlikely though, as assertGoroutinesTerminated() should make sure that the tailer is really terminated.
+	for timePassed < timeout {
+		err = os.Remove(file) // removes files and empty directories
+		if err == nil {
+			// Check if the file or directory is really removed. It seems that on Windows, os.Remove() sometimes
+			// returns no error while the file or directory is still there.
+			_, statErr = os.Stat(file)
+			if statErr != nil {
+				if os.IsNotExist(statErr) {
+					// os.Remove(file) was successful, the file or directory is gone.
+					return
+				} else {
+					fatalf(t, ctx, "tearDown: %q: stat failed: %v", file, statErr)
+				}
+			}
+		}
+		// os.Stat() successful. The file or directory is still there. Try again.
+		time.Sleep(200 * time.Millisecond)
+		timePassed += 200 * time.Millisecond
+	}
+	if err != nil {
+		fatalf(t, ctx, "tearDown: %q: failed to remove file or directory: %v", file, err)
+	} else {
+		fatalf(t, ctx, "tearDown: %q: failed to remove file or directory", file)
 	}
 }
 
@@ -803,18 +862,18 @@ func runTestShutdown(t *testing.T, mode string) {
 	select {
 	case _, open := <-tailer.Errors():
 		if open {
-			t.Fatalf("error channel not closed")
+			fatalf(t, ctx, "error channel not closed")
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatalf("timeout while waiting for errors channel to be closed.")
+		fatalf(t, ctx, "timeout while waiting for errors channel to be closed.")
 	}
 	select {
 	case _, open := <-tailer.Lines():
 		if open {
-			t.Fatalf("lines channel not closed")
+			fatalf(t, ctx, "lines channel not closed")
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatalf("timeout while waiting for errors channel to be closed.")
+		fatalf(t, ctx, "timeout while waiting for errors channel to be closed.")
 	}
 	assertGoroutinesTerminated(t, ctx, nGoroutinesBefore)
 }
