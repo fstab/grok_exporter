@@ -51,6 +51,16 @@ const tests = `
   - [expect, test line 5, logdir/logfile.log]
 `
 
+// // The following test fails on Windows in tearDown() when removing logdir
+// // There must be some bug in the Windows file tailer shut down that prevents the
+// // directory from being deleted.
+// const tests = `
+// - name: single logfile
+//   commands:
+//   - [mkdir, logdir]
+//   - [start file tailer, fail_on_missing_logfile=false, logdir/logfile.log]
+// `
+
 type testConfigType struct {
 	Name     string
 	Commands [][]string
