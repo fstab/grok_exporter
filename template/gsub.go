@@ -21,6 +21,8 @@ import (
 	"text/template/parse"
 )
 
+var cache = make(map[string]*oniguruma.Regex)
+
 func newGsubFunc() functionWithValidator {
 	return functionWithValidator{
 		function:        gsub,
@@ -29,10 +31,10 @@ func newGsubFunc() functionWithValidator {
 }
 
 func gsub(src, expr, repl string) (string, error) {
-	regex, err := oniguruma.Compile(expr)
-	if err != nil {
+	regex, found := cache[expr] // alternative: compile regex here and call defer regex.Free()
+	if !found {
 		// this cannot happen, because validateGsubCall() was successful
-		fmt.Fprintf(os.Stderr, "unexpected error compiling regex '%v': %v\n", expr, err)
+		fmt.Fprintf(os.Stderr, "unexpected error processing gsub: %v not found in regex cache\n", expr)
 		return src, nil
 	}
 	result, err := regex.Gsub(src, repl)
@@ -49,9 +51,11 @@ func validateGsubCall(cmd *parse.CommandNode) error {
 		return fmt.Errorf("%v: expected three parameters, but found %v parameters", prefix, len(cmd.Args)-1)
 	}
 	if stringNode, ok := cmd.Args[2].(*parse.StringNode); ok {
-		if _, err := oniguruma.Compile(stringNode.Text); err != nil {
+		regex, err := oniguruma.Compile(stringNode.Text)
+		if err != nil {
 			return fmt.Errorf("%v: '%v' is not a valid regular expression: %v", prefix, stringNode.Text, err)
 		}
+		cache[stringNode.Text] = regex
 	} else {
 		// The regular expression should be a string, everything else is probably an error.
 		return fmt.Errorf("%v: second parameter is not a valid regular expression", prefix)
