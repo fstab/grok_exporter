@@ -107,6 +107,7 @@ func TestVisibleInOSXFinder(t *testing.T) {
 	ctx := setUp(t, "visible in macOS finder", closeFileAfterEachLine, fseventTailer, _nocreate, mv)
 
 	// replace ctx.basedir with a directory in $HOME
+	deleteRecursively(t, ctx, ctx.basedir)
 	currentUser, err := user.Current()
 	if err != nil {
 		fatalf(t, ctx, "failed to get current user: %v", err)
@@ -115,17 +116,8 @@ func TestVisibleInOSXFinder(t *testing.T) {
 	if err != nil {
 		fatalf(t, ctx, "failed to create test directory: %v", err.Error())
 	}
-	defer func() {
-		err := os.RemoveAll(testDir)
-		if err != nil {
-			fatalf(t, ctx, "%v: Failed to remove test directory after running the tests: %v", testDir, err.Error())
-		}
-	}()
-	err = os.RemoveAll(ctx.basedir)
-	if err != nil {
-		fatalf(t, ctx, "%v: failed to remove temp dir: %v", ctx.basedir, err)
-	}
 	ctx.basedir = testDir
+	defer tearDown(t, ctx)
 
 	// run simple test in the new directory
 	test := [][]string{
@@ -139,7 +131,6 @@ func TestVisibleInOSXFinder(t *testing.T) {
 		{"expect", "line 3", "test.log"},
 	}
 	runTest(t, ctx, test)
-	tearDown(t, ctx)
 }
 
 // test the "fail_on_missing_logfile: false" configuration
