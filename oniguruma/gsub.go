@@ -37,6 +37,11 @@ func (regex *Regex) Gsub(input, replacement string) (string, error) {
 		})
 		offset = searchResult.endPos()
 		searchResult.Free()
+		if offset == len(input) {
+			// If the regular expression matches an empty string, like .*
+			// we need to break here to avoid an infinite loop.
+			break
+		}
 	}
 	err = assertNotOverlapping(replacements) // should never happen, but keep it for debugging
 	if err != nil {
