@@ -35,12 +35,18 @@ func (regex *Regex) Gsub(input, replacement string) (string, error) {
 			end:         searchResult.endPos(),
 			replacement: createReplacementString(searchResult, tokens),
 		})
-		offset = searchResult.endPos()
+		newOffset := searchResult.endPos()
 		searchResult.Free()
-		if offset == len(input) {
-			// If the regular expression matches an empty string, like .*
-			// we need to break here to avoid an infinite loop.
-			break
+		if newOffset == offset {
+			// We matched an empty string, for example with a regex like .* or .*?
+			// Either we are at the end of the input, then we quit
+			if offset == len(input) {
+				break
+			}
+			// Or we are not at the end of the input, then we continue with the next character.
+			offset++
+		} else {
+			offset = newOffset
 		}
 	}
 	err = assertNotOverlapping(replacements) // should never happen, but keep it for debugging

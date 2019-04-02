@@ -37,7 +37,10 @@ func TestGsub(t *testing.T) {
 		{input: "", regex: ".", replacement: "*", expectedResult: ""},
 
 		// matches empty string
-		{input: "abc", regex: ".*", replacement: ".", expectedResult: "."},
+		// The following is the same behavior as Ruby's puts "abc".gsub(/.*/, ".")
+		{input: "abc", regex: ".*", replacement: ".", expectedResult: ".."},
+		// The following is the same behavior as Ruby's puts "abc".gsub(/.*?/, ".")
+		{input: "abc", regex: ".*?", replacement: ".", expectedResult: ".a.b.c."},
 	} {
 		r, err := Compile(data.regex)
 		if err != nil {
