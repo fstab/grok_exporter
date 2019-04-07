@@ -20,14 +20,14 @@ set -e
 mkdir ~/qemu_vms
 cd ~/qemu_vms
 sudo apt-get install -y qemu-system-arm
-curl -LO http://downloads.raspberrypi.org/raspbian_lite/images/raspbian_lite-2017-12-01/2017-11-29-raspbian-stretch-lite.zip
+curl -LO --fail http://downloads.raspberrypi.org/raspbian_lite/images/raspbian_lite-2017-12-01/2017-11-29-raspbian-stretch-lite.zip
 unzip 2017-11-29-raspbian-stretch-lite.zip
-curl -LO https://github.com/dhruvvyas90/qemu-rpi-kernel/raw/master/versatile-pb.dtb
-curl -LO https://github.com/dhruvvyas90/qemu-rpi-kernel/raw/master/kernel-qemu-4.9.59-stretch
+curl -LO --fail https://github.com/dhruvvyas90/qemu-rpi-kernel/raw/master/versatile-pb.dtb
+curl -LO --fail https://github.com/dhruvvyas90/qemu-rpi-kernel/raw/master/kernel-qemu-4.14.79-stretch
 
 cat > run.sh <<EOF
 qemu-system-arm \
-    -kernel kernel-qemu-4.9.59-stretch \
+    -kernel kernel-qemu-4.14.79-stretch \
     -cpu arm1176 \
     -m 256 \
     -M versatilepb \
