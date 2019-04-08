@@ -29,6 +29,7 @@ import (
 	"runtime/pprof"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -233,6 +234,7 @@ type context struct {
 	log            logrus.FieldLogger
 	tailer         fswatcher.FileTailer
 	lines          map[string]chan string
+	linesLock      sync.Mutex
 }
 
 func exec(t *testing.T, ctx *context, cmd []string) {
@@ -503,12 +505,14 @@ func startFileTailer(t *testing.T, ctx *context, params []string) {
 				if !open {
 					return // tailer closed
 				}
+				ctx.linesLock.Lock()
 				c, ok := ctx.lines[line.File]
 				if !ok {
 					c = make(chan string)
 					ctx.log.Debugf("adding lines channel for %v", line.File)
 					ctx.lines[line.File] = c
 				}
+				ctx.linesLock.Unlock()
 				c <- line.Line
 			case err, open := <-tailer.Errors():
 				if !open {
@@ -525,10 +529,12 @@ func startFileTailer(t *testing.T, ctx *context, params []string) {
 }
 
 func expect(t *testing.T, ctx *context, line string, file string) {
-	var (
-		timeout = 5 * time.Second
-		c       = ctx.lines[filepath.Join(ctx.basedir, file)]
-	)
+	var timeout = 5 * time.Second
+
+	ctx.linesLock.Lock()
+	c := ctx.lines[filepath.Join(ctx.basedir, file)]
+	ctx.linesLock.Unlock()
+
 	for c == nil {
 		time.Sleep(100 * time.Millisecond)
 		timeout = timeout - 10*time.Millisecond
@@ -537,7 +543,9 @@ func expect(t *testing.T, ctx *context, line string, file string) {
 			return
 		}
 		ctx.log.Debugf("waiting for lines channel for %v", filepath.Join(ctx.basedir, file))
+		ctx.linesLock.Lock()
 		c = ctx.lines[filepath.Join(ctx.basedir, file)]
+		ctx.linesLock.Unlock()
 	}
 	select {
 	case l := <-c:
