@@ -2,7 +2,7 @@
 
 set -e
 
-if [[ $(go version) != *"go1.11"* ]] ; then
+if [[ $(go version) != *"go1.11"* && $(go version) != *"go1.12"* ]] ; then
     echo "grok_exporter uses Go 1.11 Modules. Please use Go version >= 1.11." >&2
     echo "Version found is $(go version)" >&2
     exit 1
@@ -17,7 +17,7 @@ export GO111MODULE=on
 
 cd $GOPATH/src/github.com/fstab/grok_exporter
 
-export VERSION=0.2.7-SNAPSHOT
+export VERSION=0.2.7
 
 export VERSION_FLAGS="\
         -X github.com/fstab/grok_exporter/exporter.Version=$VERSION
