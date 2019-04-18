@@ -19,7 +19,6 @@ import (
 	"github.com/fstab/grok_exporter/tailer/fswatcher"
 	"log"
 	"sync"
-	"time"
 )
 
 // implements fswatcher.FileTailer
@@ -110,32 +109,22 @@ func BufferedTailerWithMetrics(orig fswatcher.FileTailer, bufferLoadMetric Buffe
 
 	// producer
 	go func() {
-		bufferLoadMetric.Register()
-		bufferLoadPeakValue := 0
-		tick := time.NewTicker(1 * time.Second)
+		bufferLoadMetric.Start()
 		for {
-			select {
-			case line, ok := <-orig.Lines():
-				if ok {
-					bufferSync.L.Lock()
-					buffer.PushBack(line)
-					if buffer.Len() > bufferLoadPeakValue {
-						bufferLoadPeakValue = buffer.Len()
-					}
-					bufferSync.Signal()
-					bufferSync.L.Unlock()
-				} else {
-					bufferSync.L.Lock()
-					buffer = nil // make the consumer quit
-					bufferSync.Signal()
-					bufferSync.L.Unlock()
-					bufferLoadMetric.Unregister()
-					tick.Stop()
-					return
-				}
-			case <-tick.C:
-				bufferLoadMetric.Observe(float64(bufferLoadPeakValue))
-				bufferLoadPeakValue = 0
+			line, ok := <-orig.Lines()
+			if ok {
+				bufferSync.L.Lock()
+				buffer.PushBack(line)
+				bufferSync.Signal()
+				bufferSync.L.Unlock()
+				bufferLoadMetric.Inc()
+			} else {
+				bufferSync.L.Lock()
+				buffer = nil // make the consumer quit
+				bufferSync.Signal()
+				bufferSync.L.Unlock()
+				bufferLoadMetric.Stop()
+				return
 			}
 		}
 	}()
@@ -155,6 +144,7 @@ func BufferedTailerWithMetrics(orig fswatcher.FileTailer, bufferLoadMetric Buffe
 			first := buffer.Front()
 			buffer.Remove(first)
 			bufferSync.L.Unlock()
+			bufferLoadMetric.Dec()
 			switch line := first.Value.(type) {
 			case fswatcher.Line:
 				out <- line
@@ -171,13 +161,15 @@ func BufferedTailerWithMetrics(orig fswatcher.FileTailer, bufferLoadMetric Buffe
 }
 
 type BufferLoadMetric interface {
-	Register()
-	Observe(currentLoad float64)
-	Unregister()
+	Start()
+	Inc() // put a log line into the buffer
+	Dec() // take a log line from the buffer
+	Stop()
 }
 
 type noopMetric struct{}
 
-func (m *noopMetric) Register()                   {}
-func (m *noopMetric) Observe(currentLoad float64) {}
-func (m *noopMetric) Unregister()                 {}
+func (m *noopMetric) Start() {}
+func (m *noopMetric) Inc()   {}
+func (m *noopMetric) Dec()   {}
+func (m *noopMetric) Stop()  {}

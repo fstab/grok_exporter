@@ -64,11 +64,11 @@ func TestLineBufferSequential(t *testing.T) {
 	if stillOpen {
 		t.Error("Source tailer was not closed.")
 	}
-	if !metric.registerCalled {
-		t.Error("metric.Register() not called.")
+	if !metric.startCalled {
+		t.Error("metric.Start() not called.")
 	}
-	if !metric.unregisterCalled {
-		t.Error("metric.Unregister() not called.")
+	if !metric.stopCalled {
+		t.Error("metric.Stop() not called.")
 	}
 	// The peak load should be 9999 or 9998, depending on how quick
 	// the consumer loop started reading
@@ -119,10 +119,10 @@ func TestLineBufferParallel(t *testing.T) {
 	if stillOpen {
 		t.Error("Source tailer was not closed.")
 	}
-	if !metric.registerCalled {
+	if !metric.startCalled {
 		t.Error("metric.Register() not called.")
 	}
-	if !metric.unregisterCalled {
+	if !metric.stopCalled {
 		t.Error("metric.Unregister() not called.")
 	}
 	// Should be much less than 10000, because consumer and producer work in parallel.
@@ -130,20 +130,26 @@ func TestLineBufferParallel(t *testing.T) {
 }
 
 type peakLoadMetric struct {
-	registerCalled, unregisterCalled bool
-	peakLoad                         float64
+	startCalled, stopCalled bool
+	peakLoad                int64
+	currentLoad             int64
 }
 
-func (m *peakLoadMetric) Register() {
-	m.registerCalled = true
+func (m *peakLoadMetric) Start() {
+	m.startCalled = true
 }
 
-func (m *peakLoadMetric) Observe(currentLoad float64) {
-	if currentLoad > m.peakLoad {
-		m.peakLoad = currentLoad
+func (m *peakLoadMetric) Inc() {
+	m.currentLoad++
+	if m.peakLoad < m.currentLoad {
+		m.peakLoad = m.currentLoad
 	}
 }
 
-func (m *peakLoadMetric) Unregister() {
-	m.unregisterCalled = true
+func (m *peakLoadMetric) Dec() {
+	m.currentLoad--
+}
+
+func (m *peakLoadMetric) Stop() {
+	m.stopCalled = true
 }
