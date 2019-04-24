@@ -30,19 +30,19 @@ func newGsubFunc() functionWithValidator {
 	}
 }
 
-func gsub(src, expr, repl string) (string, error) {
+func gsub(src, expr, repl string) string {
 	regex, found := cache[expr] // alternative: compile regex here and call defer regex.Free()
 	if !found {
 		// this cannot happen, because validateGsubCall() was successful
 		fmt.Fprintf(os.Stderr, "unexpected error processing gsub: %v not found in regex cache\n", expr)
-		return src, nil
+		return src
 	}
 	result, err := regex.Gsub(src, repl)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "unexpected error replacing '%v' with '%v': %v\n", regex, repl, err)
-		return src, nil
+		return src
 	}
-	return result, nil
+	return result
 }
 
 func validateGsubCall(cmd *parse.CommandNode) error {

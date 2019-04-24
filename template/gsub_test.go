@@ -20,7 +20,7 @@ import (
 
 func TestGsubFunction(t *testing.T) {
 	templateString := "{{gsub .url \".*id=([^&]*).*\" \"\\\\1\"}}"
-	template, err := New("test", templateString)
+	template, err := New("test1", templateString)
 	if err != nil {
 		t.Fatalf("unexpected error parsing template: %v", err)
 		return
@@ -29,9 +29,27 @@ func TestGsubFunction(t *testing.T) {
 		"url": "http://example.com/foo.asp?id=42&source=github&foo=bar",
 	})
 	if err != nil {
-		t.Fatalf("error executing gsub test template: %v", err)
+		t.Fatalf("error executing gsub test1 template: %v", err)
 	}
 	if result != "42" {
-		t.Fatalf("unexpected result form gsub test template: %v", result)
+		t.Fatalf("unexpected result form gsub test1 template: %v", result)
+	}
+}
+
+func TestNestedGsub(t *testing.T) {
+	templateString := "{{gsub (gsub .message \"e\" \"a\") \"r\" \"x\"}}"
+	template, err := New("test2", templateString)
+	if err != nil {
+		t.Fatalf("unexpected error parsing template: %v", err)
+		return
+	}
+	result, err := template.Execute(map[string]string{
+		"message": "Sender verify failed",
+	})
+	if err != nil {
+		t.Fatalf("error executing gsub test2 template: %v", err)
+	}
+	if result != "Sandax vaxify failad" {
+		t.Fatalf("unexpected result form gsub test2 template: %v", result)
 	}
 }

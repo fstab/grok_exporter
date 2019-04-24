@@ -107,6 +107,8 @@ func extractGrokFieldsFromNode(node parse.Node) (map[string]bool, error) {
 		return extractGrokFieldsFromBranchNode(&t.BranchNode)
 	case *parse.TemplateNode:
 		return extractGrokFieldsFromPipeNode(t.Pipe)
+	case *parse.PipeNode:
+		return extractGrokFieldsFromPipeNode(t)
 	default: // TextNode, etc have no grok fields
 		return make(map[string]bool), nil
 	}
@@ -130,6 +132,15 @@ func extractGrokFieldsFromPipeNode(node *parse.PipeNode) (map[string]bool, error
 		}
 		for field := range fields {
 			result[field] = true
+		}
+		for _, node := range cmd.Args {
+			fields, err := extractGrokFieldsFromNode(node)
+			if err != nil {
+				return nil, err
+			}
+			for field := range fields {
+				result[field] = true
+			}
 		}
 	}
 	return result, nil
