@@ -23,11 +23,13 @@ import (
 	"time"
 )
 
+const nTestLines = 10000
+
 type sourceTailer struct {
-	lines chan fswatcher.Line
+	lines chan *fswatcher.Line
 }
 
-func (tail *sourceTailer) Lines() chan fswatcher.Line {
+func (tail *sourceTailer) Lines() chan *fswatcher.Line {
 	return tail.lines
 }
 
@@ -39,22 +41,20 @@ func (tail *sourceTailer) Close() {
 	close(tail.lines)
 }
 
-// First produce 10,000 lines, then consume 10,000 lines.
-func TestLineBufferSequential(t *testing.T) {
-	src := &sourceTailer{lines: make(chan fswatcher.Line)}
+// TODO: As we separated lineBuffer and the metrics, this test is now partially copy-and-paste from lineBuffer_test
+func TestLineBufferSequential_withMetrics(t *testing.T) {
+	src := &sourceTailer{lines: make(chan *fswatcher.Line)}
 	metric := &peakLoadMetric{}
 	buffered := BufferedTailerWithMetrics(src, metric)
-	for i := 1; i <= 10000; i++ {
-		src.lines <- fswatcher.Line{Line: fmt.Sprintf("This is line number %v.", i)}
+	for i := 1; i <= nTestLines; i++ {
+		src.lines <- &fswatcher.Line{Line: fmt.Sprintf("This is line number %v.", i)}
 	}
-	for i := 1; i <= 10000; i++ {
+	for i := 1; i <= nTestLines; i++ {
 		line := <-buffered.Lines()
 		if line.Line != fmt.Sprintf("This is line number %v.", i) {
 			t.Errorf("Expected 'This is line number %v', but got '%v'.", i, line)
 		}
 	}
-	// wait until peak load is observed (buffered tailer observes the max of each 1 Sec interval)
-	time.Sleep(1100 * time.Millisecond)
 	buffered.Close()
 	_, stillOpen := <-buffered.Lines()
 	if stillOpen {
@@ -70,21 +70,21 @@ func TestLineBufferSequential(t *testing.T) {
 	if !metric.stopCalled {
 		t.Error("metric.Stop() not called.")
 	}
-	// The peak load should be 9999 or 9998, depending on how quick
+	// The peak load should be 1 or two less than nTestLines, depending on how quick
 	// the consumer loop started reading
-	fmt.Printf("peak load: %v\n", metric.peakLoad)
+	fmt.Printf("peak load (should be 1 or 2 less than %v): %v\n", nTestLines, metric.peakLoad)
 }
 
-// Produce and consume in parallel.
-func TestLineBufferParallel(t *testing.T) {
-	src := &sourceTailer{lines: make(chan fswatcher.Line)}
+// TODO: As we separated lineBuffer and the metrics, this test is now partially copy-and-paste from lineBuffer_test
+func TestLineBufferParallel_withMetrics(t *testing.T) {
+	src := &sourceTailer{lines: make(chan *fswatcher.Line)}
 	metric := &peakLoadMetric{}
 	buffered := BufferedTailerWithMetrics(src, metric)
 	var wg sync.WaitGroup
 	go func() {
 		start := time.Now()
-		for i := 1; i <= 10000; i++ {
-			src.lines <- fswatcher.Line{Line: fmt.Sprintf("This is line number %v.", i)}
+		for i := 1; i <= nTestLines; i++ {
+			src.lines <- &fswatcher.Line{Line: fmt.Sprintf("This is line number %v.", i)}
 			if rand.Int()%64 == 0 { // Sleep from time to time
 				time.Sleep(10 * time.Millisecond)
 			}
@@ -94,7 +94,7 @@ func TestLineBufferParallel(t *testing.T) {
 	}()
 	go func() {
 		start := time.Now()
-		for i := 1; i <= 10000; i++ {
+		for i := 1; i <= nTestLines; i++ {
 			line := <-buffered.Lines()
 			if line.Line != fmt.Sprintf("This is line number %v.", i) {
 				t.Errorf("Expected 'This is line number %v', but got '%v'.", i, line)
@@ -125,8 +125,8 @@ func TestLineBufferParallel(t *testing.T) {
 	if !metric.stopCalled {
 		t.Error("metric.Unregister() not called.")
 	}
-	// Should be much less than 10000, because consumer and producer work in parallel.
-	fmt.Printf("peak load: %v\n", metric.peakLoad)
+	// Should be much less than nTestLines, because consumer and producer work in parallel.
+	fmt.Printf("peak load (should be an order of magnitude less than %v): %v\n", nTestLines, metric.peakLoad)
 }
 
 type peakLoadMetric struct {

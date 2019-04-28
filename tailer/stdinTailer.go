@@ -22,11 +22,11 @@ import (
 )
 
 type stdinTailer struct {
-	lines  chan fswatcher.Line
+	lines  chan *fswatcher.Line
 	errors chan fswatcher.Error
 }
 
-func (t *stdinTailer) Lines() chan fswatcher.Line {
+func (t *stdinTailer) Lines() chan *fswatcher.Line {
 	return t.lines
 }
 
@@ -39,7 +39,7 @@ func (t *stdinTailer) Close() {
 }
 
 func RunStdinTailer() fswatcher.FileTailer {
-	lineChan := make(chan fswatcher.Line)
+	lineChan := make(chan *fswatcher.Line)
 	errorChan := make(chan fswatcher.Error)
 	go func() {
 		reader := bufio.NewReader(os.Stdin)
@@ -50,7 +50,7 @@ func RunStdinTailer() fswatcher.FileTailer {
 				return
 			}
 			line = strings.TrimRight(line, "\r\n")
-			lineChan <- fswatcher.Line{Line: line}
+			lineChan <- &fswatcher.Line{Line: line}
 		}
 	}()
 	return &stdinTailer{

@@ -15,19 +15,16 @@
 package tailer
 
 import (
-	"container/list"
 	"github.com/fstab/grok_exporter/tailer/fswatcher"
-	"log"
-	"sync"
 )
 
 // implements fswatcher.FileTailer
 type bufferedTailer struct {
-	out  chan fswatcher.Line
+	out  chan *fswatcher.Line
 	orig fswatcher.FileTailer
 }
 
-func (b *bufferedTailer) Lines() chan fswatcher.Line {
+func (b *bufferedTailer) Lines() chan *fswatcher.Line {
 	return b.out
 }
 
@@ -103,9 +100,8 @@ func BufferedTailer(orig fswatcher.FileTailer) fswatcher.FileTailer {
 // To minimize the risk, use the buffered tailer to make sure file system events are handled
 // as quickly as possible without waiting for the grok patterns to be processed.
 func BufferedTailerWithMetrics(orig fswatcher.FileTailer, bufferLoadMetric BufferLoadMetric) fswatcher.FileTailer {
-	buffer := list.New()
-	bufferSync := sync.NewCond(&sync.Mutex{}) // coordinate producer and consumer
-	out := make(chan fswatcher.Line)
+	buffer := NewLineBuffer()
+	out := make(chan *fswatcher.Line)
 
 	// producer
 	go func() {
@@ -113,16 +109,10 @@ func BufferedTailerWithMetrics(orig fswatcher.FileTailer, bufferLoadMetric Buffe
 		for {
 			line, ok := <-orig.Lines()
 			if ok {
-				bufferSync.L.Lock()
-				buffer.PushBack(line)
-				bufferSync.Signal()
-				bufferSync.L.Unlock()
+				buffer.Push(line)
 				bufferLoadMetric.Inc()
 			} else {
-				bufferSync.L.Lock()
-				buffer = nil // make the consumer quit
-				bufferSync.Signal()
-				bufferSync.L.Unlock()
+				buffer.Close()
 				bufferLoadMetric.Stop()
 				return
 			}
@@ -132,26 +122,14 @@ func BufferedTailerWithMetrics(orig fswatcher.FileTailer, bufferLoadMetric Buffe
 	// consumer
 	go func() {
 		for {
-			bufferSync.L.Lock()
-			for buffer != nil && buffer.Len() == 0 {
-				bufferSync.Wait()
-			}
-			if buffer == nil {
-				bufferSync.L.Unlock()
+			line := buffer.BlockingPop()
+			if line == nil {
+				// buffer closed
 				close(out)
 				return
 			}
-			first := buffer.Front()
-			buffer.Remove(first)
-			bufferSync.L.Unlock()
 			bufferLoadMetric.Dec()
-			switch line := first.Value.(type) {
-			case fswatcher.Line:
-				out <- line
-			default:
-				// this cannot happen
-				log.Fatal("unexpected type in tailer buffer")
-			}
+			out <- line
 		}
 	}()
 	return &bufferedTailer{

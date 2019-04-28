@@ -26,7 +26,7 @@ import (
 )
 
 type FileTailer interface {
-	Lines() chan Line
+	Lines() chan *Line
 	Errors() chan Error
 	Close()
 }
@@ -51,7 +51,7 @@ type fileTailer struct {
 	watchedDirs  []*Dir
 	watchedFiles map[string]*fileWithReader // path -> fileWithReader
 	osSpecific   fswatcher
-	lines        chan Line
+	lines        chan *Line
 	errors       chan Error
 	done         chan struct{}
 }
@@ -78,7 +78,7 @@ type fileMeta interface {
 	Name() string
 }
 
-func (t *fileTailer) Lines() chan Line {
+func (t *fileTailer) Lines() chan *Line {
 	return t.lines
 }
 
@@ -116,7 +116,7 @@ func runFileTailer(initFunc func() (fswatcher, Error), globs []glob.Glob, readal
 	t = &fileTailer{
 		globs:        globs,
 		watchedFiles: make(map[string]*fileWithReader),
-		lines:        make(chan Line),
+		lines:        make(chan *Line),
 		errors:       make(chan Error),
 		done:         make(chan struct{}),
 	}
@@ -337,7 +337,7 @@ func (t *fileTailer) readNewLines(file *fileWithReader, log logrus.FieldLogger) 
 		select {
 		case <-t.done:
 			return nil
-		case t.lines <- Line{Line: line, File: file.file.Name()}:
+		case t.lines <- &Line{Line: line, File: file.file.Name()}:
 		}
 	}
 }
