@@ -7,7 +7,7 @@ import (
 )
 
 func TestBufferLoadMetric(t *testing.T) {
-	m := NewBufferLoadMetric(logrus.New())
+	m := NewBufferLoadMetric(logrus.New(), false)
 	c := make(chan time.Time)
 	tick := &time.Ticker{
 		C: c,

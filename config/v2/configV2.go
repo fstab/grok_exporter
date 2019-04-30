@@ -63,6 +63,7 @@ type InputConfig struct {
 	Readall                    bool          `yaml:",omitempty"`
 	PollIntervalSeconds        string        `yaml:"poll_interval_seconds,omitempty"` // TODO: Use time.Duration directly
 	PollInterval               time.Duration `yaml:"-"`                               // parsed version of PollIntervalSeconds
+	MaxLinesInBuffer           int           `yaml:"max_lines_in_buffer,omitempty"`
 }
 
 type GrokConfig struct {

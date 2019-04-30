@@ -4,7 +4,7 @@ import (
 	"container/list"
 	"github.com/fstab/grok_exporter/tailer/fswatcher"
 	"io"
-	"log"
+	logFatal "log"
 	"sync"
 )
 
@@ -56,7 +56,7 @@ func (b *lineBufferImpl) BlockingPop() *fswatcher.Line {
 				return line
 			default:
 				// this cannot happen
-				log.Fatal("unexpected type in tailer b.buffer")
+				logFatal.Fatal("unexpected type in tailer b.buffer")
 			}
 		}
 	}

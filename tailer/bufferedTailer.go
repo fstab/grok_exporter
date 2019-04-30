@@ -16,6 +16,7 @@ package tailer
 
 import (
 	"github.com/fstab/grok_exporter/tailer/fswatcher"
+	"github.com/sirupsen/logrus"
 )
 
 // implements fswatcher.FileTailer
@@ -37,7 +38,7 @@ func (b *bufferedTailer) Close() {
 }
 
 func BufferedTailer(orig fswatcher.FileTailer) fswatcher.FileTailer {
-	return BufferedTailerWithMetrics(orig, &noopMetric{})
+	return BufferedTailerWithMetrics(orig, &noopMetric{}, logrus.New(), 0)
 }
 
 // Wrapper around a tailer that consumes the lines channel quickly.
@@ -99,7 +100,7 @@ func BufferedTailer(orig fswatcher.FileTailer) fswatcher.FileTailer {
 //
 // To minimize the risk, use the buffered tailer to make sure file system events are handled
 // as quickly as possible without waiting for the grok patterns to be processed.
-func BufferedTailerWithMetrics(orig fswatcher.FileTailer, bufferLoadMetric BufferLoadMetric) fswatcher.FileTailer {
+func BufferedTailerWithMetrics(orig fswatcher.FileTailer, bufferLoadMetric BufferLoadMetric, log logrus.FieldLogger, maxLinesInBuffer int) fswatcher.FileTailer {
 	buffer := NewLineBuffer()
 	out := make(chan *fswatcher.Line)
 
@@ -109,6 +110,11 @@ func BufferedTailerWithMetrics(orig fswatcher.FileTailer, bufferLoadMetric Buffe
 		for {
 			line, ok := <-orig.Lines()
 			if ok {
+				if maxLinesInBuffer > 0 && buffer.Len() > maxLinesInBuffer-1 {
+					log.Warnf("Line buffer reached limit of %v lines. Dropping lines in buffer.", maxLinesInBuffer)
+					buffer.Clear()
+					bufferLoadMetric.Set(0)
+				}
 				buffer.Push(line)
 				bufferLoadMetric.Inc()
 			} else {
@@ -140,14 +146,16 @@ func BufferedTailerWithMetrics(orig fswatcher.FileTailer, bufferLoadMetric Buffe
 
 type BufferLoadMetric interface {
 	Start()
-	Inc() // put a log line into the buffer
-	Dec() // take a log line from the buffer
+	Inc()            // put a log line into the buffer
+	Dec()            // take a log line from the buffer
+	Set(value int64) // set the current number of lines in the buffer
 	Stop()
 }
 
 type noopMetric struct{}
 
-func (m *noopMetric) Start() {}
-func (m *noopMetric) Inc()   {}
-func (m *noopMetric) Dec()   {}
-func (m *noopMetric) Stop()  {}
+func (m *noopMetric) Start()          {}
+func (m *noopMetric) Inc()            {}
+func (m *noopMetric) Dec()            {}
+func (m *noopMetric) Set(value int64) {}
+func (m *noopMetric) Stop()           {}

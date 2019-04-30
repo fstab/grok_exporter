@@ -28,12 +28,14 @@ type bufferLoadMetric struct {
 	mutex                          *sync.Cond
 	tick                           *time.Ticker
 	log                            logrus.FieldLogger
+	lineLimitSet                   bool
 }
 
-func NewBufferLoadMetric(log logrus.FieldLogger) *bufferLoadMetric {
+func NewBufferLoadMetric(log logrus.FieldLogger, lineLimitSet bool) *bufferLoadMetric {
 	m := &bufferLoadMetric{
-		mutex: sync.NewCond(&sync.Mutex{}),
-		log:   log,
+		mutex:        sync.NewCond(&sync.Mutex{}),
+		log:          log,
+		lineLimitSet: lineLimitSet,
 	}
 	return m
 }
@@ -56,31 +58,33 @@ func (m *bufferLoadMetric) start(ticker *time.Ticker, tickProcessed chan struct{
 	go func() {
 		var ticksSinceLastLog = 0
 		for range m.tick.C {
-			m.mutex.L.Lock()
+			func() {
+				m.mutex.L.Lock()
+				defer m.mutex.L.Unlock()
 
-			ticksSinceLastLog++
-			if ticksSinceLastLog >= 4 { // every minute
-				if m.min60s > 1000 {
-					m.log.Warnf("Log lines are written faster than grok_exporter processes them. In the last minute there were constantly more than %d log lines in the buffer waiting to be processed. Check the built-in grok_exporter_lines_processing_time_microseconds_total metric to learn which metric takes most of the processing time.", m.min60s)
+				ticksSinceLastLog++
+				if ticksSinceLastLog >= 4 { // every minute
+					if m.min60s > 1000 && !m.lineLimitSet {
+						m.log.Warnf("Log lines are written faster than grok_exporter processes them. In the last minute there were constantly more than %d log lines in the buffer waiting to be processed. Check the built-in grok_exporter_lines_processing_time_microseconds_total metric to learn which metric takes most of the processing time.", m.min60s)
+					}
+					ticksSinceLastLog = 0
 				}
-				ticksSinceLastLog = 0
-			}
 
-			m.bufferLoad.With(minLabel).Set(float64(m.min60s))
+				m.bufferLoad.With(minLabel).Set(float64(m.min60s))
 
-			m.min60s = m.min45s
-			m.min45s = m.min30s
-			m.min30s = m.min15s
-			m.min15s = m.cur
+				m.min60s = m.min45s
+				m.min45s = m.min30s
+				m.min30s = m.min15s
+				m.min15s = m.cur
 
-			m.bufferLoad.With(maxLabel).Set(float64(m.max60s))
+				m.bufferLoad.With(maxLabel).Set(float64(m.max60s))
 
-			m.max60s = m.max45s
-			m.max45s = m.max30s
-			m.max30s = m.max15s
-			m.max15s = m.cur
+				m.max60s = m.max45s
+				m.max45s = m.max30s
+				m.max30s = m.max15s
+				m.max15s = m.cur
 
-			m.mutex.L.Unlock()
+			}()
 
 			if tickProcessed != nil {
 				tickProcessed <- struct{}{}
@@ -96,25 +100,19 @@ func (m *bufferLoadMetric) Stop() {
 
 func (m *bufferLoadMetric) Inc() {
 	m.mutex.L.Lock()
+	defer m.mutex.L.Unlock()
 	m.cur++
-	if m.max15s < m.cur {
-		m.max15s = m.cur
-	}
-	if m.max30s < m.cur {
-		m.max30s = m.cur
-	}
-	if m.max45s < m.cur {
-		m.max45s = m.cur
-	}
-	if m.max60s < m.cur {
-		m.max60s = m.cur
-	}
-	m.mutex.L.Unlock()
+	m.updateMax()
 }
 
 func (m *bufferLoadMetric) Dec() {
 	m.mutex.L.Lock()
+	defer m.mutex.L.Unlock()
 	m.cur--
+	m.updateMin()
+}
+
+func (m *bufferLoadMetric) updateMin() {
 	if m.min15s > m.cur {
 		m.min15s = m.cur
 	}
@@ -127,5 +125,27 @@ func (m *bufferLoadMetric) Dec() {
 	if m.min60s > m.cur {
 		m.min60s = m.cur
 	}
-	m.mutex.L.Unlock()
+}
+
+func (m *bufferLoadMetric) updateMax() {
+	if m.max15s < m.cur {
+		m.max15s = m.cur
+	}
+	if m.max30s < m.cur {
+		m.max30s = m.cur
+	}
+	if m.max45s < m.cur {
+		m.max45s = m.cur
+	}
+	if m.max60s < m.cur {
+		m.max60s = m.cur
+	}
+}
+
+func (m *bufferLoadMetric) Set(value int64) {
+	m.mutex.L.Lock()
+	defer m.mutex.L.Unlock()
+	m.cur = value
+	m.updateMin()
+	m.updateMax()
 }

@@ -17,6 +17,7 @@ package tailer
 import (
 	"fmt"
 	"github.com/fstab/grok_exporter/tailer/fswatcher"
+	"github.com/sirupsen/logrus"
 	"math/rand"
 	"sync"
 	"testing"
@@ -24,6 +25,8 @@ import (
 )
 
 const nTestLines = 10000
+
+var log = logrus.New()
 
 type sourceTailer struct {
 	lines chan *fswatcher.Line
@@ -45,7 +48,7 @@ func (tail *sourceTailer) Close() {
 func TestLineBufferSequential_withMetrics(t *testing.T) {
 	src := &sourceTailer{lines: make(chan *fswatcher.Line)}
 	metric := &peakLoadMetric{}
-	buffered := BufferedTailerWithMetrics(src, metric)
+	buffered := BufferedTailerWithMetrics(src, metric, log, 0)
 	for i := 1; i <= nTestLines; i++ {
 		src.lines <- &fswatcher.Line{Line: fmt.Sprintf("This is line number %v.", i)}
 	}
@@ -79,7 +82,7 @@ func TestLineBufferSequential_withMetrics(t *testing.T) {
 func TestLineBufferParallel_withMetrics(t *testing.T) {
 	src := &sourceTailer{lines: make(chan *fswatcher.Line)}
 	metric := &peakLoadMetric{}
-	buffered := BufferedTailerWithMetrics(src, metric)
+	buffered := BufferedTailerWithMetrics(src, metric, log, 0)
 	var wg sync.WaitGroup
 	go func() {
 		start := time.Now()
@@ -148,6 +151,10 @@ func (m *peakLoadMetric) Inc() {
 
 func (m *peakLoadMetric) Dec() {
 	m.currentLoad--
+}
+
+func (m *peakLoadMetric) Set(value int64) {
+	m.currentLoad = value
 }
 
 func (m *peakLoadMetric) Stop() {

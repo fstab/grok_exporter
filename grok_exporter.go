@@ -291,5 +291,6 @@ func startTailer(cfg *v2.Config) (fswatcher.FileTailer, error) {
 	default:
 		return nil, fmt.Errorf("Config error: Input type '%v' unknown.", cfg.Input.Type)
 	}
-	return tailer.BufferedTailerWithMetrics(tail, exporter.NewBufferLoadMetric(logger)), nil
+	bufferLoadMetric := exporter.NewBufferLoadMetric(logger, cfg.Input.MaxLinesInBuffer > 0)
+	return tailer.BufferedTailerWithMetrics(tail, bufferLoadMetric, logger, cfg.Input.MaxLinesInBuffer), nil
 }
