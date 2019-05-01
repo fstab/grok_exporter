@@ -144,6 +144,71 @@ func expectValues(t *testing.T, m *bufferLoadMetric, min15s, min30s, min45s, min
 	}
 }
 
+func TestResetBufferLoadMetrics(t *testing.T) {
+	m := NewBufferLoadMetric(logrus.New(), false)
+	c := make(chan time.Time)
+	tick := &time.Ticker{
+		C: c,
+	}
+	f := make(chan struct{})
+	m.start(tick, f)
+	defer m.Stop()
+	defer close(f)
+
+	//     | 15s | 30s | 45s | 60s
+	// ----------------------------
+	// min |  0  |  0  |  0  |  0
+	// max |  0  |  0  |  0  |  0
+
+	m.Inc() // cur = 1
+	m.Inc() // cur = 2
+	m.Inc() // cur = 3
+	m.Inc() // cur = 4
+	m.Inc() // cur = 5
+
+	//     | 15s | 30s | 45s | 60s
+	// ----------------------------
+	// min |  0  |  0  |  0  |  0
+	// max |  5  |  5  |  5  |  5
+
+	synchronousTick(c, f)
+	synchronousTick(c, f)
+	synchronousTick(c, f)
+	synchronousTick(c, f)
+
+	//     | 15s | 30s | 45s | 60s
+	// ----------------------------
+	// min |  5  |  5  |  5  |  5
+	// max |  5  |  5  |  5  |  5
+
+	m.Set(7)
+
+	//     | 15s | 30s | 45s | 60s
+	// ----------------------------
+	// min |  5  |  5  |  5  |  5
+	// max |  7  |  7  |  7  |  7
+
+	expectValues(t, m, 5, 5, 5, 5, 7, 7, 7, 7)
+
+	m.Set(1)
+
+	//     | 15s | 30s | 45s | 60s
+	// ----------------------------
+	// min |  1  |  1  |  1  |  1
+	// max |  7  |  7  |  7  |  7
+
+	expectValues(t, m, 1, 1, 1, 1, 7, 7, 7, 7)
+
+	synchronousTick(c, f)
+
+	//     | 15s | 30s | 45s | 60s
+	// ----------------------------
+	// min |  1  |  1  |  1  |  1
+	// max |  1  |  7  |  7  |  7
+
+	expectValues(t, m, 1, 1, 1, 1, 1, 7, 7, 7)
+}
+
 func synchronousTick(c chan time.Time, f chan struct{}) {
 	c <- time.Now()
 	<-f // wait until tick is processed

@@ -69,15 +69,17 @@ func TestLineBufferParallel(t *testing.T) {
 func TestLineBufferClear(t *testing.T) {
 	buf := NewLineBuffer()
 	defer buf.Close()
-	for i := 1; i <= 7; i++ {
-		buf.Push(&fswatcher.Line{Line: fmt.Sprintf("This is line number %v.", i)})
-	}
-	if buf.Len() != 7 {
-		t.Fatalf("Expected %v lines in buffer, but got %v", 7, buf.Len())
-	}
-	buf.Clear()
-	if buf.Len() != 0 {
-		t.Fatalf("Expected %v lines in buffer, but got %v", 0, buf.Len())
+	for linesInBuffer := 0; linesInBuffer < 10; linesInBuffer++ {
+		for i := 1; i <= linesInBuffer; i++ {
+			buf.Push(&fswatcher.Line{Line: fmt.Sprintf("This is line number %v of %v.", i, linesInBuffer)})
+		}
+		if buf.Len() != linesInBuffer {
+			t.Fatalf("Expected %v lines in buffer, but got %v", linesInBuffer, buf.Len())
+		}
+		buf.Clear()
+		if buf.Len() != 0 {
+			t.Fatalf("Expected %v lines in buffer, but got %v", 0, buf.Len())
+		}
 	}
 }
 
