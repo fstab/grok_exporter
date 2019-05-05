@@ -49,6 +49,27 @@ const tests = `
   - [expect, test line 4, logdir/logfile.log]
   - [log, test line 5, logdir/logfile.log]
   - [expect, test line 5, logdir/logfile.log]
+
+- name: multiple logfiles
+  commands:
+  - [mkdir, logdir]
+  - [log, test line 1 logfile 1, logdir/logfile1.log]
+  - [start file tailer, readall=true, logdir/*.log]
+  - [expect, test line 1 logfile 1, logdir/logfile1.log]
+  - [log, test line 2 logfile 1, logdir/logfile1.log]
+  - [log, test line 1 logfile 2, logdir/logfile2.log]
+  - [log, test line 2 logfile 2, logdir/logfile2.log]
+  - [expect, test line 2 logfile 1, logdir/logfile1.log]
+  - [expect, test line 1 logfile 2, logdir/logfile2.log]
+  - [expect, test line 2 logfile 2, logdir/logfile2.log]
+  - [logrotate, logdir/logfile1.log, logdir/logfile1.log.1]
+  - [logrotate, logdir/logfile2.log, logdir/logfile2.log.1]
+  - [log, test line 3 logfile 2, logdir/logfile2.log]
+  - [log, test line 3 logfile 1, logdir/logfile1.log]
+  - [expect, test line 3 logfile 2, logdir/logfile2.log]
+  - [expect, test line 3 logfile 1, logdir/logfile1.log]
+  - [log, test line 4 logfile 2, logdir/logfile2.log]
+  - [expect, test line 4 logfile 2, logdir/logfile2.log]
 `
 
 // // The following test fails on Windows in tearDown() when removing logdir.
@@ -158,7 +179,6 @@ func runTest(t *testing.T, ctx *context, cmds [][]string) {
 		for _, writer := range ctx.logFileWriters {
 			writer.close(t, ctx)
 		}
-		fmt.Println()
 	})
 }
 
@@ -208,7 +228,6 @@ func setUp(t *testing.T, testName string, loggerCfg loggerConfig, tailerCfg file
 		tailerCfg:      tailerCfg,
 		logrotateCfg:   logrotateCfg,
 		logrotateMvCfg: logrotateMvCfg,
-		lines:          make(map[string]chan string),
 	}
 	logger := logrus.New()
 	logger.Level = logrus.DebugLevel
@@ -223,16 +242,16 @@ func params(ctx *context) string {
 }
 
 type context struct {
-	basedir        string
-	logFileWriters map[string]logFileWriter // path -> writer
-	testName       string
-	loggerCfg      loggerConfig
-	tailerCfg      fileTailerConfig
-	logrotateCfg   logrotateConfig
-	logrotateMvCfg logrotateMoveConfig
-	log            logrus.FieldLogger
-	tailer         fswatcher.FileTailer
-	lines          map[string]chan string
+	basedir         string
+	logFileWriters  map[string]logFileWriter // path -> writer
+	testName        string
+	loggerCfg       loggerConfig
+	tailerCfg       fileTailerConfig
+	logrotateCfg    logrotateConfig
+	logrotateMvCfg  logrotateMoveConfig
+	log             logrus.FieldLogger
+	tailer          fswatcher.FileTailer
+	linesFromTailer *linesFromTailer
 }
 
 func exec(t *testing.T, ctx *context, cmd []string) {
@@ -493,64 +512,22 @@ func startFileTailer(t *testing.T, ctx *context, params []string) {
 		fatalf(t, ctx, "%v", err)
 	}
 	tailer = BufferedTailer(tailer)
-
-	// We don't expect errors. However, start a go-routine listening on
-	// the tailer's errorChannel in case something goes wrong.
-	go func() {
-		for {
-			select {
-			case line, open := <-tailer.Lines():
-				if !open {
-					return // tailer closed
-				}
-				c, ok := ctx.lines[line.File]
-				if !ok {
-					c = make(chan string)
-					ctx.log.Debugf("adding lines channel for %v", line.File)
-					ctx.lines[line.File] = c
-				}
-				c <- line.Line
-			case err, open := <-tailer.Errors():
-				if !open {
-					return // tailer closed
-				} else {
-					ctx.log.Errorf("tailer failed: %v", err)
-					t.Errorf("tailer failed: %v", err.Error()) // Cannot call fatalf(t, ctx, ) in goroutine.
-					return
-				}
-			}
-		}
-	}()
 	ctx.tailer = tailer
+	ctx.linesFromTailer = makeLinesFromTailer(tailer)
 }
 
 func expect(t *testing.T, ctx *context, line string, file string) {
-	var (
-		timeout = 5 * time.Second
-		c       = ctx.lines[filepath.Join(ctx.basedir, file)]
-	)
-	for c == nil {
-		time.Sleep(100 * time.Millisecond)
-		timeout = timeout - 10*time.Millisecond
-		if timeout < 0 {
-			fatalf(t, ctx, "timeout waiting for lines from file %q", file)
-			return
-		}
-		ctx.log.Debugf("waiting for lines channel for %v", filepath.Join(ctx.basedir, file))
-		c = ctx.lines[filepath.Join(ctx.basedir, file)]
+	actualLine, err := ctx.linesFromTailer.nextLine(filepath.Join(ctx.basedir, file), 500*time.Millisecond)
+	if err != nil {
+		fatalf(t, ctx, "%v: failed to read line %q: %v", file, line, err)
 	}
-	select {
-	case l := <-c:
-		if l != line {
-			fatalf(t, ctx, "%v: expected line %q but got line %q", file, line, l)
-		}
-	case <-time.After(timeout):
-		fatalf(t, ctx, "timeout waiting for line %q from file %q", line, file)
+	if line != actualLine {
+		fatalf(t, ctx, "%v: expected line %q but got line %q", file, line, actualLine)
 	}
 }
 
 func fatalf(t *testing.T, ctx *context, format string, args ...interface{}) {
-	ctx.log.Fatalf(format, args...)
+	ctx.log.Errorf(format, args...) // Don't use ctx.log.Fatalf() here because this calls logger.Exit()
 	t.Fatalf(format, args...)
 }
 
@@ -882,4 +859,43 @@ func runTestShutdown(t *testing.T, mode string) {
 		fatalf(t, ctx, "timeout while waiting for errors channel to be closed.")
 	}
 	assertGoroutinesTerminated(t, ctx, nGoroutinesBefore)
+}
+
+func makeLinesFromTailer(tailer fswatcher.FileTailer) *linesFromTailer {
+	return &linesFromTailer{
+		tailer: tailer,
+		buf:    make(map[string][]string),
+	}
+}
+
+// Wrapper around FileTailer to get the next lines for a specific file.
+type linesFromTailer struct {
+	tailer fswatcher.FileTailer
+	buf    map[string][]string
+}
+
+// Reads the next line for a specific file.
+// If the tailer produces lines for other files they are buffered.
+// This call may take longer than timeout if we keep reading lines from another file
+func (l *linesFromTailer) nextLine(file string, timeout time.Duration) (string, error) {
+	if len(l.buf[file]) > 0 {
+		result := l.buf[file][0]
+		l.buf[file] = l.buf[file][1:]
+		return result, nil
+	} else {
+		for {
+			select {
+			case line := <-l.tailer.Lines():
+				if line.File == file {
+					return line.Line, nil
+				} else {
+					l.buf[line.File] = append(l.buf[line.File], line.Line)
+				}
+			case err := <-l.tailer.Errors():
+				return "", err
+			case <-time.After(5 * time.Second):
+				return "", fmt.Errorf("timeout after %v", timeout)
+			}
+		}
+	}
 }

@@ -79,7 +79,7 @@ script:
         ./integration-test.sh ;
         ;;
     *)
-        go test -count=1 -v ./... ;
+        go test -failfast -count=1 -v ./... ;
         go install ;
         if ! $LDD_COMMAND $GOPATH/bin/grok_exporter | grep libonig ;
         then
