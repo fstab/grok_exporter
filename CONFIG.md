@@ -56,7 +56,7 @@ The `retention_check_interval` is the interval at which `grok_exporter` checks f
 Input Section
 -------------
 
-We currently support two input types: `file` and `stdin`. The following two sections describe the `file` input type and the `stdin` input type:
+We currently support three input types: `file`, `stdin`, and `webhook`. The following three sections describe the input types respectively:
 
 ### File Input Type
 
@@ -113,6 +113,50 @@ That means, if we run `cat sample.log | grok_exporter -config config.yml`,
 the exporter will terminate as soon as `sample.log` is processed,
 and we will not be able to access the result via HTTP(S) after that.
 Always use a command that keeps the output open (like `tail -f`) when testing the `grok_exporter` with the `stdin` input.
+
+### Webhook Input Type
+
+The grok_exporter is capable of receive log entries from webhook sources.  It supports webhook reception in various formats... plain-text or JSON, single entries or bulk entries.
+
+The following input configuration example which demonstrates how to configure grok_exporter to receive HTTP webhooks from the [Logstash HTTP Output Plugin](https://www.elastic.co/guide/en/logstash/current/plugins-outputs-http.html) configured in `json_batch` mode, which allows the transmission of multiple json log entries in a single webhook.
+
+```yaml
+input:
+
+    type: webhook
+
+    # HTTP Path to POST the webhook
+    # Default is `/webhook`
+    webhook_path: /webhook
+
+    # HTTP Body POST Format
+    # text_single: Webhook POST body is a single plain text log entry
+    # text_bulk: Webhook POST body contains multiple plain text log entries
+    #   separated by webhook_text_bulk_separator (default: \n\n)
+    # json_single: Webhook POST body is a single json log entry.  Log entry
+    #   text is selected from the value of a json key determined by
+    #   webhook_json_selector.
+    # json_bulk: Webhook POST body contains multiple json log entries.  The
+    #   POST body envelope must be a json array "[ <entry>, <entry> ]".  Log
+    #   entry text is selected from the value of a json key determined by
+    #   webhook_json_selector.
+    # Default is `text_single`
+    webhook_format: json_bulk
+
+    # JSON Path Selector
+    # Within an json log entry, text is selected from the value of this json selector
+    #   Example ".path.to.element"
+    # Default is `.message`
+    webhook_json_selector: .message
+
+    # Bulk Text Separator
+    # Separator for text_bulk log entries
+    # Default is `\n\n`
+    webhook_text_bulk_separator: "\n\n"
+```
+
+This configuration example may be found in the examples directory
+[here](example/config_logstash_http_input_ipv6.yml).
 
 Grok Section
 ------------
@@ -411,7 +455,7 @@ server:
 ```
 
 * `protocol` can be `http` or `https`. Default is `http`.
-* `host` can be a hostname or an IP address. If host is specified, `grok_exporter` will listen on the network interface with the given address. If host is omitted, `grok_exporter` will listen on all available network interfaces.
+* `host` can be a hostname or an IP address. If host is specified, `grok_exporter` will listen on the network interface with the given address. If host is omitted, `grok_exporter` will listen on all available network interfaces.  If `host` is set to `[::]`, `grok_exporter` will listen on all IPV6 addresses.
 * `port` is the TCP port to be used. Default is `9144`.
 * `path` is the path where the metrics are exposed. Default is `/metrics`, i.e. by default metrics will be exported on [http://localhost:9144/metrics].
 * `cert` is the path to the SSL certificate file for protocol `https`. It is optional. If omitted, a hard-coded default certificate will be used.
