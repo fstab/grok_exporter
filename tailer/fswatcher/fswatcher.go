@@ -145,7 +145,7 @@ func runFileTailer(initFunc func() (fswatcher, Error), globs []glob.Glob, readal
 		for _, dir := range t.watchedDirs {
 			dirLogger := log.WithField("directory", dir.Path())
 			dirLogger.Debugf("initializing directory")
-			Err = t.syncFilesInDir(dir, readall, dirLogger)
+			Err = t.syncFilesInDir(dir, readall, dirLogger) // This may already write lines to the lines channel, so we will not go past this line unless the consumer starts reading lines.
 			if Err != nil {
 				select {
 				case <-t.done:

@@ -39,7 +39,7 @@ const tests = `
   - [mkdir, logdir]
   - [log, test line 1, logdir/logfile.log]
   - [log, test line 2, logdir/logfile.log]
-  - [start file tailer, readall=true, logdir/logfile.log]
+  - [start file tailer, readall=true, fail_on_missing_logfile=false, logdir/logfile.log]
   - [expect, test line 1, logdir/logfile.log]
   - [expect, test line 2, logdir/logfile.log]
   - [log, test line 3, logdir/logfile.log]
@@ -50,11 +50,11 @@ const tests = `
   - [log, test line 5, logdir/logfile.log]
   - [expect, test line 5, logdir/logfile.log]
 
-- name: multiple logfiles
+- name: multiple log files, single directory
   commands:
   - [mkdir, logdir]
   - [log, test line 1 logfile 1, logdir/logfile1.log]
-  - [start file tailer, readall=true, logdir/*.log]
+  - [start file tailer, readall=true, fail_on_missing_logfile=false, logdir/*.log]
   - [expect, test line 1 logfile 1, logdir/logfile1.log]
   - [log, test line 2 logfile 1, logdir/logfile1.log]
   - [log, test line 1 logfile 2, logdir/logfile2.log]
@@ -98,9 +98,7 @@ func TestAll(t *testing.T) {
 			// All logratate configs except for copy and copytruncate can be combined with logratateMoveConfig.
 			for _, logrotateCfg := range []logrotateConfig{_create, _nocreate, _create_from_temp} {
 				for _, logrotateMvCfg := range []logrotateMoveConfig{mv, cp, rm} {
-					ctx := setUp(t, testConfig.Name, loggerCfg, tailerOpt, logrotateCfg, logrotateMvCfg)
-					runTest(t, ctx, testConfig.Commands)
-					tearDown(t, ctx)
+					runTest(t, testConfig.Name, loggerCfg, tailerOpt, logrotateCfg, logrotateMvCfg, testConfig.Commands)
 				}
 			}
 			for _, loggerCfg := range []loggerConfig{keepOpen, closeFileAfterEachLine} {
@@ -108,9 +106,7 @@ func TestAll(t *testing.T) {
 				for _, logrotateCfg := range []logrotateConfig{_copy, _copytruncate} {
 					for _, logrotateMvCfg := range []logrotateMoveConfig{none} {
 						// The logroatate configs copytruncate and copy require logroatateMoveConfig == none.
-						ctx := setUp(t, testConfig.Name, loggerCfg, tailerOpt, logrotateCfg, logrotateMvCfg)
-						runTest(t, ctx, testConfig.Commands)
-						tearDown(t, ctx)
+						runTest(t, testConfig.Name, loggerCfg, tailerOpt, logrotateCfg, logrotateMvCfg, testConfig.Commands)
 					}
 				}
 			}
@@ -151,35 +147,41 @@ func TestVisibleInOSXFinder(t *testing.T) {
 		{"log", "line 3", "test.log"},
 		{"expect", "line 3", "test.log"},
 	}
-	runTest(t, ctx, test)
+	executeCommands(t, ctx, test)
 }
 
 // test the "fail_on_missing_logfile: false" configuration
 func TestFileMissingOnStartup(t *testing.T) {
-	ctx := setUp(t, "fail on missing startup", closeFileAfterEachLine, fseventTailer, _nocreate, mv)
 	test := [][]string{
 		{"start file tailer", "fail_on_missing_logfile=false", "test.log"},
 		{"sleep", "1"},
 		{"log", "line 1", "test.log"},
 		{"expect", "line 1", "test.log"},
 	}
-	runTest(t, ctx, test)
-	tearDown(t, ctx)
+	runTest(t, "fail on missing startup", closeFileAfterEachLine, fseventTailer, _nocreate, mv, test)
 }
 
-func runTest(t *testing.T, ctx *context, cmds [][]string) {
-	t.Run(ctx.testName+"("+params(ctx)+")", func(t *testing.T) {
+func runTest(t *testing.T, testName string, loggerCfg loggerConfig, tailerCfg fileTailerConfig, logrotateCfg logrotateConfig, logrotateMvCfg logrotateMoveConfig, cmds [][]string) {
+	params := []fmt.Stringer{loggerCfg, tailerCfg, logrotateCfg, logrotateMvCfg}
+	join(params, ",")
+	t.Run(testName+"("+join(params, ",")+")", func(t *testing.T) {
 		fmt.Println()
-		nGoroutinesBefore := runtime.NumGoroutine()
-		for _, cmd := range cmds {
-			exec(t, ctx, cmd)
-		}
-		closeTailer(t, ctx)
-		assertGoroutinesTerminated(t, ctx, nGoroutinesBefore)
-		for _, writer := range ctx.logFileWriters {
-			writer.close(t, ctx)
-		}
+		ctx := setUp(t, testName, loggerCfg, tailerCfg, logrotateCfg, logrotateMvCfg)
+		defer tearDown(t, ctx)
+		executeCommands(t, ctx, cmds)
 	})
+}
+
+func executeCommands(t *testing.T, ctx *context, cmds [][]string) {
+	nGoroutinesBefore := runtime.NumGoroutine()
+	for _, cmd := range cmds {
+		exec(t, ctx, cmd)
+	}
+	closeTailer(t, ctx)
+	assertGoroutinesTerminated(t, ctx, nGoroutinesBefore)
+	for _, writer := range ctx.logFileWriters {
+		writer.close(t, ctx)
+	}
 }
 
 func closeTailer(t *testing.T, ctx *context) {
