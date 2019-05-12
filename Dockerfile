@@ -43,8 +43,12 @@ RUN cd /go/src/github.com/fstab/grok_exporter && \
 
 FROM alpine:latest
 
+WORKDIR /app
+
 COPY --from=builder /go/src/github.com/fstab/grok_exporter/grok_exporter \
-     /bin/grok_exporter
+     /app/grok_exporter
+COPY --from=builder /go/src/github.com/fstab/grok_exporter/logstash-patterns-core \
+     /app/logstash-patterns-core
 
 EXPOSE 9144
-ENTRYPOINT [ "/bin/grok_exporter" ]
+ENTRYPOINT [ "/app/grok_exporter" ]
