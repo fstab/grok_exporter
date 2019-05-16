@@ -251,6 +251,11 @@ func (t *fileTailer) watchDirs(log logrus.FieldLogger) Error {
 
 func (t *fileTailer) syncFilesInDir(dir *Dir, readall bool, log logrus.FieldLogger) Error {
 	watchedFilesAfter := make(map[string]*fileWithReader)
+	for path, file := range t.watchedFiles {
+		if filepath.Dir(path) != dir.Path() {
+			watchedFilesAfter[path] = file
+		}
+	}
 	fileInfos, Err := dir.ls()
 	if Err != nil {
 		return Err

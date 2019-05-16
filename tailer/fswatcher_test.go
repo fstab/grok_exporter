@@ -70,6 +70,38 @@ const tests = `
   - [expect, test line 3 logfile 1, logdir/logfile1.log]
   - [log, test line 4 logfile 2, logdir/logfile2.log]
   - [expect, test line 4 logfile 2, logdir/logfile2.log]
+
+- name: multiple directories
+  commands:
+  - [mkdir, logdir1]
+  - [mkdir, logdir2]
+  - [log, test line 1 dir 1 file 1, logdir1/logfile-1.log]
+  - [log, test line 1 dir 2 file 1, logdir2/logfile-1.log]
+  - [start file tailer, readall=true, fail_on_missing_logfile=false, logdir1/*.log, logdir2/*.log]
+  - [log, test line 1 dir 1 file 2, logdir1/logfile-2.log]
+  - [log, test line 1 dir 2 file 2, logdir2/logfile-2.log]
+  - [log, test line 2 dir 1 file 1, logdir1/logfile-1.log]
+  - [log, test line 2 dir 1 file 2, logdir1/logfile-2.log]
+  - [log, test line 2 dir 2 file 1, logdir2/logfile-1.log]
+  - [log, test line 2 dir 2 file 2, logdir2/logfile-2.log]
+  - [expect, test line 1 dir 1 file 1, logdir1/logfile-1.log]
+  - [expect, test line 1 dir 1 file 2, logdir1/logfile-2.log]
+  - [expect, test line 1 dir 2 file 1, logdir2/logfile-1.log]
+  - [expect, test line 1 dir 2 file 2, logdir2/logfile-2.log]
+  - [expect, test line 2 dir 1 file 1, logdir1/logfile-1.log]
+  - [expect, test line 2 dir 1 file 2, logdir1/logfile-2.log]
+  - [expect, test line 2 dir 2 file 1, logdir2/logfile-1.log]
+  - [expect, test line 2 dir 2 file 2, logdir2/logfile-2.log]
+  - [logrotate, logdir1/logfile-1.log, logdir1/logfile-1.log.1]
+  - [logrotate, logdir2/logfile-1.log, logdir2/logfile-1.log.1]
+  - [log, test line 3 dir 1 file 1, logdir1/logfile-1.log]
+  - [log, test line 3 dir 1 file 2, logdir1/logfile-2.log]
+  - [log, test line 3 dir 2 file 1, logdir2/logfile-1.log]
+  - [log, test line 3 dir 2 file 2, logdir2/logfile-2.log]
+  - [expect, test line 3 dir 1 file 1, logdir1/logfile-1.log]
+  - [expect, test line 3 dir 1 file 2, logdir1/logfile-2.log]
+  - [expect, test line 3 dir 2 file 1, logdir2/logfile-1.log]
+  - [expect, test line 3 dir 2 file 2, logdir2/logfile-2.log]
 `
 
 // // The following test fails on Windows in tearDown() when removing logdir.
@@ -233,6 +265,11 @@ func setUp(t *testing.T, testName string, loggerCfg loggerConfig, tailerCfg file
 	}
 	logger := logrus.New()
 	logger.Level = logrus.DebugLevel
+	logger.SetFormatter(&logrus.TextFormatter{
+		DisableColors:   true,
+		TimestampFormat: "2006-01-02 15:04:05.000",
+		FullTimestamp:   true,
+	})
 	ctx.log = logger.WithField("test", testName).WithField("params", params(ctx))
 	ctx.basedir = mkTempDir(t, ctx)
 	return ctx

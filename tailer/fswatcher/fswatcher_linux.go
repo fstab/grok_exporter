@@ -118,7 +118,8 @@ func (w *watcher) processEvent(t *fileTailer, fsevent fsevent, log logrus.FieldL
 	if dir == nil {
 		return NewError(NotSpecified, nil, "watch list inconsistent: received a file system event for an unknown directory")
 	}
-	log.WithField("directory", dir.path).Debugf("received event: %v", event)
+	dirLogger := log.WithField("directory", dir.path)
+	dirLogger.Debugf("received event: %v", event)
 	if event.Mask&syscall.IN_IGNORED == syscall.IN_IGNORED {
 		unwatchDirByEvent(t, event) // need to remove it from watchedDirs, because otherwise we close the removed dir on shutdown which causes an error
 		return NewErrorf(NotSpecified, nil, "%s: directory was removed while being watched", dir.path)
@@ -139,7 +140,7 @@ func (w *watcher) processEvent(t *fileTailer, fsevent fsevent, log logrus.FieldL
 			}
 			file.reader.Clear()
 		}
-		readErr := t.readNewLines(file, log)
+		readErr := t.readNewLines(file, dirLogger)
 		if readErr != nil {
 			return readErr
 		}
@@ -152,7 +153,7 @@ func (w *watcher) processEvent(t *fileTailer, fsevent fsevent, log logrus.FieldL
 		// Trying to figure out what happened from the events would be error prone.
 		// Therefore, we don't care which of the above events we received, we just update our watched files with the current
 		// state of the watched directory.
-		err := t.syncFilesInDir(dir, true, log)
+		err := t.syncFilesInDir(dir, true, dirLogger)
 		if err != nil {
 			return err
 		}
