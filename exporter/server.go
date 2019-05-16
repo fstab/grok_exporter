@@ -22,6 +22,11 @@ import (
 	"os"
 )
 
+type HttpServerPathHandler struct {
+	Path    string
+	Handler http.Handler
+}
+
 // cert and key created with openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -nodes
 
 const defaultCert = `-----BEGIN CERTIFICATE-----
@@ -77,7 +82,7 @@ XLgD9hrDBrTbnKBHHQ6MHpT6ILi4w/e4+5XEUUOBf44ZJE71uRr4ZUA=
 -----END RSA PRIVATE KEY-----
 `
 
-func RunHttpsServerWithDefaultKeys(host string, port int, path string, handler http.Handler) error {
+func RunHttpsServerWithDefaultKeys(host string, port int, httpHandlers []HttpServerPathHandler) error {
 	cert, err := createTempFile("cert", []byte(defaultCert))
 	if err != nil {
 		return err
@@ -88,24 +93,29 @@ func RunHttpsServerWithDefaultKeys(host string, port int, path string, handler h
 		return err
 	}
 	defer os.Remove(key)
-	return RunHttpsServer(host, port, cert, key, path, handler)
+	return RunHttpsServer(host, port, cert, key, httpHandlers)
 }
 
-func RunHttpsServer(host string, port int, cert, key, path string, handler http.Handler) error {
+func RunHttpsServer(host string, port int, cert string, key string, httpHandlers []HttpServerPathHandler) error {
 	err := tryOpenPort(host, port)
 	if err != nil {
 		return listenFailedError(host, port, err)
 	}
-	http.Handle(path, handler)
+	for _, httpHandler := range httpHandlers {
+		http.Handle(httpHandler.Path, httpHandler.Handler)
+	}
 	return http.ListenAndServeTLS(fmt.Sprintf(":%v", port), cert, key, nil)
 }
 
-func RunHttpServer(host string, port int, path string, handler http.Handler) error {
+func RunHttpServer(host string, port int, httpHandlers []HttpServerPathHandler) error {
 	err := tryOpenPort(host, port)
 	if err != nil {
 		return listenFailedError(host, port, err)
 	}
-	http.Handle(path, handler)
+	for _, httpHandler := range httpHandlers {
+		http.Handle(httpHandler.Path, httpHandler.Handler)
+	}
+
 	return http.ListenAndServe(fmt.Sprintf("%v:%v", host, port), nil)
 }
 

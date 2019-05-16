@@ -26,8 +26,8 @@ import (
 	"github.com/fstab/grok_exporter/tailer/glob"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
-	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -70,8 +70,20 @@ func main() {
 
 	tail, err := startTailer(cfg)
 	exitOnError(err)
-	fmt.Print(startMsg(cfg))
-	serverErrors := startServer(cfg.Server, prometheus.Handler())
+
+	// gather up the handlers with which to start the webserver
+	httpHandlers := []exporter.HttpServerPathHandler{}
+	httpHandlers = append(httpHandlers, exporter.HttpServerPathHandler{
+		Path:    cfg.Server.Path,
+		Handler: prometheus.Handler()})
+	if cfg.Input.Type == "webhook" {
+		httpHandlers = append(httpHandlers, exporter.HttpServerPathHandler{
+			Path:    cfg.Input.WebhookPath,
+			Handler: tailer.WebhookHandler()})
+	}
+
+	fmt.Print(startMsg(cfg, httpHandlers))
+	serverErrors := startServer(cfg.Server, httpHandlers)
 
 	retentionTicker := time.NewTicker(cfg.Global.RetentionCheckInterval)
 
@@ -126,7 +138,7 @@ func main() {
 	}
 }
 
-func startMsg(cfg *v2.Config) string {
+func startMsg(cfg *v2.Config, httpHandlers []exporter.HttpServerPathHandler) string {
 	host := "localhost"
 	if len(cfg.Server.Host) > 0 {
 		host = cfg.Server.Host
@@ -136,7 +148,15 @@ func startMsg(cfg *v2.Config) string {
 			host = hostname
 		}
 	}
-	return fmt.Sprintf("Starting server on %v://%v:%v%v\n", cfg.Server.Protocol, host, cfg.Server.Port, cfg.Server.Path)
+
+	var sb strings.Builder
+	baseUrl := fmt.Sprintf("%v://%v:%v", cfg.Server.Protocol, host, cfg.Server.Port)
+	sb.WriteString(fmt.Sprintf("Starting server on %v", baseUrl))
+	for _, httpHandler := range httpHandlers {
+		sb.WriteString(fmt.Sprintf("\n  %v%v", baseUrl, httpHandler.Path))
+	}
+	sb.WriteString("\n")
+	return sb.String()
 }
 
 func exitOnError(err error) {
@@ -251,17 +271,17 @@ func initSelfMonitoring(metrics []exporter.Metric) (*prometheus.CounterVec, *pro
 	return nLinesTotal, nMatchesByMetric, procTimeMicrosecondsByMetric, nErrorsByMetric
 }
 
-func startServer(cfg v2.ServerConfig, handler http.Handler) chan error {
+func startServer(cfg v2.ServerConfig, httpHandlers []exporter.HttpServerPathHandler) chan error {
 	serverErrors := make(chan error)
 	go func() {
 		switch {
 		case cfg.Protocol == "http":
-			serverErrors <- exporter.RunHttpServer(cfg.Host, cfg.Port, cfg.Path, handler)
+			serverErrors <- exporter.RunHttpServer(cfg.Host, cfg.Port, httpHandlers)
 		case cfg.Protocol == "https":
 			if cfg.Cert != "" && cfg.Key != "" {
-				serverErrors <- exporter.RunHttpsServer(cfg.Host, cfg.Port, cfg.Cert, cfg.Key, cfg.Path, handler)
+				serverErrors <- exporter.RunHttpsServer(cfg.Host, cfg.Port, cfg.Cert, cfg.Key, httpHandlers)
 			} else {
-				serverErrors <- exporter.RunHttpsServerWithDefaultKeys(cfg.Host, cfg.Port, cfg.Path, handler)
+				serverErrors <- exporter.RunHttpsServerWithDefaultKeys(cfg.Host, cfg.Port, httpHandlers)
 			}
 		default:
 			// This cannot happen, because cfg.validate() makes sure that protocol is either http or https.
@@ -288,6 +308,8 @@ func startTailer(cfg *v2.Config) (fswatcher.FileTailer, error) {
 		}
 	case cfg.Input.Type == "stdin":
 		tail = tailer.RunStdinTailer()
+	case cfg.Input.Type == "webhook":
+		tail = tailer.InitWebhookTailer(&cfg.Input)
 	default:
 		return nil, fmt.Errorf("Config error: Input type '%v' unknown.", cfg.Input.Type)
 	}

@@ -54,7 +54,7 @@ server:
     port: 9144
 ```
 
-[CONFIG.md] describes the `grok_exporter` configuration file and shows how to define Grok patterns, Prometheus metrics, and labels.
+[CONFIG.md] describes the `grok_exporter` configuration file and shows how to define Grok patterns, Prometheus metrics, and labels.  It also details how to configure file, stdin, and webhook inputs.
 
 Status
 ------

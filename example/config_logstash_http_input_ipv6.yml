@@ -1,0 +1,63 @@
+# The grok_exporter is capable of receive log entries from webhook sources.
+#
+# This input configuration example demonstrates how to configure grok_exporter
+#   to receive HTTP webhooks from the Logstash HTTP Output Plugin configured in
+#   "json_batch" mode, which allows the transmission of multiple json log
+#   entries in a single webhook.
+#   https://www.elastic.co/guide/en/logstash/current/plugins-outputs-http.html
+#
+# The grok_exporter supports webhook reception in various formats.  Plain-text
+#   or JSON, single entries or bulk entries.  To learn more, read the comments
+#   in this example, and review the webhookTeailer_test.go unit tests.
+
+global:
+    config_version: 2
+input:
+
+    type: webhook
+
+    # HTTP Path to POST the webhook
+    # Default is `/webhook`
+    webhook_path: /webhook
+
+    # HTTP Body POST Format
+    # text_single: Webhook POST body is a single plain text log entry
+    # text_bulk: Webhook POST body contains multiple plain text log entries
+    #   separated by webhook_text_bulk_separator (default: \n\n)
+    # json_single: Webhook POST body is a single json log entry.  Log entry
+    #   text is selected from the value of a json key determined by
+    #   webhook_json_selector.
+    # json_bulk: Webhook POST body contains multiple json log entries.  The
+    #   POST body envelope must be a json array "[ <entry>, <entry> ]".  Log
+    #   entry text is selected from the value of a json key determined by
+    #   webhook_json_selector.
+    # Default is `text_single`
+    webhook_format: json_bulk
+
+    # JSON Path Selector
+    # Within an json log entry, text is selected from the value of this json selector
+    #   Example ".path.to.element"
+    # Default is `.message`
+    webhook_json_selector: .message
+
+    # Bulk Text Separator
+    # Separator for text_bulk log entries
+    # Default is `\n\n`
+    webhook_text_bulk_separator: "\n\n"
+
+grok:
+    patterns_dir: ./logstash-patterns-core/patterns
+    additional_patterns:
+    - 'EXIM_MESSAGE [a-zA-Z ]*'
+metrics:
+    - type: counter
+      name: exim_rejected_rcpt_total
+      help: Total number of rejected recipients, partitioned by error message.
+      match: '%{EXIM_DATE} %{EXIM_REMOTE_HOST} F=<%{EMAILADDRESS}> rejected RCPT <%{EMAILADDRESS}>: %{EXIM_MESSAGE:message}'
+      labels:
+          error_message: '{{.message}}'
+server:
+    # For IPV4 localhost use "0.0.0.0"
+    # For IPV6 localhost use "[::]"
+    host: "[::]"
+    port: 9144

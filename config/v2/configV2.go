@@ -27,6 +27,7 @@ const (
 	defaultRetentionCheckInterval = 53 * time.Second
 	inputTypeStdin                = "stdin"
 	inputTypeFile                 = "file"
+	inputTypeWebhook              = "webhook"
 )
 
 func Unmarshal(config []byte) (*Config, error) {
@@ -64,6 +65,10 @@ type InputConfig struct {
 	PollIntervalSeconds        string        `yaml:"poll_interval_seconds,omitempty"` // TODO: Use time.Duration directly
 	PollInterval               time.Duration `yaml:"-"`                               // parsed version of PollIntervalSeconds
 	MaxLinesInBuffer           int           `yaml:"max_lines_in_buffer,omitempty"`
+	WebhookPath                string        `yaml:"webhook_path,omitempty"`
+	WebhookFormat              string        `yaml:"webhook_format,omitempty"`
+	WebhookJsonSelector        string        `yaml:"webhook_json_selector,omitempty"`
+	WebhookTextBulkSeparator   string        `yaml:"webhook_text_bulk_separator,omitempty"`
 }
 
 type GrokConfig struct {
@@ -126,6 +131,20 @@ func (c *InputConfig) addDefaults() {
 	}
 	if c.Type == inputTypeFile && len(c.FailOnMissingLogfileString) == 0 {
 		c.FailOnMissingLogfileString = "true"
+	}
+	if c.Type == inputTypeWebhook {
+		if len(c.WebhookPath) == 0 {
+			c.WebhookPath = "/webhook"
+		}
+		if len(c.WebhookFormat) == 0 {
+			c.WebhookFormat = "text_single"
+		}
+		if len(c.WebhookJsonSelector) == 0 {
+			c.WebhookJsonSelector = ".message"
+		}
+		if len(c.WebhookTextBulkSeparator) == 0 {
+			c.WebhookTextBulkSeparator = "\n\n"
+		}
 	}
 }
 
@@ -194,6 +213,23 @@ func (c *InputConfig) validate() error {
 			if err != nil {
 				return fmt.Errorf("invalid input configuration: '%v' is not a valid boolean value in 'input.fail_on_missing_logfile'", c.FailOnMissingLogfileString)
 			}
+		}
+	case c.Type == inputTypeWebhook:
+		if c.WebhookPath == "" {
+			return fmt.Errorf("invalid input configuration: 'input.webhook_path' is required for input type \"webhook\"")
+		} else if c.WebhookPath[0] != '/' {
+			return fmt.Errorf("invalid input configuration: 'input.webhook_path' must start with \"/\"")
+		}
+		if c.WebhookFormat != "text_single" && c.WebhookFormat != "text_bulk" && c.WebhookFormat != "json_single" && c.WebhookFormat != "json_bulk" {
+			return fmt.Errorf("invalid input configuration: 'input.webhook_format' must be \"text_single|text_bulk|json_single|json_bulk\"")
+		}
+		if c.WebhookJsonSelector == "" {
+			return fmt.Errorf("invalid input configuration: 'input.webhook_json_selector' is required for input type \"webhook\"")
+		} else if c.WebhookJsonSelector[0] != '.' {
+			return fmt.Errorf("invalid input configuration: 'input.webhook_json_selector' must start with \".\"")
+		}
+		if c.WebhookFormat == "text_bulk" && c.WebhookTextBulkSeparator == "" {
+			return fmt.Errorf("invalid input configuration: 'input.webhook_text_bulk_separator' is required for input type \"webhook\" and webhook_format \"text_bulk\"")
 		}
 	default:
 		return fmt.Errorf("unsupported 'input.type': %v", c.Type)
