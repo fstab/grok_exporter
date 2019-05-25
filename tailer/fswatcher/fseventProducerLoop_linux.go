@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -71,9 +72,15 @@ func runInotifyLoop(fd int) *inotifyloop {
 		for {
 			n, err = syscall.Read(l.fd, buf)
 			if err != nil {
+				// Getting an err might be part of the shutdown, when l.fd is closed.
+				// We decide whether it is an actual error or not by checking if l.done is closed.
 				select {
-				case l.errors <- NewError(NotSpecified, err, "failed to read inotify events"):
 				case <-l.done:
+				case <-time.After(2 * time.Second):
+					select {
+					case l.errors <- NewError(NotSpecified, err, "failed to read inotify events"):
+					case <-l.done:
+					}
 				}
 				return
 			}

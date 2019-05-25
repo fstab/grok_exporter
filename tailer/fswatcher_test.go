@@ -102,6 +102,38 @@ const tests = `
   - [expect, test line 3 dir 1 file 2, logdir1/logfile-2.log]
   - [expect, test line 3 dir 2 file 1, logdir2/logfile-1.log]
   - [expect, test line 3 dir 2 file 2, logdir2/logfile-2.log]
+
+- name: nested directories
+  commands:
+  - [mkdir, outer]
+  - [mkdir, outer/inner]
+  - [log, outer line 1, outer/logfile.log]
+  - [log, inner line 1, outer/inner/logfile.log]
+  - [start file tailer, readall=true, fail_on_missing_logfile=false, outer/*.log, outer/inner/*.log]
+  - [expect, outer line 1, outer/logfile.log]
+  - [expect, inner line 1, outer/inner/logfile.log]
+  - [log, outer line 2, outer/logfile.log]
+  - [log, inner line 2, outer/inner/logfile.log]
+  - [expect, outer line 2, outer/logfile.log]
+  - [expect, inner line 2, outer/inner/logfile.log]
+  - [logrotate, outer/logfile.log, outer/logfile.log.1]
+  - [logrotate, outer/inner/logfile.log, outer/inner/logfile.log.1]
+  - [log, outer line 3, outer/logfile.log]
+  - [log, inner line 3, outer/inner/logfile.log]
+  - [expect, outer line 3, outer/logfile.log]
+  - [expect, inner line 3, outer/inner/logfile.log]
+
+- name: watch after logrotate
+  commands:
+  - [mkdir, logdir]
+  - [log, line 1, logdir/logfile.log]
+  - [start file tailer, readall=true, fail_on_missing_logfile=false, logdir/*]
+  - [expect, line 1, logdir/logfile.log]
+  - [log, line 2, logdir/logfile.log]
+  - [expect, line 2, logdir/logfile.log]
+  - [logrotate, logdir/logfile.log, logdir/logfile.log.1]
+  - [log, line 3, logdir/logfile.log]
+  - [expect, line 3, logdir/logfile.log]
 `
 
 // // The following test fails on Windows in tearDown() when removing logdir.
@@ -209,14 +241,19 @@ func executeCommands(t *testing.T, ctx *context, cmds [][]string) {
 	for _, cmd := range cmds {
 		exec(t, ctx, cmd)
 	}
-	closeTailer(t, ctx)
+	// The "watch after logrotate" test watches logdir/* and rotates logdir/logfile.log
+	// to logdir/logfile.log.1. As a result, the file is still watched after it is rotated.
+	// Depending on the logrotate config the lines are read again (cp) or not (mv).
+	// We ignore unexpected lines for that test.
+	// TODO: Make ignoreUnexpectedLines an explicit paramter in the test yaml instead of using the test name here.
+	closeTailer(t, ctx, ctx.testName == "watch after logrotate")
 	assertGoroutinesTerminated(t, ctx, nGoroutinesBefore)
 	for _, writer := range ctx.logFileWriters {
 		writer.close(t, ctx)
 	}
 }
 
-func closeTailer(t *testing.T, ctx *context) {
+func closeTailer(t *testing.T, ctx *context, ignoreUnexpectedLines bool) {
 	// Note: This function checks if the Lines() channel gets closed.
 	// While it's good to check this, it doesn't guarantee that the tailer is
 	// fully shut down. There might be an fseventProducerLoop running in the
@@ -230,7 +267,7 @@ func closeTailer(t *testing.T, ctx *context) {
 		// check if the lines channel gets closed
 		select {
 		case line, open := <-ctx.tailer.Lines():
-			if open {
+			if open && !ignoreUnexpectedLines {
 				fatalf(t, ctx, "read unexpected line line from file %q: %q", line.File, line.Line)
 			}
 		case <-time.After(timeout):

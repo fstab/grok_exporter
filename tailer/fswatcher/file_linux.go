@@ -14,7 +14,10 @@
 
 package fswatcher
 
-import "os"
+import (
+	"os"
+	"syscall"
+)
 
 // On Linux, we don't need to keep the directory open, but we need to keep an open watch descriptor handle.
 type Dir struct {
@@ -45,8 +48,13 @@ func (d *Dir) ls() ([]os.FileInfo, Error) {
 	return fileInfos, nil
 }
 
-func NewFile(orig *os.File, newPath string) *os.File {
-	return os.NewFile(orig.Fd(), newPath)
+func NewFile(orig *os.File, newPath string) (*os.File, error) {
+	// The finalizer will close orig.Fd() even if we don't close it explicitly. Therefore we must Dup().
+	fd, err := syscall.Dup(int(orig.Fd()))
+	if err != nil {
+		return nil, err
+	}
+	return os.NewFile(uintptr(fd), newPath), nil
 }
 
 func open(path string) (*os.File, error) {

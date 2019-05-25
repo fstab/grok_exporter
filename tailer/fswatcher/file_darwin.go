@@ -17,6 +17,7 @@ package fswatcher
 import (
 	"io"
 	"os"
+	"syscall"
 )
 
 // On macOS, we keep dirs open, so we use *os.File.
@@ -44,8 +45,12 @@ func (d *Dir) ls() ([]os.FileInfo, Error) {
 	return fileInfos, nil
 }
 
-func NewFile(orig *os.File, newPath string) *os.File {
-	return os.NewFile(orig.Fd(), newPath)
+func NewFile(orig *os.File, newPath string) (*os.File, error) {
+	fd, err := syscall.Dup(int(orig.Fd()))
+	if err != nil {
+		return nil, err
+	}
+	return os.NewFile(uintptr(fd), newPath), nil
 }
 
 func open(path string) (*os.File, error) {

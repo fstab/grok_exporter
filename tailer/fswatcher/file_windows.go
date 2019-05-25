@@ -71,13 +71,13 @@ func (d *Dir) ls() ([]*fileInfo, Error) {
 }
 
 // like os.NewFile()
-func NewFile(orig *File, newPath string) *File {
+func NewFile(orig *File, newPath string) (*File, error) {
 	return &File{
 		path:          newPath,
 		currentPos:    orig.currentPos,
 		fileIndexLow:  orig.fileIndexLow,
 		fileIndexHigh: orig.fileIndexHigh,
-	}
+	}, nil
 }
 
 func open(path string) (*File, Error) {

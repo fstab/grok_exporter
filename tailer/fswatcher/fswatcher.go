@@ -150,8 +150,8 @@ func runFileTailer(initFunc func() (fswatcher, Error), globs []glob.Glob, readal
 				select {
 				case <-t.done:
 				case t.errors <- Err:
-					return
 				}
+				return
 			}
 		}
 
@@ -204,7 +204,7 @@ func (t *fileTailer) shutdown() {
 	close(t.errors)
 
 	warnf := func(format string, args ...interface{}) {
-		log.Warnf("error while shutting down the file system watcher: %v", fmt.Sprint(format, args))
+		log.Warnf("error while shutting down the file system watcher: %v", fmt.Sprintf(format, args))
 	}
 
 	for _, dir := range t.watchedDirs {
@@ -278,7 +278,11 @@ func (t *fileTailer) syncFilesInDir(dir *Dir, readall bool, log logrus.FieldLogg
 		if alreadyWatched != nil {
 			if alreadyWatched.file.Name() != filePath {
 				fileLogger.WithField("fd", alreadyWatched.file.Fd()).Infof("file was moved from %v", alreadyWatched.file.Name())
-				alreadyWatched.file = NewFile(alreadyWatched.file, filePath)
+				oldFileWithNewPath, err := NewFile(alreadyWatched.file, filePath)
+				if err != nil {
+					return NewErrorf(NotSpecified, err, "%v: failed to follow moved file", filePath)
+				}
+				alreadyWatched.file = oldFileWithNewPath
 			} else {
 				fileLogger.Debug("skipping, because file is already watched")
 			}
@@ -287,7 +291,12 @@ func (t *fileTailer) syncFilesInDir(dir *Dir, readall bool, log logrus.FieldLogg
 		}
 		newFile, err := open(filePath)
 		if err != nil {
-			return NewErrorf(NotSpecified, err, "%v: failed to open file", filePath)
+			if os.IsNotExist(err) {
+				fileLogger.Debug("skipping, because file does no longer exist")
+				continue
+			} else {
+				return NewErrorf(NotSpecified, err, "%v: failed to open file", filePath)
+			}
 		}
 		if !readall {
 			_, err = newFile.Seek(0, io.SeekEnd)

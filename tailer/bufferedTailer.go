@@ -23,6 +23,7 @@ import (
 type bufferedTailer struct {
 	out  chan *fswatcher.Line
 	orig fswatcher.FileTailer
+	done chan struct{}
 }
 
 func (b *bufferedTailer) Lines() chan *fswatcher.Line {
@@ -35,6 +36,7 @@ func (b *bufferedTailer) Errors() chan fswatcher.Error {
 
 func (b *bufferedTailer) Close() {
 	b.orig.Close()
+	close(b.done)
 }
 
 func BufferedTailer(orig fswatcher.FileTailer) fswatcher.FileTailer {
@@ -103,6 +105,7 @@ func BufferedTailer(orig fswatcher.FileTailer) fswatcher.FileTailer {
 func BufferedTailerWithMetrics(orig fswatcher.FileTailer, bufferLoadMetric BufferLoadMetric, log logrus.FieldLogger, maxLinesInBuffer int) fswatcher.FileTailer {
 	buffer := NewLineBuffer()
 	out := make(chan *fswatcher.Line)
+	done := make(chan struct{})
 
 	// producer
 	go func() {
@@ -135,12 +138,16 @@ func BufferedTailerWithMetrics(orig fswatcher.FileTailer, bufferLoadMetric Buffe
 				return
 			}
 			bufferLoadMetric.Dec()
-			out <- line
+			select {
+			case out <- line:
+			case <-done:
+			}
 		}
 	}()
 	return &bufferedTailer{
 		out:  out,
 		orig: orig,
+		done: done,
 	}
 }
 
