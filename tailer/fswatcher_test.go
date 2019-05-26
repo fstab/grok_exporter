@@ -134,6 +134,22 @@ const tests = `
   - [logrotate, logdir/logfile.log, logdir/logfile.log.1]
   - [log, line 3, logdir/logfile.log]
   - [expect, line 3, logdir/logfile.log]
+
+- name: overwrite
+  param_filters:
+    logrotateMvCfg: [mv]
+  commands:
+  - [mkdir, logdir]
+  - [log, file 1 line 1, logdir/logfile1.log]
+  - [log, file 2 line 1, logdir/logfile2.log]
+  - [start file tailer, readall=true, fail_on_missing_logfile=false, logdir/*]
+  - [expect, file 1 line 1, logdir/logfile1.log]
+  - [expect, file 2 line 1, logdir/logfile2.log]
+  - [logrotate, logdir/logfile1.log, logdir/logfile2.log]
+  - [log, file 2 line 2, logdir/logfile2.log]
+  - [log, file 1 line 2, logdir/logfile1.log]
+  - [expect, file 1 line 2, logdir/logfile1.log]
+  - [expect, file 2 line 2, logdir/logfile2.log]
 `
 
 // // The following test fails on Windows in tearDown() when removing logdir.
@@ -146,13 +162,14 @@ const tests = `
 // `
 
 type testConfigType struct {
-	Name     string
-	Commands [][]string
+	Name         string
+	ParamFilters map[string][]string `yaml:"param_filters"`
+	Commands     [][]string
 }
 
 func TestAll(t *testing.T) {
 	testConfigs := make([]testConfigType, 0)
-	err := yaml.Unmarshal([]byte(tests), &testConfigs)
+	err := yaml.UnmarshalStrict([]byte(tests), &testConfigs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +179,9 @@ func TestAll(t *testing.T) {
 			// All logratate configs except for copy and copytruncate can be combined with logratateMoveConfig.
 			for _, logrotateCfg := range []logrotateConfig{_create, _nocreate, _create_from_temp} {
 				for _, logrotateMvCfg := range []logrotateMoveConfig{mv, cp, rm} {
-					runTest(t, testConfig.Name, loggerCfg, tailerOpt, logrotateCfg, logrotateMvCfg, testConfig.Commands)
+					if !skip(testConfig, loggerCfg, logrotateCfg, logrotateMvCfg) {
+						runTest(t, testConfig.Name, loggerCfg, tailerOpt, logrotateCfg, logrotateMvCfg, testConfig.Commands)
+					}
 				}
 			}
 			for _, loggerCfg := range []loggerConfig{keepOpen, closeFileAfterEachLine} {
@@ -170,7 +189,9 @@ func TestAll(t *testing.T) {
 				for _, logrotateCfg := range []logrotateConfig{_copy, _copytruncate} {
 					for _, logrotateMvCfg := range []logrotateMoveConfig{none} {
 						// The logroatate configs copytruncate and copy require logroatateMoveConfig == none.
-						runTest(t, testConfig.Name, loggerCfg, tailerOpt, logrotateCfg, logrotateMvCfg, testConfig.Commands)
+						if !skip(testConfig, loggerCfg, logrotateCfg, logrotateMvCfg) {
+							runTest(t, testConfig.Name, loggerCfg, tailerOpt, logrotateCfg, logrotateMvCfg, testConfig.Commands)
+						}
 					}
 				}
 			}
@@ -223,6 +244,28 @@ func TestFileMissingOnStartup(t *testing.T) {
 		{"expect", "line 1", "test.log"},
 	}
 	runTest(t, "fail on missing startup", closeFileAfterEachLine, fseventTailer, _nocreate, mv, test)
+}
+
+func skip(config testConfigType, loggerCfg loggerConfig, logrotateCfg logrotateConfig, logrotateMvCfg logrotateMoveConfig) bool {
+	if len(config.ParamFilters["loggerCfg"]) > 0 && !containsAsString(loggerCfg, config.ParamFilters["loggerCfg"]) {
+		return true
+	}
+	if len(config.ParamFilters["logrotateCfg"]) > 0 && !containsAsString(logrotateCfg, config.ParamFilters["logrotateCfg"]) {
+		return true
+	}
+	if len(config.ParamFilters["logrotateMvCfg"]) > 0 && !containsAsString(logrotateMvCfg, config.ParamFilters["logrotateMvCfg"]) {
+		return true
+	}
+	return false
+}
+
+func containsAsString(item fmt.Stringer, slice []string) bool {
+	for _, entry := range slice {
+		if item.String() == entry {
+			return true
+		}
+	}
+	return false
 }
 
 func runTest(t *testing.T, testName string, loggerCfg loggerConfig, tailerCfg fileTailerConfig, logrotateCfg logrotateConfig, logrotateMvCfg logrotateMoveConfig, cmds [][]string) {
