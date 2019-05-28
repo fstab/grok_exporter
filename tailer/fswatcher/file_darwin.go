@@ -46,6 +46,9 @@ func (d *Dir) ls() ([]os.FileInfo, Error) {
 }
 
 func NewFile(orig *os.File, newPath string) (*os.File, error) {
+	// Why do we create a new file descriptor here with Dup()?
+	// Because os.File has a finalizer closing the file when the object is garbage collected.
+	// This will close orig.Fd() as soon as the GC runs.
 	fd, err := syscall.Dup(int(orig.Fd()))
 	if err != nil {
 		return nil, err

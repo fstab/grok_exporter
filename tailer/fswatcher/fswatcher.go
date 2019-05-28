@@ -276,17 +276,24 @@ func (t *fileTailer) syncFilesInDir(dir *Dir, readall bool, log logrus.FieldLogg
 			return Err
 		}
 		if alreadyWatched != nil {
-			if alreadyWatched.file.Name() != filePath {
-				fileLogger.WithField("fd", alreadyWatched.file.Fd()).Infof("file was moved from %v", alreadyWatched.file.Name())
-				oldFileWithNewPath, err := NewFile(alreadyWatched.file, filePath)
+			if alreadyWatched.file.Name() != filePath { // file is already watched but renamed
+				renamedFile, err := NewFile(alreadyWatched.file, filePath)
 				if err != nil {
 					return NewErrorf(NotSpecified, err, "%v: failed to follow moved file", filePath)
 				}
-				alreadyWatched.file = oldFileWithNewPath
+				fileLogger.WithField("fd", renamedFile.Fd()).Infof("file with old_fd=%v was moved from old_path=%v", alreadyWatched.file.Fd(), alreadyWatched.file.Name())
+				alreadyWatched.file.Close()
+				Err = t.osSpecific.watchFile(renamedFile)
+				if Err != nil {
+					renamedFile.Close()
+					return Err
+				}
+				alreadyWatched.file = renamedFile
+				watchedFilesAfter[filePath] = alreadyWatched // re-use lineReader
 			} else {
 				fileLogger.Debug("skipping, because file is already watched")
+				watchedFilesAfter[filePath] = alreadyWatched
 			}
-			watchedFilesAfter[filePath] = alreadyWatched
 			continue
 		}
 		newFile, err := open(filePath)
