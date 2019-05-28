@@ -26,8 +26,6 @@ type keventloop struct {
 	done   chan struct{}
 }
 
-type Kevent syscall.Kevent_t
-
 // Terminate the kevent loop.
 // If the loop hangs in syscall.Kevent(), it will keep hanging there until the next event is read.
 // Therefore, after the consumer called Close(), it should interrupt the kevent() call by closing the kq descriptor.
@@ -86,7 +84,7 @@ func runKeventLoop(kq int) *keventloop {
 	return result
 }
 
-func (event Kevent) String() string {
+func event2string(event syscall.Kevent_t) string {
 	result := make([]string, 0, 1)
 	if event.Fflags&syscall.NOTE_DELETE == syscall.NOTE_DELETE {
 		result = append(result, "NOTE_DELETE")

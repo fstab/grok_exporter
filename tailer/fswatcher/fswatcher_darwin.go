@@ -120,20 +120,20 @@ func (w *watcher) processEvent(t *fileTailer, event fsevent, log logrus.FieldLog
 	for _, dir = range t.watchedDirs {
 		if kevent.Ident == fdToInt(dir.file.Fd()) {
 			dirLogger = log.WithField("directory", dir.file.Name())
-			dirLogger.Debugf("dir event: %v", kevent)
+			dirLogger.Debugf("dir event: %v", event2string(kevent))
 			return w.processDirEvent(t, kevent, dir, dirLogger)
 		}
 	}
 	for _, file = range t.watchedFiles {
 		if kevent.Ident == fdToInt(file.file.Fd()) {
 			fileLogger = log.WithField("file", file.file.Name()).WithField("fd", file.file.Fd())
-			fileLogger.Debugf("file event: %v", kevent)
+			fileLogger.Debugf("file event: %v", event2string(kevent))
 			return w.processFileEvent(t, kevent, file, fileLogger)
 		}
 	}
 	// Events for unknown file descriptors are ignored. This might happen if syncFilesInDir() already
 	// closed a file while a pending event is still coming in.
-	log.Debugf("event for unknown file descriptor %v: %v", kevent.Ident, kevent)
+	log.Debugf("event for unknown file descriptor %v: %v", kevent.Ident, event2string(kevent))
 	return nil
 }
 
