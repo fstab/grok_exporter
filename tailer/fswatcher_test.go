@@ -146,6 +146,9 @@ const tests = `
   - [expect, file 1 line 1, logdir/logfile1.log]
   - [expect, file 2 line 1, logdir/logfile2.log]
   - [logrotate, logdir/logfile1.log, logdir/logfile2.log]
+     # When processing logratate, the old fd for logfile1.log will be closed and un-watched, and a new fd will be created and watched (on Darwin).
+     # Wait a little so that the events for logging line 2 is received on the new fd.
+  - [sleep, 200]
   - [log, file 2 line 2, logdir/logfile2.log]
   - [log, file 1 line 2, logdir/logfile1.log]
   - [expect, file 1 line 2, logdir/logfile1.log]
@@ -225,10 +228,10 @@ func TestVisibleInOSXFinder(t *testing.T) {
 	test := [][]string{
 		{"log", "line 1", "test.log"},
 		{"start file tailer", "test.log"},
-		{"sleep", "1"}, // wait a second before we write line 2, because we started the tailer with readall=false
+		{"sleep", "1000"}, // wait a second before we write line 2, because we started the tailer with readall=false
 		{"log", "line 2", "test.log"},
 		{"expect", "line 2", "test.log"},
-		{"sleep", "5"}, // On macOS, we get a delayed NOTE_ATTRIB event after we wrote 'line 2'. Wait 5 seconds for this event.
+		{"sleep", "5000"}, // On macOS, we get a delayed NOTE_ATTRIB event after we wrote 'line 2'. Wait 5 seconds for this event.
 		{"log", "line 3", "test.log"},
 		{"expect", "line 3", "test.log"},
 	}
@@ -239,7 +242,7 @@ func TestVisibleInOSXFinder(t *testing.T) {
 func TestFileMissingOnStartup(t *testing.T) {
 	test := [][]string{
 		{"start file tailer", "fail_on_missing_logfile=false", "test.log"},
-		{"sleep", "1"},
+		{"sleep", "1000"},
 		{"log", "line 1", "test.log"},
 		{"expect", "line 1", "test.log"},
 	}
@@ -396,7 +399,7 @@ func exec(t *testing.T, ctx *context, cmd []string) {
 		if err != nil {
 			fatalf(t, ctx, "syntax error in test: sleep %v: %v", cmd[1], err)
 		}
-		time.Sleep(time.Duration(duration) * time.Second)
+		time.Sleep(time.Duration(duration) * time.Millisecond)
 	default:
 		fatalf(t, ctx, "unknown command: %v", printCmd(cmd))
 	}
