@@ -872,19 +872,19 @@ func delete(t *testing.T, ctx *context, file string) {
 					// os.Remove(file) was successful, the file or directory is gone.
 					return
 				} else {
-					fatalf(t, ctx, "tearDown: %q: stat failed: %v", file, statErr)
+					err = fmt.Errorf("stat failed: %v", statErr)
 				}
 			}
 		}
 		// os.Stat() successful. The file or directory is still there. Try again.
 		time.Sleep(200 * time.Millisecond)
 		timePassed += 200 * time.Millisecond
-	}
-	if runtime.GOOS == "windows" {
-		// On Windows, removing a watched directory fails with "Access is denied".
-		// We ignore this here and move on. grok_exporter will never shut down the tailer but
-		// keep it running until the application terminates, so this should not be a problem.
-		return
+		if runtime.GOOS == "windows" {
+			// On Windows, removing a watched directory fails with "Access is denied".
+			// We ignore this here and move on. grok_exporter will never shut down the tailer but
+			// keep it running until the application terminates, so this should not be a problem.
+			return
+		}
 	}
 	if err != nil {
 		fatalf(t, ctx, "tearDown: %q: failed to remove file or directory: %v", file, err)
