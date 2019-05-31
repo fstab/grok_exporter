@@ -288,8 +288,13 @@ func (t *fileTailer) syncFilesInDir(dir *Dir, readall bool, log logrus.FieldLogg
 					renamedFile.Close()
 					return Err
 				}
-				alreadyWatched.file = renamedFile
-				watchedFilesAfter[filePath] = alreadyWatched // re-use lineReader
+				alreadyWatched.file = renamedFile // re-use lineReader
+				Err = t.readNewLines(alreadyWatched, fileLogger)
+				if Err != nil {
+					alreadyWatched.file.Close()
+					return Err
+				}
+				watchedFilesAfter[filePath] = alreadyWatched
 			} else {
 				fileLogger.Debug("skipping, because file is already watched")
 				watchedFilesAfter[filePath] = alreadyWatched
