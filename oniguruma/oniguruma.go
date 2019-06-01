@@ -124,6 +124,9 @@ func (regex *Regex) searchWithOffset(input string, offset int) (*SearchResult, e
 		}, nil
 	} else if r < 0 {
 		C.onig_region_free(region, 1)
+		if C.oniguruma_helper_is_retry_limit_error(r) != 0 {
+			return nil, fmt.Errorf("the match takes too long to process: the oniguruma regular expression library aborted the match with error: %v", errMsg(r))
+		}
 		return nil, errors.New(errMsg(r))
 	} else {
 		return &SearchResult{
