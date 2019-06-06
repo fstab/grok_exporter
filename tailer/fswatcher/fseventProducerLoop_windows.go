@@ -44,9 +44,19 @@ func runWinWatcherLoop(w *winfsnotify.Watcher) *winwatcherloop {
 		for {
 			select {
 			case event := <-w.Event:
-				events <- event
+				select {
+				case events <- event:
+				case <-done:
+					w.Close()
+					return
+				}
 			case err := <-w.Error:
-				errors <- NewError(NotSpecified, err, "")
+				select {
+				case errors <- NewError(NotSpecified, err, ""):
+				case <-done:
+					w.Close()
+					return
+				}
 			case <-done:
 				w.Close()
 				return

@@ -333,7 +333,7 @@ func assertGoroutinesTerminated(t *testing.T, ctx *context, nGoroutinesBefore in
 	nHangingGoroutines := runtime.NumGoroutine() - nGoroutinesBefore
 	if nHangingGoroutines > 0 {
 		pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
-		fatalf(t, ctx, "%v goroutines did not shut down properly.", nHangingGoroutines)
+		fatalf(t, ctx, "%v goroutine(s) did not shut down properly.", nHangingGoroutines)
 	}
 }
 
