@@ -301,17 +301,17 @@ func (t *fileTailer) syncFilesInDir(dir *Dir, readall bool, log logrus.FieldLogg
 			}
 			continue
 		}
-		newFile, err := open(filePath)
-		if err != nil {
-			if os.IsNotExist(err) {
+		newFile, Err := open(filePath)
+		if Err != nil {
+			if Err.Type() == FileNotFound {
 				fileLogger.Debug("skipping, because file does no longer exist")
 				continue
 			} else {
-				return NewErrorf(NotSpecified, err, "%v: failed to open file", filePath)
+				return Err
 			}
 		}
 		if !readall {
-			_, err = newFile.Seek(0, io.SeekEnd)
+			_, err := newFile.Seek(0, io.SeekEnd)
 			if err != nil {
 				newFile.Close()
 				return NewError(NotSpecified, os.NewSyscallError("seek", err), filePath)

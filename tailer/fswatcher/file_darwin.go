@@ -56,6 +56,14 @@ func NewFile(orig *os.File, newPath string) (*os.File, error) {
 	return os.NewFile(uintptr(fd), newPath), nil
 }
 
-func open(path string) (*os.File, error) {
-	return os.Open(path)
+func open(path string) (*os.File, Error) {
+	file, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, NewError(FileNotFound, os.NewSyscallError("open", err), path)
+		} else {
+			return nil, NewError(NotSpecified, os.NewSyscallError("open", err), path)
+		}
+	}
+	return file, nil
 }

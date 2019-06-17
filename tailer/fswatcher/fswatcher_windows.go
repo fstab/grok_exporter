@@ -157,7 +157,11 @@ func isTruncated(file *File) (bool, Error) {
 func findSameFile(t *fileTailer, newFileInfo *fileInfo, path string) (*fileWithReader, Error) {
 	newFile, Err := open(path)
 	if Err != nil {
-		return nil, Err
+		if Err.Type() == FileNotFound {
+			return nil, nil
+		} else {
+			return nil, Err
+		}
 	}
 	defer newFile.Close()
 	for _, watchedFile := range t.watchedFiles {
