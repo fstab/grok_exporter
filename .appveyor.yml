@@ -14,8 +14,7 @@ environment:
     CGO_ENABLED: 1
     CGO_LDFLAGS: C:\msys64\mingw64\lib\libonig.a
     matrix:
-    - ONIG_VERSION: 5.9.6
-#    - ONIG_VERSION: 6.1.0
+    - ONIG_VERSION: 6.9.2
 
 # --------------------------------------------------------------------------
 # The install phase installs the Oniguruma library,
