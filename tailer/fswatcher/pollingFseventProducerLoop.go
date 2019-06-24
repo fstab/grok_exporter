@@ -35,7 +35,11 @@ func runPollLoop(pollInterval time.Duration) *pollloop {
 			tick := time.After(pollInterval)
 			select {
 			case <-tick:
-				events <- struct{}{}
+				select {
+				case events <- struct{}{}:
+				case <-done:
+					return
+				}
 			case <-done:
 				return
 			}
