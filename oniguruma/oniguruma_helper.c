@@ -21,12 +21,10 @@ int oniguruma_helper_initialize(OnigEncoding encodings[], int n) {
     #if ONIGURUMA_VERSION_MAJOR >= 6
         int result = onig_initialize(encodings, n);
         #if ONIGURUMA_VERSION_MINOR >= 8 && ONIGURUMA_VERSION_TEENY >= 2
-            // In order to avoid retry limit errors in the examples attached to issue #58
-            // we would need to increase the limit by a factor of 100. However, this results
-            // in unreasonably long processing times for the affected match.
-            // As a trade-off, we increase the default by a factor of 10.
+            // Increase the retry limit by factor 100 to make the examples in #58 work.
+            // However, this value is ridiculously high, regular expressions needing this will be unreasonably slow.
             // See here for documentation: https://github.com/kkos/oniguruma/issues/143
-            onig_set_retry_limit_in_match(10L*onig_get_retry_limit_in_match());
+            onig_set_retry_limit_in_match(100L*onig_get_retry_limit_in_match());
         #endif
         return result;
     #else
