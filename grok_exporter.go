@@ -151,9 +151,9 @@ func startMsg(cfg *v2.Config, httpHandlers []exporter.HttpServerPathHandler) str
 
 	var sb strings.Builder
 	baseUrl := fmt.Sprintf("%v://%v:%v", cfg.Server.Protocol, host, cfg.Server.Port)
-	sb.WriteString(fmt.Sprintf("Starting server on %v", baseUrl))
+	sb.WriteString("Starting server on")
 	for _, httpHandler := range httpHandlers {
-		sb.WriteString(fmt.Sprintf("\n  %v%v", baseUrl, httpHandler.Path))
+		sb.WriteString(fmt.Sprintf(" %v%v", baseUrl, httpHandler.Path))
 	}
 	sb.WriteString("\n")
 	return sb.String()
