@@ -48,7 +48,7 @@ func LoadConfigString(content []byte) (*v2.Config, string, error) {
 }
 
 func findVersion(content string) (int, string, error) {
-	versionExpr := regexp.MustCompile(`global:\s*config_version:[\t\f ]*(\S+)`)
+	versionExpr := regexp.MustCompile(`"?global"?:\s*"?config_version"?:[\t\f ]*(\S+)`)
 	versionInfo := versionExpr.FindStringSubmatch(content)
 	if len(versionInfo) == 2 {
 		version, err := strconv.Atoi(strings.TrimSpace(versionInfo[1]))

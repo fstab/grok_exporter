@@ -42,6 +42,8 @@ func TestVersionDetection(t *testing.T) {
 	expectVersion(t, exampleConfig, 2, false)
 	expectVersion(t, strings.Replace(exampleConfig, "config_version: 2", "config_version: 1", 1), 1, false)
 	expectVersion(t, strings.Replace(exampleConfig, "config_version: 2", "config_version:", 1), 1, true)
+	expectVersion(t, strings.Replace(exampleConfig, "config_version: 2", "\"config_version\": 2", 1), 2, false)
+	expectVersion(t, strings.Replace(exampleConfig, "global", "\"global\"", 1), 2, false)
 	expectVersion(t, strings.Replace(exampleConfig, "config_version: 2", "", 1), 1, true)
 	_, _, err := findVersion(strings.Replace(exampleConfig, "config_version: 2", "config_version: a", 1))
 	if err == nil {
