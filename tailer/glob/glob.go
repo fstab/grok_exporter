@@ -33,7 +33,7 @@ func Parse(pattern string) (Glob, error) {
 	}
 	absglob, err = filepath.Abs(pattern)
 	if err != nil {
-		return "", fmt.Errorf("%q: failed to finnd absolute path for glob pattern: %v", pattern, err)
+		return "", fmt.Errorf("%q: failed to find absolute path for glob pattern: %v", pattern, err)
 	}
 	result = Glob(absglob)
 	if containsWildcards(result.Dir()) {
