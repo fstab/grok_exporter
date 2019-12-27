@@ -37,10 +37,18 @@ var (
 	showConfig   = flag.Bool("showconfig", false, "Print the current configuration to the console. Example: 'grok_exporter -showconfig -config ./example/config.yml'")
 )
 
+var (
+	logfile = "logfile"
+)
+
 const (
 	number_of_lines_matched_label = "matched"
 	number_of_lines_ignored_label = "ignored"
 )
+
+var additionalFieldDefinitions = map[string]string{
+	logfile: "full path of the log file",
+}
 
 func main() {
 	flag.Parse()
@@ -101,7 +109,7 @@ func main() {
 			matched := false
 			for _, metric := range metrics {
 				start := time.Now()
-				match, err := metric.ProcessMatch(line.Line)
+				match, err := metric.ProcessMatch(line.Line, makeAdditionalFields(line))
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "WARNING: skipping log line: %v\n", err.Error())
 					fmt.Fprintf(os.Stderr, "%v\n", line.Line)
@@ -112,7 +120,7 @@ func main() {
 					procTimeMicrosecondsByMetric.WithLabelValues(metric.Name()).Add(float64(time.Since(start).Nanoseconds() / int64(1000)))
 					matched = true
 				}
-				_, err = metric.ProcessDeleteMatch(line.Line)
+				_, err = metric.ProcessDeleteMatch(line.Line, makeAdditionalFields(line))
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "WARNING: skipping log line: %v\n", err.Error())
 					fmt.Fprintf(os.Stderr, "%v\n", line.Line)
@@ -135,6 +143,12 @@ func main() {
 			}
 			// TODO: create metric to monitor number of metrics cleaned up via retention
 		}
+	}
+}
+
+func makeAdditionalFields(line *fswatcher.Line) map[string]string {
+	return map[string]string{
+		logfile: line.File,
 	}
 }
 
@@ -211,7 +225,7 @@ func createMetrics(cfg *v2.Config, patterns *exporter.Patterns) ([]exporter.Metr
 				return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
 			}
 		}
-		err = exporter.VerifyFieldNames(&m, regex, deleteRegex)
+		err = exporter.VerifyFieldNames(&m, regex, deleteRegex, additionalFieldDefinitions)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize metric %v: %v", m.Name, err.Error())
 		}

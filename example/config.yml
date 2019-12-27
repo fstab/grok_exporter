@@ -14,6 +14,7 @@ metrics:
       help: Total number of rejected recipients, partitioned by error message.
       match: '%{EXIM_DATE} %{EXIM_REMOTE_HOST} F=<%{EMAILADDRESS}> rejected RCPT <%{EMAILADDRESS}>: %{EXIM_MESSAGE:message}'
       labels:
+          logfile: '{{base .logfile}}'
           error_message: '{{.message}}'
 server:
     host: localhost

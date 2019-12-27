@@ -32,10 +32,10 @@ func TestCounterVec(t *testing.T) {
 		},
 	})
 	counter := NewCounterMetric(counterCfg, regex, nil)
-	counter.ProcessMatch("some unrelated line")
-	counter.ProcessMatch("2016-04-26 10:19:57 H=(85.214.241.101) [36.224.138.227] F=<z2007tw@yahoo.com.tw> rejected RCPT <alan.a168@msa.hinet.net>: relay not permitted")
-	counter.ProcessMatch("2016-04-26 12:31:39 H=(186-90-8-31.genericrev.cantv.net) [186.90.8.31] F=<Hans.Krause9@cantv.net> rejected RCPT <ug2seeng-admin@example.com>: Unrouteable address")
-	counter.ProcessMatch("2016-04-26 10:19:57 H=(85.214.241.101) [36.224.138.227] F=<z2007tw@yahoo.com.tw> rejected RCPT <alan.a168@msa.hinet.net>: relay not permitted")
+	counter.ProcessMatch("some unrelated line", nil)
+	counter.ProcessMatch("2016-04-26 10:19:57 H=(85.214.241.101) [36.224.138.227] F=<z2007tw@yahoo.com.tw> rejected RCPT <alan.a168@msa.hinet.net>: relay not permitted", nil)
+	counter.ProcessMatch("2016-04-26 12:31:39 H=(186-90-8-31.genericrev.cantv.net) [186.90.8.31] F=<Hans.Krause9@cantv.net> rejected RCPT <ug2seeng-admin@example.com>: Unrouteable address", nil)
+	counter.ProcessMatch("2016-04-26 10:19:57 H=(85.214.241.101) [36.224.138.227] F=<z2007tw@yahoo.com.tw> rejected RCPT <alan.a168@msa.hinet.net>: relay not permitted", nil)
 
 	switch c := counter.Collector().(type) {
 	case *prometheus.CounterVec:
@@ -60,10 +60,10 @@ func TestCounter(t *testing.T) {
 	})
 	counter := NewCounterMetric(counterCfg, regex, nil)
 
-	counter.ProcessMatch("some unrelated line")
-	counter.ProcessMatch("2016-04-26 10:19:57 H=(85.214.241.101) [36.224.138.227] F=<z2007tw@yahoo.com.tw> rejected RCPT <alan.a168@msa.hinet.net>: relay not permitted")
-	counter.ProcessMatch("2016-04-26 12:31:39 H=(186-90-8-31.genericrev.cantv.net) [186.90.8.31] F=<Hans.Krause9@cantv.net> rejected RCPT <ug2seeng-admin@example.com>: Unrouteable address")
-	counter.ProcessMatch("2016-04-26 10:19:57 H=(85.214.241.101) [36.224.138.227] F=<z2007tw@yahoo.com.tw> rejected RCPT <alan.a168@msa.hinet.net>: relay not permitted")
+	counter.ProcessMatch("some unrelated line", nil)
+	counter.ProcessMatch("2016-04-26 10:19:57 H=(85.214.241.101) [36.224.138.227] F=<z2007tw@yahoo.com.tw> rejected RCPT <alan.a168@msa.hinet.net>: relay not permitted", nil)
+	counter.ProcessMatch("2016-04-26 12:31:39 H=(186-90-8-31.genericrev.cantv.net) [186.90.8.31] F=<Hans.Krause9@cantv.net> rejected RCPT <ug2seeng-admin@example.com>: Unrouteable address", nil)
+	counter.ProcessMatch("2016-04-26 10:19:57 H=(85.214.241.101) [36.224.138.227] F=<z2007tw@yahoo.com.tw> rejected RCPT <alan.a168@msa.hinet.net>: relay not permitted", nil)
 
 	switch c := counter.Collector().(type) {
 	case prometheus.Counter:
@@ -71,6 +71,55 @@ func TestCounter(t *testing.T) {
 		c.Write(&m)
 		if *m.Counter.Value != float64(3) {
 			t.Errorf("Expected 3 matches, but got %v matches.", *m.Counter.Value)
+		}
+	default:
+		t.Errorf("Unexpected type of metric: %v", reflect.TypeOf(c))
+	}
+}
+
+func TestLogfileLabel(t *testing.T) {
+	regex := initCounterRegex(t)
+	counterCfg := newMetricConfig(t, &configuration.MetricConfig{
+		Name: "exim_rejected_rcpt_total",
+		Labels: map[string]string{
+			"error_message": "{{.message}}",
+			"logfile":       "{{.logfile}}",
+		},
+	})
+	logfile1 := map[string]string{
+		"logfile": "/var/log/exim-1.log",
+	}
+	logfile2 := map[string]string{
+		"logfile": "/var/log/exim-2.log",
+	}
+	counter := NewCounterMetric(counterCfg, regex, nil)
+	counter.ProcessMatch("2016-04-26 10:19:57 H=(85.214.241.101) [36.224.138.227] F=<z2007tw@yahoo.com.tw> rejected RCPT <alan.a168@msa.hinet.net>: relay not permitted", logfile1)
+	counter.ProcessMatch("2016-04-26 12:31:39 H=(186-90-8-31.genericrev.cantv.net) [186.90.8.31] F=<Hans.Krause9@cantv.net> rejected RCPT <ug2seeng-admin@example.com>: Unrouteable address", logfile1)
+	counter.ProcessMatch("2016-04-26 10:19:57 H=(85.214.241.101) [36.224.138.227] F=<z2007tw@yahoo.com.tw> rejected RCPT <alan.a168@msa.hinet.net>: relay not permitted", logfile2)
+
+	switch c := counter.Collector().(type) {
+	case *prometheus.CounterVec:
+		m := io_prometheus_client.Metric{}
+		c.With(map[string]string{
+			"error_message": "relay not permitted",
+			"logfile":       "/var/log/exim-1.log",
+		}).Write(&m)
+		if *m.Counter.Value != float64(1) {
+			t.Errorf("Expected 1 match, but got %v matches.", *m.Counter.Value)
+		}
+		c.With(map[string]string{
+			"error_message": "Unrouteable address",
+			"logfile":       "/var/log/exim-1.log",
+		}).Write(&m)
+		if *m.Counter.Value != float64(1) {
+			t.Errorf("Expected 1 match, but got %v matches.", *m.Counter.Value)
+		}
+		c.With(map[string]string{
+			"error_message": "relay not permitted",
+			"logfile":       "/var/log/exim-2.log",
+		}).Write(&m)
+		if *m.Counter.Value != float64(1) {
+			t.Errorf("Expected 1 match, but got %v matches.", *m.Counter.Value)
 		}
 	default:
 		t.Errorf("Unexpected type of metric: %v", reflect.TypeOf(c))
@@ -98,8 +147,8 @@ func TestGauge(t *testing.T) {
 	})
 	gauge := NewGaugeMetric(gaugeCfg, regex, nil)
 
-	gauge.ProcessMatch("Temperature in Berlin: 32")
-	gauge.ProcessMatch("Temperature in Moscow: -5")
+	gauge.ProcessMatch("Temperature in Berlin: 32", nil)
+	gauge.ProcessMatch("Temperature in Moscow: -5", nil)
 
 	switch c := gauge.Collector().(type) {
 	case prometheus.Gauge:
@@ -122,8 +171,8 @@ func TestGaugeCumulative(t *testing.T) {
 	})
 	gauge := NewGaugeMetric(gaugeCfg, regex, nil)
 
-	gauge.ProcessMatch("Temperature in Berlin: 32")
-	gauge.ProcessMatch("Temperature in Moscow: -5")
+	gauge.ProcessMatch("Temperature in Berlin: 32", nil)
+	gauge.ProcessMatch("Temperature in Moscow: -5", nil)
 
 	switch c := gauge.Collector().(type) {
 	case prometheus.Gauge:
@@ -148,9 +197,9 @@ func TestGaugeVec(t *testing.T) {
 	})
 	gauge := NewGaugeMetric(gaugeCfg, regex, nil)
 
-	gauge.ProcessMatch("Temperature in Berlin: 32")
-	gauge.ProcessMatch("Temperature in Moscow: -5")
-	gauge.ProcessMatch("Temperature in Berlin: 31")
+	gauge.ProcessMatch("Temperature in Berlin: 32", nil)
+	gauge.ProcessMatch("Temperature in Moscow: -5", nil)
+	gauge.ProcessMatch("Temperature in Berlin: 31", nil)
 
 	switch c := gauge.Collector().(type) {
 	case *prometheus.GaugeVec:

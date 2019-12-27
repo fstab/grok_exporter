@@ -22,6 +22,11 @@ import (
 	"testing"
 )
 
+// copy-and-paste from grok_exporter.go
+var additionalFieldDefinitions = map[string]string{
+	"logfile": "full path of the log file",
+}
+
 func TestGrok(t *testing.T) {
 	patterns := loadPatternDir(t)
 	t.Run("compile all patterns", func(t *testing.T) {
@@ -35,6 +40,9 @@ func TestGrok(t *testing.T) {
 	})
 	t.Run("verify capture group", func(t *testing.T) {
 		testVerifyCaptureGroup(t, patterns)
+	})
+	t.Run("verify field names", func(t *testing.T) {
+		testVerifyFieldNames(t, patterns)
 	})
 }
 
@@ -87,6 +95,25 @@ func testVerifyCaptureGroup(t *testing.T, patterns *Patterns) {
 	regex.Free()
 }
 
+func testVerifyFieldNames(t *testing.T, patterns *Patterns) {
+	regex, err := Compile("log file %{WORD:logfile} user %{USER:user}", patterns)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// .logfile not used in any label -> ok
+	expectOK(t, regex, `
+            name: text
+            labels:
+              user: '{{.user}}'`)
+	// .logfile used in label -> error, ambiguous field
+	expectError(t, regex, `
+            name: text
+            labels:
+              logfile: '{{base .logfile}}'
+              user: '{{.user}}'`)
+	regex.Free()
+}
+
 func expectOK(t *testing.T, regex *oniguruma.Regex, config string) {
 	expect(t, regex, config, false)
 }
@@ -105,7 +132,7 @@ func expect(t *testing.T, regex *oniguruma.Regex, config string, isErrorExpected
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = VerifyFieldNames(cfg, regex, nil)
+	err = VerifyFieldNames(cfg, regex, nil, additionalFieldDefinitions)
 	if isErrorExpected && err == nil {
 		t.Fatal("Expected error, but got no error.")
 	}

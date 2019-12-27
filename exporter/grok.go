@@ -36,21 +36,21 @@ func Compile(pattern string, patterns *Patterns) (*oniguruma.Regex, error) {
 	return result, nil
 }
 
-func VerifyFieldNames(m *v2.MetricConfig, regex, deleteRegex *oniguruma.Regex) error {
+func VerifyFieldNames(m *v2.MetricConfig, regex, deleteRegex *oniguruma.Regex, additionalFieldDefinitions map[string]string) error {
 	for _, template := range m.LabelTemplates {
-		err := verifyFieldName(m.Name, template, regex)
+		err := verifyFieldName(m.Name, template, regex, additionalFieldDefinitions)
 		if err != nil {
 			return err
 		}
 	}
 	for _, template := range m.DeleteLabelTemplates {
-		err := verifyFieldName(m.Name, template, deleteRegex)
+		err := verifyFieldName(m.Name, template, deleteRegex, additionalFieldDefinitions)
 		if err != nil {
 			return err
 		}
 	}
 	if m.ValueTemplate != nil {
-		err := verifyFieldName(m.Name, m.ValueTemplate, regex)
+		err := verifyFieldName(m.Name, m.ValueTemplate, regex, additionalFieldDefinitions)
 		if err != nil {
 			return err
 		}
@@ -58,11 +58,17 @@ func VerifyFieldNames(m *v2.MetricConfig, regex, deleteRegex *oniguruma.Regex) e
 	return nil
 }
 
-func verifyFieldName(metricName string, template template.Template, regex *oniguruma.Regex) error {
+func verifyFieldName(metricName string, template template.Template, regex *oniguruma.Regex, additionalFieldDefinitions map[string]string) error {
 	if template != nil {
 		for _, grokFieldName := range template.ReferencedGrokFields() {
-			if !regex.HasCaptureGroup(grokFieldName) {
-				return fmt.Errorf("%v: grok field %v not found in match pattern", metricName, grokFieldName)
+			if description, ok := additionalFieldDefinitions[grokFieldName]; ok {
+				if regex.HasCaptureGroup(grokFieldName) {
+					return fmt.Errorf("%v: field name %v is ambigous, as this field is defined in the grok pattern but is also a global field provided by grok_exporter for the %v", metricName, grokFieldName, description)
+				}
+			} else {
+				if !regex.HasCaptureGroup(grokFieldName) {
+					return fmt.Errorf("%v: grok field %v not found in match pattern", metricName, grokFieldName)
+				}
 			}
 		}
 	}

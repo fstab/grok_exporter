@@ -28,6 +28,7 @@ func init() {
 	funcs.add("subtract", newSubtractFunc())
 	funcs.add("multiply", newMultiplyFunc())
 	funcs.add("divide", newDivideFunc())
+	funcs.add("base", newBaseFunc())
 }
 
 type functions map[string]functionWithValidator
