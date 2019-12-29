@@ -145,6 +145,34 @@ server:
     port: 9144
 `
 
+const multiple_paths_config = `
+global:
+    config_version: 2
+input:
+    type: file
+    paths:
+    - /tmp/dir1/*.log
+    - /tmp/dir2/*.log
+    fail_on_missing_logfile: false
+    readall: true
+grok:
+    patterns_dir: b/c
+metrics:
+    - type: counter
+      name: test_count_total
+      help: Dummy help message.
+      paths:
+      - /tmp/dir1/*.log
+      - /tmp/dir2/*.log
+      match: Some text here, then a %{DATE}.
+      labels:
+          label_a: '{{.some_grok_field_a}}'
+          label_b: '{{.some_grok_field_b}}'
+server:
+    protocol: https
+    port: 1111
+`
+
 func TestCounterValidConfig(t *testing.T) {
 	loadOrFail(t, counter_config)
 }
@@ -252,6 +280,51 @@ func TestRetentionInvalidConfig(t *testing.T) {
 	_, err := Unmarshal([]byte(invalidCfg))
 	if err == nil || !strings.Contains(err.Error(), "abc") {
 		t.Fatal("Expected error saying that 'abc' is not a valid duration.")
+	}
+}
+
+func TestPathsValidConfig(t *testing.T) {
+	loadOrFail(t, multiple_paths_config)
+}
+
+func TestDuplicateInputPaths(t *testing.T) {
+	var s = `type: file
+    path: /some/path/file.log`
+	invalidCfg := strings.Replace(multiple_paths_config, "type: file", s, 1)
+	_, err := Unmarshal([]byte(invalidCfg))
+	if err == nil {
+		t.Fatal("Expected error, but unmarshalling was successful.")
+	}
+	// Make sure it's the right error and not an error accidentally caused by incorrect indentation of the injected 'path' field.
+	if !strings.Contains(err.Error(), "use either 'path' or 'paths' but not both") {
+		t.Fatalf("Expected error message about path and paths being mutually exclusive, but got %v", err)
+	}
+}
+
+func TestDuplicateMetricPaths(t *testing.T) {
+	var s = `help: Dummy help message.
+      path: /some/path/file.log`
+	invalidCfg := strings.Replace(multiple_paths_config, "help: Dummy help message.", s, 1)
+	_, err := Unmarshal([]byte(invalidCfg))
+	if err == nil {
+		t.Fatal("Expected error, but unmarshalling was successful.")
+	}
+	// Make sure it's the right error and not an error accidentally caused by incorrect indentation of the injected 'path' field.
+	if !strings.Contains(err.Error(), "use either 'path' or 'paths' but not both") {
+		t.Fatalf("Expected error message about path and paths being mutually exclusive, but got %v", err)
+	}
+}
+
+func TestGlobsAreGenerated(t *testing.T) {
+	cfg, err := Unmarshal([]byte(multiple_paths_config))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.Input.Globs) != 2 {
+		t.Fatalf("expected 2 Globs in input config, but found %v", len(cfg.Input.Globs))
+	}
+	if len(cfg.Metrics[0].Globs) != 2 {
+		t.Fatalf("expected 2 Globs in metric config, but found %v", len(cfg.Metrics[0].Globs))
 	}
 }
 

@@ -18,6 +18,7 @@ import (
 	"fmt"
 	configuration "github.com/fstab/grok_exporter/config/v2"
 	"github.com/fstab/grok_exporter/oniguruma"
+	"github.com/fstab/grok_exporter/tailer/glob"
 	"github.com/fstab/grok_exporter/template"
 	"github.com/prometheus/client_golang/prometheus"
 	"strconv"
@@ -33,6 +34,7 @@ type Metric interface {
 	Name() string
 	Collector() prometheus.Collector
 
+	PathMatches(logfilePath string) bool
 	// Returns the match if the line matched, and nil if the line didn't match.
 	ProcessMatch(line string, additionalFields map[string]string) (*Match, error)
 	// Returns the match if the delete pattern matched, nil otherwise.
@@ -44,6 +46,7 @@ type Metric interface {
 // Common values for incMetric and observeMetric
 type metric struct {
 	name        string
+	globs       []glob.Glob
 	regex       *oniguruma.Regex
 	deleteRegex *oniguruma.Regex
 	retention   time.Duration
@@ -114,6 +117,18 @@ type deleterMetric interface {
 
 func (m *metric) Name() string {
 	return m.name
+}
+
+func (m *metric) PathMatches(logfilePath string) bool {
+	if len(m.globs) == 0 {
+		return true
+	}
+	for _, g := range m.globs {
+		if g.Match(logfilePath) {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *counterMetric) Collector() prometheus.Collector {
@@ -375,6 +390,7 @@ func (m *summaryVecMetric) ProcessRetention() error {
 func newMetric(cfg *configuration.MetricConfig, regex, deleteRegex *oniguruma.Regex) metric {
 	return metric{
 		name:        cfg.Name,
+		globs:       cfg.Globs,
 		regex:       regex,
 		deleteRegex: deleteRegex,
 		retention:   cfg.Retention,

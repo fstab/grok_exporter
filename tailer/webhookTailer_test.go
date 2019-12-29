@@ -16,13 +16,13 @@ package tailer
 
 import (
 	"fmt"
-	"github.com/fstab/grok_exporter/config/v2"
+	configuration "github.com/fstab/grok_exporter/config/v2"
 	"strings"
 	"testing"
 )
 
 func TestWebhookTextSingle(t *testing.T) {
-	c := &v2.InputConfig{
+	c := &configuration.InputConfig{
 		Type:                     "webhook",
 		WebhookPath:              "/webhook",
 		WebhookFormat:            "text_single",
@@ -42,7 +42,7 @@ func TestWebhookTextSingle(t *testing.T) {
 }
 
 func TestWebhookTextBulk(t *testing.T) {
-	c := &v2.InputConfig{
+	c := &configuration.InputConfig{
 		Type:                     "webhook",
 		WebhookPath:              "/webhook",
 		WebhookFormat:            "text_bulk",
@@ -70,7 +70,7 @@ func TestWebhookTextBulk(t *testing.T) {
 
 func TestWebhookTextBulkNegative(t *testing.T) {
 	// Expected to fail because of WebhookTextbulkSeparator
-	c := &v2.InputConfig{
+	c := &configuration.InputConfig{
 		Type:                     "webhook",
 		WebhookPath:              "/webhook",
 		WebhookFormat:            "text_bulk",
@@ -95,7 +95,7 @@ func TestWebhookJsonSingle(t *testing.T) {
 	// This test follows the format of Logstash HTTP Non-Bulk Output
 	// https://www.elastic.co/guide/en/logstash/current/plugins-outputs-http.html
 	// format="json"
-	c := &v2.InputConfig{
+	c := &configuration.InputConfig{
 		Type:                     "webhook",
 		WebhookPath:              "/webhook",
 		WebhookFormat:            "json_single",
@@ -117,7 +117,7 @@ func TestWebhookJsonSingle(t *testing.T) {
 
 func TestWebhookJsonSingleNegativeWebhookJsonSelector(t *testing.T) {
 	// Expected to fail because of Mismatching WebhookJsonSelector
-	c := &v2.InputConfig{
+	c := &configuration.InputConfig{
 		Type:                     "webhook",
 		WebhookPath:              "/webhook",
 		WebhookFormat:            "json_single",
@@ -136,7 +136,7 @@ func TestWebhookJsonSingleNegativeWebhookJsonSelector(t *testing.T) {
 
 func TestWebhookJsonSingleNegativeMalformedJson(t *testing.T) {
 	// Expected to fail because of Mismatching WebhookJsonSelector
-	c := &v2.InputConfig{
+	c := &configuration.InputConfig{
 		Type:                     "webhook",
 		WebhookPath:              "/webhook",
 		WebhookFormat:            "json_single",
@@ -158,7 +158,7 @@ func TestWebhookJsonBulk(t *testing.T) {
 	// https://www.elastic.co/guide/en/logstash/current/plugins-outputs-http.html
 	// format="json_batch"
 
-	c := &v2.InputConfig{
+	c := &configuration.InputConfig{
 		Type:                     "webhook",
 		WebhookPath:              "/webhook",
 		WebhookFormat:            "json_bulk",
@@ -194,7 +194,7 @@ func TestWebhookJsonBulkNegativeMalformedJson(t *testing.T) {
 	// https://www.elastic.co/guide/en/logstash/current/plugins-outputs-http.html
 	// format="json_batch"
 
-	c := &v2.InputConfig{
+	c := &configuration.InputConfig{
 		Type:                     "webhook",
 		WebhookPath:              "/webhook",
 		WebhookFormat:            "json_bulk",

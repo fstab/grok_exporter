@@ -16,7 +16,7 @@ package exporter
 
 import (
 	"fmt"
-	"github.com/fstab/grok_exporter/config/v2"
+	configuration "github.com/fstab/grok_exporter/config/v2"
 	"github.com/fstab/grok_exporter/oniguruma"
 	"github.com/fstab/grok_exporter/template"
 	"regexp"
@@ -36,7 +36,7 @@ func Compile(pattern string, patterns *Patterns) (*oniguruma.Regex, error) {
 	return result, nil
 }
 
-func VerifyFieldNames(m *v2.MetricConfig, regex, deleteRegex *oniguruma.Regex, additionalFieldDefinitions map[string]string) error {
+func VerifyFieldNames(m *configuration.MetricConfig, regex, deleteRegex *oniguruma.Regex, additionalFieldDefinitions map[string]string) error {
 	for _, template := range m.LabelTemplates {
 		err := verifyFieldName(m.Name, template, regex, additionalFieldDefinitions)
 		if err != nil {

@@ -23,7 +23,6 @@ import (
 	"github.com/fstab/grok_exporter/oniguruma"
 	"github.com/fstab/grok_exporter/tailer"
 	"github.com/fstab/grok_exporter/tailer/fswatcher"
-	"github.com/fstab/grok_exporter/tailer/glob"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"os"
@@ -100,7 +99,7 @@ func main() {
 		case err := <-serverErrors:
 			exitOnError(fmt.Errorf("server error: %v", err.Error()))
 		case err := <-tail.Errors():
-			if os.IsNotExist(err.Cause()) {
+			if err.Type() == fswatcher.FileNotFound || os.IsNotExist(err.Cause()) {
 				exitOnError(fmt.Errorf("error reading log lines: %v: use 'fail_on_missing_logfile: false' in the input configuration if you want grok_exporter to start even though the logfile is missing", err))
 			} else {
 				exitOnError(fmt.Errorf("error reading log lines: %v", err.Error()))
@@ -109,6 +108,9 @@ func main() {
 			matched := false
 			for _, metric := range metrics {
 				start := time.Now()
+				if !metric.PathMatches(line.File) {
+					continue
+				}
 				match, err := metric.ProcessMatch(line.Line, makeAdditionalFields(line))
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "WARNING: skipping log line: %v\n", err.Error())
@@ -306,19 +308,24 @@ func startServer(cfg v2.ServerConfig, httpHandlers []exporter.HttpServerPathHand
 }
 
 func startTailer(cfg *v2.Config) (fswatcher.FileTailer, error) {
+	var (
+		tail fswatcher.FileTailer
+		err  error
+	)
 	logger := logrus.New()
 	logger.Level = logrus.WarnLevel
-	var tail fswatcher.FileTailer
-	g, err := glob.FromPath(cfg.Input.Path)
-	if err != nil {
-		return nil, err
-	}
 	switch {
 	case cfg.Input.Type == "file":
 		if cfg.Input.PollInterval == 0 {
-			tail, err = fswatcher.RunFileTailer([]glob.Glob{g}, cfg.Input.Readall, cfg.Input.FailOnMissingLogfile, logger)
+			tail, err = fswatcher.RunFileTailer(cfg.Input.Globs, cfg.Input.Readall, cfg.Input.FailOnMissingLogfile, logger)
+			if err != nil {
+				return nil, err
+			}
 		} else {
-			tail, err = fswatcher.RunPollingFileTailer([]glob.Glob{g}, cfg.Input.Readall, cfg.Input.FailOnMissingLogfile, cfg.Input.PollInterval, logger)
+			tail, err = fswatcher.RunPollingFileTailer(cfg.Input.Globs, cfg.Input.Readall, cfg.Input.FailOnMissingLogfile, cfg.Input.PollInterval, logger)
+			if err != nil {
+				return nil, err
+			}
 		}
 	case cfg.Input.Type == "stdin":
 		tail = tailer.RunStdinTailer()

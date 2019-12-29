@@ -17,7 +17,7 @@ package tailer
 import (
 	"errors"
 	json "github.com/bitly/go-simplejson"
-	"github.com/fstab/grok_exporter/config/v2"
+	configuration "github.com/fstab/grok_exporter/config/v2"
 	"github.com/fstab/grok_exporter/tailer/fswatcher"
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
@@ -28,7 +28,7 @@ import (
 type WebhookTailer struct {
 	lines  chan *fswatcher.Line
 	errors chan fswatcher.Error
-	config *v2.InputConfig
+	config *configuration.InputConfig
 }
 
 var webhookTailerSingleton *WebhookTailer
@@ -45,7 +45,7 @@ func (t *WebhookTailer) Close() {
 	// NO-OP, since the webserver thread is handled by the metrics server
 }
 
-func InitWebhookTailer(inputConfig *v2.InputConfig) fswatcher.FileTailer {
+func InitWebhookTailer(inputConfig *configuration.InputConfig) fswatcher.FileTailer {
 	if webhookTailerSingleton != nil {
 		return webhookTailerSingleton
 	}
@@ -98,7 +98,7 @@ func (t WebhookTailer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func WebhookProcessBody(c *v2.InputConfig, b []byte) []string {
+func WebhookProcessBody(c *configuration.InputConfig, b []byte) []string {
 
 	strs := []string{}
 

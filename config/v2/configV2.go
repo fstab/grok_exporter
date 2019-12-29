@@ -16,6 +16,7 @@ package v2
 
 import (
 	"fmt"
+	"github.com/fstab/grok_exporter/tailer/glob"
 	"github.com/fstab/grok_exporter/template"
 	"gopkg.in/yaml.v2"
 	"strconv"
@@ -57,8 +58,8 @@ type GlobalConfig struct {
 }
 
 type InputConfig struct {
-	Type                       string        `yaml:",omitempty"`
-	Path                       string        `yaml:",omitempty"`
+	Type                       string `yaml:",omitempty"`
+	PathsAndGlobs              `yaml:",inline"`
 	FailOnMissingLogfileString string        `yaml:"fail_on_missing_logfile,omitempty"` // cannot use bool directly, because yaml.v2 doesn't support true as default value.
 	FailOnMissingLogfile       bool          `yaml:"-"`
 	Readall                    bool          `yaml:",omitempty"`
@@ -76,10 +77,17 @@ type GrokConfig struct {
 	AdditionalPatterns []string `yaml:"additional_patterns,omitempty"`
 }
 
+type PathsAndGlobs struct {
+	Path  string      `yaml:",omitempty"`
+	Paths []string    `yaml:",omitempty"`
+	Globs []glob.Glob `yaml:"-"`
+}
+
 type MetricConfig struct {
-	Type                 string              `yaml:",omitempty"`
-	Name                 string              `yaml:",omitempty"`
-	Help                 string              `yaml:",omitempty"`
+	Type                 string `yaml:",omitempty"`
+	Name                 string `yaml:",omitempty"`
+	Help                 string `yaml:",omitempty"`
+	PathsAndGlobs        `yaml:",inline"`
 	Match                string              `yaml:",omitempty"`
 	Retention            time.Duration       `yaml:",omitempty"` // implicitly parsed with time.ParseDuration()
 	Value                string              `yaml:",omitempty"`
@@ -184,12 +192,42 @@ func (cfg *Config) validate() error {
 	return nil
 }
 
+func validateGlobs(p *PathsAndGlobs, optional bool, prefix string) error {
+	if !optional && len(p.Path) == 0 && len(p.Paths) == 0 {
+		return fmt.Errorf("%v: one of 'path' or 'paths' is required", prefix)
+	}
+	if len(p.Path) > 0 && len(p.Paths) > 0 {
+		return fmt.Errorf("%v: use either 'path' or 'paths' but not both", prefix)
+	}
+	if len(p.Path) > 0 {
+		parsedGlob, err := glob.Parse(p.Path)
+		if err != nil {
+			return fmt.Errorf("%v: %v", prefix, err)
+		}
+		p.Globs = []glob.Glob{parsedGlob}
+	}
+	if len(p.Paths) > 0 {
+		p.Globs = make([]glob.Glob, 0, len(p.Paths))
+		for _, path := range p.Paths {
+			parsedGlob, err := glob.Parse(path)
+			if err != nil {
+				return fmt.Errorf("%v: %v", prefix, err)
+			}
+			p.Globs = append(p.Globs, parsedGlob)
+		}
+	}
+	return nil
+}
+
 func (c *InputConfig) validate() error {
 	var err error
 	switch {
 	case c.Type == inputTypeStdin:
-		if c.Path != "" {
+		if len(c.Path) > 0 {
 			return fmt.Errorf("invalid input configuration: cannot use 'input.path' when 'input.type' is stdin")
+		}
+		if len(c.Paths) > 0 {
+			return fmt.Errorf("invalid input configuration: cannot use 'input.paths' when 'input.type' is stdin")
 		}
 		if c.Readall {
 			return fmt.Errorf("invalid input configuration: cannot use 'input.readall' when 'input.type' is stdin")
@@ -198,8 +236,9 @@ func (c *InputConfig) validate() error {
 			return fmt.Errorf("invalid input configuration: cannot use 'input.poll_interval_seconds' when 'input.type' is stdin")
 		}
 	case c.Type == inputTypeFile:
-		if c.Path == "" {
-			return fmt.Errorf("invalid input configuration: 'input.path' is required for input type \"file\"")
+		err = validateGlobs(&c.PathsAndGlobs, false, "invalid input configuration")
+		if err != nil {
+			return err
 		}
 		if len(c.PollIntervalSeconds) > 0 { // TODO: Use duration directly, as with other durations in the config file
 			nSeconds, err := strconv.Atoi(c.PollIntervalSeconds)
@@ -215,6 +254,18 @@ func (c *InputConfig) validate() error {
 			}
 		}
 	case c.Type == inputTypeWebhook:
+		if c.Path != "" {
+			return fmt.Errorf("invalid input configuration: cannot use 'input.path' when 'input.type' is %v", inputTypeWebhook)
+		}
+		if len(c.Paths) > 0 {
+			return fmt.Errorf("invalid input configuration: cannot use 'input.paths' when 'input.type' is %v", inputTypeWebhook)
+		}
+		if c.Readall {
+			return fmt.Errorf("invalid input configuration: cannot use 'input.readall' when 'input.type' is %v", inputTypeWebhook)
+		}
+		if c.PollIntervalSeconds != "" {
+			return fmt.Errorf("invalid input configuration: cannot use 'input.poll_interval_seconds' when 'input.type' is %v", inputTypeWebhook)
+		}
 		if c.WebhookPath == "" {
 			return fmt.Errorf("invalid input configuration: 'input.webhook_path' is required for input type \"webhook\"")
 		} else if c.WebhookPath[0] != '/' {
@@ -249,7 +300,8 @@ func (c *MetricsConfig) validate() error {
 		return fmt.Errorf("Invalid metrics configuration: 'metrics' must not be empty.")
 	}
 	metricNames := make(map[string]bool)
-	for _, metric := range *c {
+	for i, _ := range *c {
+		metric := &(*c)[i] // validate modifies the metric, therefore we must use it by reference here.
 		err := metric.validate()
 		if err != nil {
 			return err
@@ -259,6 +311,14 @@ func (c *MetricsConfig) validate() error {
 			return fmt.Errorf("Invalid metric configuration: metric '%v' defined twice.", metric.Name)
 		}
 		metricNames[metric.Name] = true
+
+		if len(metric.Path) > 0 && len(metric.Paths) > 0 {
+			return fmt.Errorf("invalid metric configuration: metric %v defines both path and paths, you should use either one or the other", metric.Name)
+		}
+		if len(metric.Path) > 0 {
+			metric.Paths = []string{metric.Path}
+			metric.Path = ""
+		}
 	}
 	return nil
 }
@@ -273,6 +333,10 @@ func (c *MetricConfig) validate() error {
 		return fmt.Errorf("Invalid metric configuration: 'metrics.help' must not be empty.")
 	case c.Match == "":
 		return fmt.Errorf("Invalid metric configuration: 'metrics.match' must not be empty.")
+	}
+	err := validateGlobs(&c.PathsAndGlobs, true, fmt.Sprintf("invalid metric configuration: %v", c.Name))
+	if err != nil {
+		return err
 	}
 	var hasValue, cumulativeAllowed, bucketsAllowed, quantilesAllowed bool
 	switch c.Type {
@@ -410,6 +474,16 @@ func (cfg *Config) String() string {
 	}
 	if stripped.Server.Path == "/metrics" {
 		stripped.Server.Path = ""
+	}
+	if len(stripped.Input.Paths) == 1 {
+		stripped.Input.Path = stripped.Input.Paths[0]
+		stripped.Input.Paths = nil
+	}
+	for i := range stripped.Metrics {
+		if len(stripped.Metrics[i].Paths) == 1 {
+			stripped.Metrics[i].Path = stripped.Metrics[i].Paths[i]
+			stripped.Metrics[i].Paths = nil
+		}
 	}
 	return stripped.marshalToString()
 }
