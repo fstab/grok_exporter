@@ -18,6 +18,7 @@ import (
 	"github.com/fstab/grok_exporter/oniguruma"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 )
 
@@ -30,8 +31,14 @@ func loadPatternDir(t *testing.T) *Patterns {
 	if len(*p) != 0 {
 		t.Errorf("Expected initial pattern list to be empty, but got len = %v\n", len(*p))
 	}
-	patternDir := filepath.Join(os.Getenv("GOPATH"), "src", "github.com", "fstab", "grok_exporter", "logstash-patterns-core", "patterns")
-	err := p.AddDir(patternDir)
+	// patternDir := filepath.Join(os.Getenv("GOPATH"), "src", "github.com", "fstab", "grok_exporter", "logstash-patterns-core", "patterns")
+	pwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get the current working directory: %v", err)
+	}
+	pwd = regexp.MustCompile("grok_exporter.*").ReplaceAllString(pwd, "grok_exporter") // if in a subdirectory, go up to the project root
+	patternDir := filepath.Join(pwd, "logstash-patterns-core", "patterns")
+	err = p.AddDir(patternDir)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err.Error())
 	}

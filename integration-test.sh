@@ -34,7 +34,7 @@ input:
     path: $(cygpath -w $log_file)
     readall: true
 grok:
-    patterns_dir: $(cygpath -w $GOPATH/src/github.com/fstab/grok_exporter/logstash-patterns-core/patterns)
+    patterns_dir: $(cygpath -w $(pwd)/logstash-patterns-core/patterns)
     additional_patterns:
     - 'SERVICE [a-zA-Z_]+'
 metrics:
