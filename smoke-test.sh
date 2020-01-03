@@ -13,13 +13,13 @@ if [[ $(uname -s | tr '[a-z]' '[A-Z]') != *"CYGWIN"* ]] ; then
     }
 fi
 
-config_file=$(mktemp /tmp/grok_exporter-test-config.XXXXXX)
-log_file=$(mktemp /tmp/grok_exporter-test-log.XXXXXX)
+test_dir=$(mktemp -d /tmp/grok_exporter-smoketest-XXXXXX)
+config_file=$(mktemp $test_dir/grok_exporter-test-config.XXXXXX)
+log_file=$(mktemp $test_dir/grok_exporter-test-log.XXXXXX)
 
 function cleanup_temp_files {
     echo "cleaning up..."
-    rm -f $config_file
-    rm -f $log_file
+    rm -rf $test_dir
 }
 
 # clean up on exit
@@ -31,7 +31,7 @@ global:
     retention_check_interval: 100ms
 input:
     type: file
-    path: $(cygpath -w $log_file)
+    path: $(cygpath -w $test_dir/grok_exporter-test-log).*
     readall: true
 grok:
     patterns_dir: $(cygpath -w $(pwd)/logstash-patterns-core/patterns)
@@ -127,6 +127,10 @@ disown
 trap "kill $pid && cleanup_temp_files" EXIT
 sleep 0.25
 
+# -----------------------
+echo "Test 1: metric types..."
+# -----------------------
+
 echo '30.07.2016 14:37:03 service_a alice 1.5' >> $log_file
 echo '30.07.2016 14:37:03 service_b alice 1.5' >> $log_file
 echo 'some unrelated line' >> $log_file
@@ -135,8 +139,8 @@ echo '30.07.2016 14:37:33 service_b alice 2.5' >> $log_file
 echo '30.07.2016 14:43:02 service_a bob 2.5' >> $log_file
 
 function checkMetric() {
-    val=$(curl -s http://localhost:9144/metrics | grep -v '#' | grep "$1 ") || ( echo "FAILED: Metric '$1' not found." >&2 && exit -1 )
-    echo $val | grep "$1 $2" > /dev/null || ( echo "FAILED: Expected '$1 $2', but got '$val'." >&2 && exit -1 )
+    val=$(curl -s http://localhost:9144/metrics | grep -v '#' | grep "$1 ") || ( echo "FAILED: Metric '$1' not found." >&2 && exit 255 )
+    echo $val | grep "$1 $2" > /dev/null || ( echo "FAILED: Expected '$1 $2', but got '$val'." >&2 && exit 255 )
 }
 
 function assertMetricDoesNotExist() {
@@ -145,12 +149,11 @@ function assertMetricDoesNotExist() {
     if [ $? -eq 0 ] # if metric was found we should fail (we expect the metric to not exist)
     then
         echo "FAILED: Metric '$1' should not exist." >&2
-        exit -1
+        exit 255
     fi
     set -e
 }
 
-echo "Checking metrics..."
 
 # curl -s http://localhost:9144/metrics
 # exit
@@ -222,19 +225,26 @@ checkMetric 'grok_exporter_line_processing_errors_total{metric="grok_test_summar
 checkMetric 'grok_exporter_line_processing_errors_total{metric="grok_test_summary_nolabels"}' 0
 
 # -----------------------
-# Test logrotate
+echo "Test 2: multiple logfiles..."
 # -----------------------
-# simulate logrotate by deleting and re-creating $log_file
-rm $log_file
-echo '30.07.2016 14:45:59 service_a alice 2.5' >> $log_file
 
+log_file2=$(mktemp $test_dir/grok_exporter-test-log.XXXXXX)
+echo '30.07.2016 14:46:00 service_a alice 2.5' >> $log_file2
 sleep 0.1
-echo "Checking metrics..."
-
 checkMetric 'grok_test_counter_nolabels' 6
 
 # -----------------------
-# Test deletion of labels
+echo "Test 3: logrotate..."
+# -----------------------
+
+# simulate logrotate by deleting and re-creating $log_file
+rm $log_file
+echo '30.07.2016 14:46:59 service_a alice 2.5' >> $log_file
+sleep 0.1
+checkMetric 'grok_test_counter_nolabels' 7
+
+# -----------------------
+echo "Test 4: delete_match..."
 # -----------------------
 
 # Before the shutdown message, the gauge metrics for service_b should be available.
@@ -252,23 +262,25 @@ curl -s http://localhost:9144/metrics | grep 'grok_test_gauge_delete' | grep 'se
 if [ $? -eq 0 ]
 then
     echo "grok_test_gauge_delete is still there, but should have been deleted." >&2
-    exit -1
+    exit 255
 fi
 # For grok_test_gauge_delete_no_labels we expect all entries to be gone
 curl -s http://localhost:9144/metrics | grep 'grok_test_gauge_delete_no_labels{'
 if [ $? -eq 0 ]
 then
     echo "grok_test_gauge_delete_no_labels is still there, but should have been deleted." >&2
-    exit -1
+    exit 255
 fi
 set -e
 
 # -----------------------
-# Test metric retention
+echo "Test 5: retention..."
 # -----------------------
 
 echo '30.07.2016 14:37:33 service_a alice retention_test 2.5' >> $log_file
 echo '30.07.2016 14:37:33 service_a bob retention_test 2.5' >> $log_file
+
+sleep 0.1
 
 checkMetric 'grok_test_counter_retention{user="alice"}' 1
 checkMetric 'grok_test_counter_retention{user="bob"}' 1
