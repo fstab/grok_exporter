@@ -49,7 +49,7 @@ The following table shows which `grok_exporter` version uses which `config_versi
 | grok_exporter              | config_version           |
 | -------------------------- | ------------------------ |
 | ≤ 0.1.4                    | 1 _(see [CONFIG_v1.md])_ |
-| 0.2.X                      | 2 _(current version)_    |
+| 0.2.X, 1.0.X               | 2 _(current version)_    |
 
 The `retention_check_interval` is the interval at which `grok_exporter` checks for expired metrics. By default, metrics don't expire so this is relevant only if `retention` is configured explicitly with a metric. The `retention_check_interval` is optional, the value defaults to `53s`. The default value is reasonable for production and should not be changed. This property is intended to be used in tests, where you might not want to wait 53 seconds until an expired metric is cleaned up. The format is described in [How to Configure Durations] below.
 
@@ -62,14 +62,31 @@ We currently support three input types: `file`, `stdin`, and `webhook`. The foll
 
 The configuration for the `file` input type is as follows:
 
+Example 1:
+
 ```yaml
 input:
     type: file
-    path: /var/log/sample.log
+    path: /var/logdir1/*.log
     readall: false
     fail_on_missing_logfile: true
     poll_interval_seconds: 5 # should not be needed in most cases, see below
 ```
+
+Example 2:
+
+```yaml
+input:
+    type: file
+    paths:
+    - /var/logdir1/*.log
+    - /var/logdir2/*.log
+    readall: false
+    fail_on_missing_logfile: true
+    poll_interval_seconds: 5 # should not be needed in most cases, see below
+```
+
+The `path` is the path to the log file. `path` is uses if you want to monitor a single path. If you want to monitor a list of paths, use `paths` instead, as in example 2 above. [Globs](https://en.wikipedia.org/wiki/Glob_(programming)) are supported on the file level, but not on the directory level. If you want to monitor multiple logfiles, see also [restricting a metric to specific log files](#restricting-a-metric-to-specific-log-files) and [pre-defined label variables](#pre-defined-label-variables) below.
 
 The `readall` flag defines if `grok_exporter` starts reading from the beginning or the end of the file.
 True means we read the whole file, false means we start at the end of the file and read only new lines.
@@ -205,11 +222,29 @@ To exemplify the different metrics configurations, we use the following example 
 30.07.2016 14:45:59 alice 2.5
 ```
 
-Each line consists of a date, time, user, and a number. Using [Grok's default patterns], we can create a simple Grok expression matching these lines:
+The following is a simple counter counting the number of log lines containing `alice`.
+
+```yaml
+metrics:
+    - type: counter
+      name: alice_occurrences_total
+      help: number of log lines containing alice
+      match: 'alice'
+      labels:
+          logfile: '{{base .logfile}}'
+```
+
+### Match
+
+The `match` is a regular expression. In the simple example above, `alice` is a regular expression matching the string _alice_.
+
+Regular expressions quickly become hard to read. [Grok patterns](https://www.elastic.co/guide/en/logstash/current/plugins-filters-grok.html#_grok_basics) are pre-defined regular expression snippets that you can use in your `match` patterns. For example, a complete `match` pattern for the log lines above looks like this:
 
 ```grok
 %{DATE} %{TIME} %{USER} %{NUMBER}
 ```
+
+The actual regular expression snippets referenced by `DATE`, `TIME`, `USER`, and `NUMBER` are defined in [logstash-patterns-core/patterns/grok-patterns](https://github.com/logstash-plugins/logstash-patterns-core/blob/6d25c13c15f98843513f7cdc07f0fb41fbd404ef/patterns/grok-patterns).
 
 ### Labels
 
@@ -232,9 +267,22 @@ The `match` stores whatever matches the `%{USER}` pattern under the Grok field n
 
 This simple example shows a one-to-one mapping of a Grok field to a Prometheus label. However, the label definition is pretty flexible: You can combine multiple Grok fields in one label, and you can define constant labels that don't use Grok fields at all.
 
+### Pre-Defined Label Variables
+
+`logfile` is currently the only pre-defined label variable that is independent of the Grok patterns. The `logfile` variable is always present for input type `file`, and contains the full path to the log file the line was read from. You can use it like this:
+
+```yaml
+match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
+labels:
+    user: '{{.user}}'
+    logfile: '{{.logfile}}'
+```
+
+If you don't want the full path but only the file name, you can use the `base` template function, see next section.
+
 ### Label Template Functions
 
-Label values are defined as [Go templates]. As of v0.2.6, `grok_exporter` supports the following template functions: `gsub`, `add`, `subtract`, `multiply`, `divide`.
+Label values are defined as [Go templates]. `grok_exporter` supports the following template functions: `gsub`, `base`, `add`, `subtract`, `multiply`, `divide`.
 
 For example, let's assume we have the match from above:
 
@@ -248,19 +296,45 @@ We apply this pattern to the first log line of our example:
 30.07.2016 14:37:03 alice 1.5
 ```
 
-Now the Grok field `user` has the value `alice`, and the Grok field `val` has the value `1.5`. The following example show how to use these fields as label values using the [Go template] language:
+This results in three variables that are available for defining labels:
+
+* `user` has the value `alice`
+* `val` has the value `1.5`
+* `logfile` has the value `/tmp/example/example.log`, if that's where the logfile was located.
+
+The following examples show how to use these fields as label values using the [Go template] language:
 
 * `'{{.user}}'` -> `alice`
 * `'user {{.user}} with number {{.val}}.'` -> `user alice with number 1.5.`
 * `'{{gsub .user "ali" "beatri"}}'` -> `beatrice`
 * `'{{multiply .val 1000}}'` -> `1500`
 * `'{{if eq .user "alice"}}1{{else}}0{{end}}'` -> `1`
+* `'{{base .logfile}}'` -> `example.log`
+* `'{{gsub .logfile "/tmp/" ""}}` -> `example/example.log`
 
 The syntax of the `gsub` function is `{{gsub input pattern replacement}}`. The pattern and replacement are is similar to [Elastic's mutate filter's gsub] (derived from Ruby's [String.gsub()]), except that you need to double-escape backslashes (\\\\ instead of \\). A more complex example (including capture groups) can be found in [this comment](https://github.com/fstab/grok_exporter/issues/36#issuecomment-397094266).
 
 The arithmetic functions `add`, `subtract`, `multiply`, and `divide` are straightforward. These functions may not be useful for label values, but they can be useful as the `value:` in [gauge](#gauge-metric-type), [histogram](#histogram-metric-type), or [summary](#summary-metric-type) metrics. For example, they could be used to convert milliseconds to seconds.
 
 Conditionals like `'{{if eq .user "alice"}}1{{else}}0{{end}}` are described in the [Go template] documentation. For example, they can be used to define boolean metrics, i.e. [gauge](#gauge-metric-type) metrics with a value of `1` or `0`. Another example can be found in [this comment](https://github.com/fstab/grok_exporter/issues/36#issuecomment-431605857).
+
+The `base` function is like Golang's [path.Base()](https://golang.org/pkg/path/#Base). If you want something other than either the full path or the file name, use `gsub`.
+
+### Restricting a Metric to Specific Log Files
+
+In the `input` section above, we showed that you can monitor multiple logfiles. By default, all metrics are applied to all log files. If you want to restrict a metric to specific log files, you can specify either a `path` or a list of `paths`:
+
+```yaml
+- type: counter
+  name: alice_occurrences_total
+  help: number of log lines containing alice
+  match: 'alice'
+  paths: /tmp/example/*.log
+  labels:
+      logfile: '{{base .logfile}}'
+```
+
+In the example, the `alice_occurrences_total` would only be applied to files matching `/tmp/example/*.log` and not to other files. If you have only one single path, you can use `path` as an alternative to `paths`. Note that `path` and `paths` are [Glob](https://en.wikipedia.org/wiki/Glob_(programming)) patterns, which is not the same as Grok patterns or regular expressions.
 
 ### Expiring Old Labels
 
