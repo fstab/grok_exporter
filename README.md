@@ -56,30 +56,8 @@ server:
 
 [CONFIG.md] describes the `grok_exporter` configuration file and shows how to define Grok patterns, Prometheus metrics, and labels.  It also details how to configure file, stdin, and webhook inputs.
 
-Status
-------
-
-Operating system support:
-
-* Linux 64 Bit: [Supported](https://travis-ci.org/fstab/grok_exporter)
-* Windows 64 Bit: [Supported](https://ci.appveyor.com/project/fstab/grok-exporter)
-* mac OS 64 Bit: [Supported](https://travis-ci.org/fstab/grok_exporter)
-
-Grok pattern support:
-
-* We are able to compile all of Grok's default patterns on [github.com/logstash-plugins/logstash-patterns-core](https://github.com/logstash-plugins/logstash-patterns-core/tree/818b7aa60d3c2fea008ea673dbbc49179c6df2c8/patterns).
-
-Prometheus support:
-
-* [Counter] metrics: [Supported](CONFIG.md#metrics-section)
-* [Gauge] metrics: [Supported](CONFIG.md#metrics-section)
-* [Histogram] metrics: [Supported](CONFIG.md#metrics-section)
-* [Summary] metrics: [Supported](CONFIG.md#metrics-section)
-
 How to build from source
 -----------------------
-
-**Note: `grok_exporter` is currently refactored to support multiple logfiles, see [#5](https://github.com/fstab/grok_exporter/issues/5). During transition, the `master` branch is unstable. For a stable version, please get the latest release tag.**
 
 In order to compile `grok_exporter` from source, you need
 
@@ -102,14 +80,15 @@ sudo apt-get install libonig-dev
 **Installing the Oniguruma library from source**
 
 ```bash
-wget https://github.com/kkos/oniguruma/releases/download/v6.7.0/onig-6.7.0.tar.gz
-tar xfz onig-6.7.0.tar.gz
-cd onig-6.7.0.tar.gz && ./configure && make && make install
+curl -sLO https://github.com/kkos/oniguruma/releases/download/v6.9.4/onig-6.9.4.tar.gz
+tar xfz onig-6.9.4.tar.gz
+cd /tmp/onig-6.9.4
+./configure
+make
+make install
 ```
 
 **Installing grok_exporter**
-
-With Go 1.11, you can use the new Modules (no need for `go get`). If you are working inside the GOPATH, you need to `export GO111MODULE=on` to enable Go 1.11 Modules.
 
 ```bash
 git clone https://github.com/fstab/grok_exporter
@@ -118,15 +97,9 @@ git submodule update --init --recursive
 go install .
 ```
 
-With Go 1.10, use `go get`:
-
-```bash
-go get github.com/fstab/grok_exporter
-cd $GOPATH/src/github.com/fstab/grok_exporter
-git submodule update --init --recursive
-```
-
 The resulting `grok_exporter` binary will be dynamically linked to the Oniguruma library, i.e. it needs the Oniguruma library to run. The [releases] are statically linked with Oniguruma, i.e. the releases don't require Oniguruma as a run-time dependency. The releases are built with `release.sh`.
+
+_Note: Go 1.13 for Mac OS has a bug affecting the file input. It is recommended to use Go 1.12 on Mac OS until the bug is fixed. Go 1.13.5 is affected. [https://github.com/golang/go/issues/35767](https://github.com/golang/go/issues/35767)._
 
 More Documentation
 ------------------
@@ -172,6 +145,7 @@ You may obtain a copy of the License at [http://www.apache.org/licenses/LICENSE-
 [ELK stack]: https://www.elastic.co/webinars/introduction-elk-stack
 [Exim]: http://www.exim.org/
 [Go]: https://golang.org/
+[gcc]: https://gcc.gnu.org/
 [Oniguruma]: https://github.com/kkos/oniguruma
 [screenshot.png]: screenshot.png
 [releases]: https://github.com/fstab/grok_exporter/releases

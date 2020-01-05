@@ -285,7 +285,7 @@ sleep 0.1
 checkMetric 'grok_test_counter_retention{user="alice"}' 1
 checkMetric 'grok_test_counter_retention{user="bob"}' 1
 
-sleep .7
+sleep .5
 
 # Update 'bob' so this metric will not be deleted
 echo '30.07.2016 14:37:33 service_a bob retention_test 2.5' >> $log_file

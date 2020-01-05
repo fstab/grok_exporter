@@ -6,6 +6,7 @@ require (
 	github.com/prometheus/client_model v0.0.0-20190129233127-fd36f4220a90
 	github.com/prometheus/common v0.4.1
 	github.com/sirupsen/logrus v1.4.2
+	golang.org/x/exp v0.0.0-20191227195350-da58074b4299
 	gopkg.in/yaml.v2 v2.2.2
 )
 

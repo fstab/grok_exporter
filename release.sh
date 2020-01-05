@@ -2,12 +2,13 @@
 
 set -e
 
-if [[ $(go version) != *"go1.11"* && $(go version) != *"go1.12"* ]] ; then
+if [[ $(go version) != *"go1.11"* && $(go version) != *"go1.12"* && $(go version) != *"go1.13"* ]] ; then
     echo "grok_exporter uses Go 1.11 Modules. Please use Go version >= 1.11." >&2
     echo "Version found is $(go version)" >&2
     exit 1
 fi
 
+# Needed for go1.11 and go1.12
 export GO111MODULE=on
 
 #=======================================================================================
@@ -15,9 +16,9 @@ export GO111MODULE=on
 # The Darwin release is built natively, Linux and Windows are built in a Docker container
 #========================================================================================
 
-cd $GOPATH/src/github.com/fstab/grok_exporter
+cd ${GOPATH:=$HOME/go}/src/github.com/fstab/grok_exporter
 
-export VERSION=0.2.9-SNAPSHOT
+export VERSION=1.0.0.RC1
 
 export VERSION_FLAGS="\
         -X github.com/fstab/grok_exporter/exporter.Version=$VERSION
@@ -229,5 +230,5 @@ case $1 in
         echo '    - linux-arm32v6' >&2
         echo '    - all-amd64' >&2
         echo '    - all' >&2
-        exit -1
+        exit 255
 esac
