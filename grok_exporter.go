@@ -24,6 +24,7 @@ import (
 	"github.com/fstab/grok_exporter/tailer"
 	"github.com/fstab/grok_exporter/tailer/fswatcher"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	"os"
 	"strings"
@@ -82,7 +83,7 @@ func main() {
 	httpHandlers := []exporter.HttpServerPathHandler{}
 	httpHandlers = append(httpHandlers, exporter.HttpServerPathHandler{
 		Path:    cfg.Server.Path,
-		Handler: prometheus.Handler()})
+		Handler: promhttp.Handler()})
 	if cfg.Input.Type == "webhook" {
 		httpHandlers = append(httpHandlers, exporter.HttpServerPathHandler{
 			Path:    cfg.Input.WebhookPath,
