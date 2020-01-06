@@ -18,7 +18,7 @@ export GO111MODULE=on
 
 cd ${GOPATH:=$HOME/go}/src/github.com/fstab/grok_exporter
 
-export VERSION=1.0.0.RC1
+export VERSION=1.0.0-SNAPSHOT
 
 export VERSION_FLAGS="\
         -X github.com/fstab/grok_exporter/exporter.Version=$VERSION
