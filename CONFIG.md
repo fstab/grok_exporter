@@ -498,6 +498,7 @@ The configuration is as follows:
 Summaries represent a sliding time window of 10 minutes, i.e. if you observe a 0.5 quantile (median) of _x_, the value _x_ represents the median within the last 10 minutes. The time window is moved forward every 2 minutes.
 
 Output for the example log lines above::
+
 ```
 # HELP grok_example_values Example summary metric with labels.
 # TYPE grok_example_values summary
