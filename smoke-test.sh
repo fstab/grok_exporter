@@ -139,8 +139,18 @@ echo '30.07.2016 14:37:33 service_b alice 2.5' >> $log_file
 echo '30.07.2016 14:43:02 service_a bob 2.5' >> $log_file
 
 function checkMetric() {
-    val=$(curl -s http://localhost:9144/metrics | grep -v '#' | grep "$1 ") || ( echo "FAILED: Metric '$1' not found." >&2 && exit 255 )
-    echo $val | grep "$1 $2" > /dev/null || ( echo "FAILED: Expected '$1 $2', but got '$val'." >&2 && exit 255 )
+    set +e
+    val=$(curl -s http://localhost:9144/metrics | grep -v '#' | grep "$1 ")
+    if [ $? -ne 0 ] ; then
+        echo "FAILED: Metric '$1' not found in line ${BASH_LINENO[0]}." >&2
+        exit 255
+    fi
+    echo $val | grep "$1 $2" > /dev/null
+    if [ $? -ne 0 ] ; then
+        echo "FAILED: Expected '$1 $2', but got '$val' in line ${BASH_LINENO[0]}." >&2
+        exit 255
+    fi
+    set -e
 }
 
 function assertMetricDoesNotExist() {
