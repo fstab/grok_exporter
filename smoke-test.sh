@@ -288,28 +288,33 @@ echo "Test 5: retention..."
 # -----------------------
 
 echo '30.07.2016 14:37:33 service_a alice retention_test 2.5' >> $log_file
-echo '30.07.2016 14:37:33 service_a bob retention_test 2.5' >> $log_file
+echo '30.07.2016 14:37:34 service_a bob retention_test 2.5' >> $log_file
 
 sleep 0.1
 
 checkMetric 'grok_test_counter_retention{user="alice"}' 1
 checkMetric 'grok_test_counter_retention{user="bob"}' 1
 
-sleep .5
+sleep .4
 
 # Update 'bob' so this metric will not be deleted
-echo '30.07.2016 14:37:33 service_a bob retention_test 2.5' >> $log_file
+echo '30.07.2016 14:37:35 service_a bob retention_test 2.5' >> $log_file
 
-sleep .7
+sleep .4
+
+# Update 'bob' so this metric will not be deleted
+echo '30.07.2016 14:37:36 service_a bob retention_test 2.5' >> $log_file
+
+sleep .4
 
 # 'alice' should have been deleted after 1 second, 'bob' is still there because it was updated within the last second
 assertMetricDoesNotExist 'grok_test_counter_retention{user="alice"}'
-checkMetric 'grok_test_counter_retention{user="bob"}' 2
+checkMetric 'grok_test_counter_retention{user="bob"}' 3
 
 # Update 'alice', now the metric should re-appear
-echo '30.07.2016 14:37:33 service_a alice retention_test 2.5' >> $log_file
+echo '30.07.2016 14:37:37 service_a alice retention_test 2.5' >> $log_file
 sleep 0.1
 checkMetric 'grok_test_counter_retention{user="alice"}' 1
-checkMetric 'grok_test_counter_retention{user="bob"}' 2
+checkMetric 'grok_test_counter_retention{user="bob"}' 3
 
 echo SUCCESS
