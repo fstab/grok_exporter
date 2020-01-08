@@ -97,7 +97,7 @@ git submodule update --init --recursive
 go install .
 ```
 
-The resulting `grok_exporter` binary will be dynamically linked to the Oniguruma library, i.e. it needs the Oniguruma library to run. The [releases] are statically linked with Oniguruma, i.e. the releases don't require Oniguruma as a run-time dependency. The releases are built with `release.sh`.
+The resulting `grok_exporter` binary will be dynamically linked to the Oniguruma library, i.e. it needs the Oniguruma library to run. The [releases] are statically linked with Oniguruma, i.e. the releases don't require Oniguruma as a run-time dependency. The releases are built with `hack/release.sh`.
 
 _Note: Go 1.13 for Mac OS has a bug affecting the file input. It is recommended to use Go 1.12 on Mac OS until the bug is fixed. Go 1.13.5 is affected. [https://github.com/golang/go/issues/35767](https://github.com/golang/go/issues/35767)._
 

@@ -76,7 +76,7 @@ script:
             echo "ERROR: Expected statically linked binary." >&2 ;
             exit -1 ;
         fi ;
-        ./smoke-test.sh ;
+        ./hack/smoke-test.sh ;
         ;;
     *)
         go test -failfast -count=1 -v ./... ;

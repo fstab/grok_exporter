@@ -1,7 +1,7 @@
 Windows
 =======
 
-The Windows release is created on Linux using cross compilation. The release is built with `./release.sh windows-amd64`, which runs the Go cross compiler in the `fstab/grok_exporter-compiler-amd64` Docker image.
+The Windows release is created on Linux using cross compilation. The release is built with `./hack/release.sh windows-amd64`, which runs the Go cross compiler in the `fstab/grok_exporter-compiler-amd64` Docker image.
 
 Continuous integration for Windows is run on [AppVeyor](https://ci.appveyor.com/project/fstab/grok-exporter) as configured in `.appveyor.yml`.
 

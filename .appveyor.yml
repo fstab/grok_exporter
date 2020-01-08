@@ -54,7 +54,7 @@ build_script:
     - go version
     - go test ./...
     - go install
-    - C:\cygwin\bin\bash -c "cd /cygdrive/c/grok_exporter ; PATH='/usr/sbin:/usr/bin:/sbin:/bin' ./smoke-test.sh"
+    - C:\cygwin\bin\bash -c "cd /cygdrive/c/grok_exporter ; PATH='/usr/sbin:/usr/bin:/sbin:/bin' ./hack/smoke-test.sh"
 
     # Print the linked DLLs, so we can check that grok_exporter does not have
     # a runtime dependency on Oniguruma.

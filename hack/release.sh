@@ -221,7 +221,7 @@ case $1 in
         remove_vendor
         ;;
     *)
-        echo 'Usage: ./release.sh <arch>' >&2
+        echo 'Usage: release.sh <arch>' >&2
         echo 'where <arch> can be:' >&2
         echo '    - linux-amd64' >&2
         echo '    - darwin-amd64' >&2
