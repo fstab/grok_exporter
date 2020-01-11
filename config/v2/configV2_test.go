@@ -173,6 +173,22 @@ server:
     port: 1111
 `
 
+const empty_grok_section = `
+global:
+    config_version: 2
+input:
+    type: file
+    path: /tmp/test/*.log
+metrics:
+    - type: counter
+      name: errors_total
+      help: Dummy help message.
+      match: ERROR
+server:
+    protocol: http
+    port: 9144
+`
+
 func TestCounterValidConfig(t *testing.T) {
 	loadOrFail(t, counter_config)
 }
@@ -326,6 +342,10 @@ func TestGlobsAreGenerated(t *testing.T) {
 	if len(cfg.Metrics[0].Globs) != 2 {
 		t.Fatalf("expected 2 Globs in metric config, but found %v", len(cfg.Metrics[0].Globs))
 	}
+}
+
+func TestEmptyGrokSection(t *testing.T) {
+	loadOrFail(t, empty_grok_section)
 }
 
 func loadOrFail(t *testing.T, cfgString string) *Config {
