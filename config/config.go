@@ -16,7 +16,6 @@ package config
 
 import (
 	"fmt"
-	"github.com/fstab/grok_exporter/config/v1"
 	"github.com/fstab/grok_exporter/config/v2"
 	"io/ioutil"
 	"regexp"
@@ -47,6 +46,8 @@ func LoadConfigString(content []byte) (*v2.Config, string, error) {
 	return cfg, warn, err
 }
 
+// returns (version, warning, error).
+// Warning is for deprecating old versions, but as we currently only support version 2 it is currently not used.
 func findVersion(content string) (int, string, error) {
 	versionExpr := regexp.MustCompile(`"?global"?:\s*"?config_version"?:[\t\f ]*(\S+)`)
 	versionInfo := versionExpr.FindStringSubmatch(content)
@@ -57,23 +58,12 @@ func findVersion(content string) (int, string, error) {
 		}
 		return version, "", nil
 	} else { // no version found
-		if strings.Contains(content, "prometheus_label") || !strings.Contains(content, "{{") {
-			warn := "No 'global.config_version' found in config file. " +
-				"Assuming it is a config file for grok_exporter <= 0.1.4, using 'config_version: 1'. " +
-				"grok_exporter still supports 'config_version: 1', " +
-				"but you should consider updating your configuration. " +
-				"Use the '-showconfig' command line option to view your configuration in the current format."
-			return 1, warn, nil
-		} else {
-			return 0, "", fmt.Errorf("invalid configuration: 'global.config_version' not found.")
-		}
+		return 0, "", fmt.Errorf("invalid configuration: 'global.config_version' not found.")
 	}
 }
 
 func unmarshal(content []byte, version int) (*v2.Config, error) {
 	switch version {
-	case 1:
-		return v1.Unmarshal(content)
 	case 2:
 		return v2.Unmarshal(content)
 	default:

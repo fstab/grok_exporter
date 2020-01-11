@@ -21,7 +21,7 @@ import (
 
 const exampleConfig = `
 global:
-    config_version: 2
+    PLACEHOLDER
 input:
     type: file
     path: x/x/x
@@ -38,31 +38,74 @@ server:
     port: 1111
 `
 
-func TestVersionDetection(t *testing.T) {
-	expectVersion(t, exampleConfig, 2, false)
-	expectVersion(t, strings.Replace(exampleConfig, "config_version: 2", "config_version: 1", 1), 1, false)
-	expectVersion(t, strings.Replace(exampleConfig, "config_version: 2", "config_version:", 1), 1, true)
-	expectVersion(t, strings.Replace(exampleConfig, "config_version: 2", "\"config_version\": 2", 1), 2, false)
-	expectVersion(t, strings.Replace(exampleConfig, "global", "\"global\"", 1), 2, false)
-	expectVersion(t, strings.Replace(exampleConfig, "config_version: 2", "", 1), 1, true)
-	_, _, err := findVersion(strings.Replace(exampleConfig, "config_version: 2", "config_version: a", 1))
+const globalMissing = `
+input:
+    type: file
+    path: x/x/x
+    readall: true
+grok:
+    patterns_dir: b/c
+metrics:
+    - type: counter
+      name: test_count_total
+      help: Dummy help message.
+      match: Some text here, then a %{DATE}.
+server:
+    protocol: https
+    port: 1111
+`
+
+const wrongFile = `
+some random
+other content
+because the user might accidentally
+use the wrong file as command line parameter
+`
+
+func TestVersionOk(t *testing.T) {
+	expectVersion(t, "config_version: 1", 1, false, false)
+	expectVersion(t, "config_version: 2", 2, false, false)
+	expectVersion(t, "config_version: 3", 3, false, false)
+}
+
+func TestVersionInvalid(t *testing.T) {
+	expectVersion(t, "config_version: a", 0, false, true)
+	expectVersion(t, "config_version", 0, false, true)
+}
+
+func TestVersionGlobalMissing(t *testing.T) {
+	_, _, err := findVersion(globalMissing)
 	if err == nil {
-		t.Fatalf("Expected error, because 'a' is not a number.")
+		t.Fatalf("didn't get error while testing config with missing global section")
 	}
 }
 
-func expectVersion(t *testing.T, config string, expectedVersion int, warningExpected bool) {
+func TestVersionWrongFile(t *testing.T) {
+	_, _, err := findVersion(wrongFile)
+	if err == nil {
+		t.Fatalf("didn't get error while testing config with missing global section")
+	}
+}
+
+func expectVersion(t *testing.T, placeholderReplacement string, expectedVersion int, warningExpected bool, errorExpected bool) {
+	config := strings.Replace(exampleConfig, "PLACEHOLDER", placeholderReplacement, 1)
 	version, warn, err := findVersion(config)
-	if err != nil {
-		t.Fatalf("unexpected error while getting version info: %v", err.Error())
-	}
-	if warningExpected && len(warn) == 0 {
-		t.Fatalf("didn't get warning for unversioned config file")
-	}
-	if !warningExpected && len(warn) > 0 {
-		t.Fatalf("unexpected warning: %v", warn)
-	}
-	if version != expectedVersion {
-		t.Fatalf("expected version %v, but found %v", expectedVersion, version)
+	switch {
+	case errorExpected:
+		if err == nil {
+			t.Fatalf("didn't get error while testing version %q", placeholderReplacement)
+		}
+		return
+	case err != nil:
+		t.Fatalf("unexpected error while testing version %q: %v", placeholderReplacement, err.Error())
+	case warningExpected:
+		if len(warn) == 0 {
+			t.Fatalf("didn't get warning while testing version %q", placeholderReplacement)
+		}
+		return
+	case len(warn) > 0:
+		t.Fatalf("unexpected warning while testing version %q: %v", placeholderReplacement, warn)
+	case version != expectedVersion:
+		t.Fatalf("expected version %v but found %v while testing version %q", expectedVersion, version, placeholderReplacement)
 	}
 }
