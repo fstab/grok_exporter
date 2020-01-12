@@ -8,6 +8,11 @@ if [[ $(go version) != *"go1.11"* && $(go version) != *"go1.12"* && $(go version
     exit 1
 fi
 
+if git status | grep example/ ; then
+    echo "error: untracked files in example directory" >&2
+    exit 1
+fi
+
 # Needed for go1.11 and go1.12
 export GO111MODULE=on
 
@@ -18,7 +23,7 @@ export GO111MODULE=on
 
 cd ${GOPATH:=$HOME/go}/src/github.com/fstab/grok_exporter
 
-export VERSION=1.0.0.RC2
+export VERSION=1.0.0-SNAPSHOT
 
 export VERSION_FLAGS="\
         -X github.com/fstab/grok_exporter/exporter.Version=$VERSION
