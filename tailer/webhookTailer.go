@@ -160,7 +160,7 @@ func WebhookProcessBody(c *configuration.InputConfig, b []byte) []string {
 	}
 
 	// Trim whitespace before and after every log entry
-	for i, _ := range strs {
+	for i := range strs {
 		strs[i] = strings.TrimSpace(strs[i])
 	}
 

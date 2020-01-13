@@ -297,7 +297,7 @@ func (c *MetricsConfig) validate() error {
 		return fmt.Errorf("Invalid metrics configuration: 'metrics' must not be empty.")
 	}
 	metricNames := make(map[string]bool)
-	for i, _ := range *c {
+	for i := range *c {
 		metric := &(*c)[i] // validate modifies the metric, therefore we must use it by reference here.
 		err := metric.validate()
 		if err != nil {

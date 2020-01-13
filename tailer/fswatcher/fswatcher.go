@@ -371,7 +371,7 @@ func (t *fileTailer) readNewLines(file *fileWithReader, log logrus.FieldLogger) 
 func (t *fileTailer) checkMissingFile() Error {
 OUTER:
 	for _, g := range t.globs {
-		for watchedFileName, _ := range t.watchedFiles {
+		for watchedFileName := range t.watchedFiles {
 			if g.Match(watchedFileName) {
 				continue OUTER
 			}
