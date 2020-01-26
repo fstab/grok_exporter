@@ -46,10 +46,10 @@ The config file format is versioned independently of the `grok_exporter` program
 
 The following table shows which `grok_exporter` version uses which `config_version`:
 
-| grok_exporter              | config_version           |
-| -------------------------- | ------------------------ |
-| ≤ 0.1.4                    | 1 _(see [CONFIG_v1.md])_ |
-| 0.2.X, 1.0.X               | 2 _(current version)_    |
+| grok_exporter              | config_version |
+| -------------------------- | -------------- |
+| ≤ 0.1.4                    | 1              |
+| 0.2.X, 1.0.X               | 2              |
 
 The `retention_check_interval` is the interval at which `grok_exporter` checks for expired metrics. By default, metrics don't expire so this is relevant only if `retention` is configured explicitly with a metric. The `retention_check_interval` is optional, the value defaults to `53s`. The default value is reasonable for production and should not be changed. This property is intended to be used in tests, where you might not want to wait 53 seconds until an expired metric is cleaned up. The format is described in [How to Configure Durations] below.
 
@@ -547,7 +547,6 @@ How to Configure Durations
 * `5m`: 5 minutes
 
 [example/config.yml]: example/config.yml
-[CONFIG_v1.md]: CONFIG_v1.md
 [How to Configure Durations]: #how-to-configure-durations
 [logstash-patterns-core repository]: https://github.com/logstash-plugins/logstash-patterns-core
 [pre-defined patterns]: https://github.com/logstash-plugins/logstash-patterns-core/tree/master/patterns
