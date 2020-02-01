@@ -15,7 +15,7 @@
 package exporter
 
 import (
-	configuration "github.com/fstab/grok_exporter/config/v2"
+	configuration "github.com/fstab/grok_exporter/config/v3"
 	"github.com/fstab/grok_exporter/oniguruma"
 	"gopkg.in/yaml.v2"
 	"strings"

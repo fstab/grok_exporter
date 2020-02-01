@@ -18,7 +18,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/fstab/grok_exporter/config"
-	"github.com/fstab/grok_exporter/config/v2"
+	"github.com/fstab/grok_exporter/config/v3"
 	"github.com/fstab/grok_exporter/exporter"
 	"github.com/fstab/grok_exporter/oniguruma"
 	"github.com/fstab/grok_exporter/tailer"
@@ -155,7 +155,7 @@ func makeAdditionalFields(line *fswatcher.Line) map[string]string {
 	}
 }
 
-func startMsg(cfg *v2.Config, httpHandlers []exporter.HttpServerPathHandler) string {
+func startMsg(cfg *v3.Config, httpHandlers []exporter.HttpServerPathHandler) string {
 	host := "localhost"
 	if len(cfg.Server.Host) > 0 {
 		host = cfg.Server.Host
@@ -194,15 +194,17 @@ func validateCommandLineOrExit() {
 	}
 }
 
-func initPatterns(cfg *v2.Config) (*exporter.Patterns, error) {
+func initPatterns(cfg *v3.Config) (*exporter.Patterns, error) {
 	patterns := exporter.InitPatterns()
-	if len(cfg.Grok.PatternsDir) > 0 {
-		err := patterns.AddDir(cfg.Grok.PatternsDir)
-		if err != nil {
-			return nil, err
+	for _, importedPatterns := range cfg.Imports {
+		if importedPatterns.Type == "grok_patterns" {
+			err := patterns.AddDir(importedPatterns.Dir)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
-	for _, pattern := range cfg.Grok.AdditionalPatterns {
+	for _, pattern := range cfg.GrokPatterns {
 		err := patterns.AddPattern(pattern)
 		if err != nil {
 			return nil, err
@@ -211,9 +213,9 @@ func initPatterns(cfg *v2.Config) (*exporter.Patterns, error) {
 	return patterns, nil
 }
 
-func createMetrics(cfg *v2.Config, patterns *exporter.Patterns) ([]exporter.Metric, error) {
-	result := make([]exporter.Metric, 0, len(cfg.Metrics))
-	for _, m := range cfg.Metrics {
+func createMetrics(cfg *v3.Config, patterns *exporter.Patterns) ([]exporter.Metric, error) {
+	result := make([]exporter.Metric, 0, len(cfg.AllMetrics))
+	for _, m := range cfg.AllMetrics {
 		var (
 			regex, deleteRegex *oniguruma.Regex
 			err                error
@@ -288,7 +290,7 @@ func initSelfMonitoring(metrics []exporter.Metric) (*prometheus.CounterVec, *pro
 	return nLinesTotal, nMatchesByMetric, procTimeMicrosecondsByMetric, nErrorsByMetric
 }
 
-func startServer(cfg v2.ServerConfig, httpHandlers []exporter.HttpServerPathHandler) chan error {
+func startServer(cfg v3.ServerConfig, httpHandlers []exporter.HttpServerPathHandler) chan error {
 	serverErrors := make(chan error)
 	go func() {
 		switch {
@@ -308,7 +310,7 @@ func startServer(cfg v2.ServerConfig, httpHandlers []exporter.HttpServerPathHand
 	return serverErrors
 }
 
-func startTailer(cfg *v2.Config) (fswatcher.FileTailer, error) {
+func startTailer(cfg *v3.Config) (fswatcher.FileTailer, error) {
 	var (
 		tail fswatcher.FileTailer
 		err  error

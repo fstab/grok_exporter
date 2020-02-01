@@ -34,7 +34,7 @@ func InitPatterns() *Patterns {
 func (p *Patterns) AddDir(path string) error {
 	files, err := ioutil.ReadDir(path)
 	if err != nil {
-		return fmt.Errorf("Failed to read %v: %v", path, err.Error())
+		return fmt.Errorf("failed to read %v: %v", path, err.Error())
 	}
 	for _, file := range files {
 		err = p.AddFile(filepath.Join(path, file.Name()))

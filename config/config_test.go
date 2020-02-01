@@ -64,7 +64,7 @@ use the wrong file as command line parameter
 
 func TestVersionOk(t *testing.T) {
 	expectVersion(t, "config_version: 1", 1, false, false)
-	expectVersion(t, "config_version: 2", 2, false, false)
+	expectVersion(t, "config_version: 2", 2, true, false)
 	expectVersion(t, "config_version: 3", 3, false, false)
 }
 

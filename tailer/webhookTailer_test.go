@@ -16,7 +16,7 @@ package tailer
 
 import (
 	"fmt"
-	configuration "github.com/fstab/grok_exporter/config/v2"
+	configuration "github.com/fstab/grok_exporter/config/v3"
 	"strings"
 	"testing"
 )

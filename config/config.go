@@ -17,6 +17,7 @@ package config
 import (
 	"fmt"
 	"github.com/fstab/grok_exporter/config/v2"
+	v3 "github.com/fstab/grok_exporter/config/v3"
 	"io/ioutil"
 	"regexp"
 	"strconv"
@@ -25,7 +26,7 @@ import (
 
 // Example config: See ./example/config.yml
 
-func LoadConfigFile(filename string) (*v2.Config, string, error) {
+func LoadConfigFile(filename string) (*v3.Config, string, error) {
 	content, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return nil, "", fmt.Errorf("Failed to load %v: %v", filename, err.Error())
@@ -37,7 +38,7 @@ func LoadConfigFile(filename string) (*v2.Config, string, error) {
 	return cfg, warn, nil
 }
 
-func LoadConfigString(content []byte) (*v2.Config, string, error) {
+func LoadConfigString(content []byte) (*v3.Config, string, error) {
 	version, warn, err := findVersion(string(content))
 	if err != nil {
 		return nil, warn, err
@@ -47,8 +48,8 @@ func LoadConfigString(content []byte) (*v2.Config, string, error) {
 }
 
 // returns (version, warning, error).
-// Warning is for deprecating old versions, but as we currently only support version 2 it is currently not used.
 func findVersion(content string) (int, string, error) {
+	warning := "Configuration version 2 found. This is still supported, but we recommend updating to version 3. Run grok_exporter with the -showconfig command line parameter to automatically convert to version 3 and write the result to the console."
 	versionExpr := regexp.MustCompile(`"?global"?:\s*"?config_version"?:[\t\f ]*(\S+)`)
 	versionInfo := versionExpr.FindStringSubmatch(content)
 	if len(versionInfo) == 2 {
@@ -56,17 +57,27 @@ func findVersion(content string) (int, string, error) {
 		if err != nil {
 			return 0, "", fmt.Errorf("invalid 'global' configuration: '%v' is not a valid 'config_version'.", versionInfo[1])
 		}
-		return version, "", nil
+		if version == 2 {
+			return version, warning, nil
+		} else {
+			return version, "", nil
+		}
 	} else { // no version found
 		return 0, "", fmt.Errorf("invalid configuration: 'global.config_version' not found.")
 	}
 }
 
-func unmarshal(content []byte, version int) (*v2.Config, error) {
+func unmarshal(content []byte, version int) (*v3.Config, error) {
 	switch version {
 	case 2:
-		return v2.Unmarshal(content)
+		v2cfg, err := v2.Unmarshal(content)
+		if err != nil {
+			return nil, err
+		}
+		return v3.Convert(v2cfg), nil
+	case 3:
+		return v3.Unmarshal(content)
 	default:
-		return nil, fmt.Errorf("global.config_version %v is not supported.", version)
+		return nil, fmt.Errorf("global.config_version %v is not supported", version)
 	}
 }
