@@ -22,7 +22,7 @@ import (
 	"time"
 )
 
-func Convert(v2cfg *v2.Config) *Config {
+func convert(v2cfg *v2.Config) *Config {
 	return &Config{
 		Global:       convertGlobal(v2cfg),
 		Input:        convertInput(v2cfg),

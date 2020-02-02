@@ -156,7 +156,7 @@ func TestConvert(t *testing.T) {
 			if err != nil {
 				t.Fatalf("error unmarshalling input: %v", err)
 			}
-			v3cfg := Convert(v2cfg)
+			v3cfg := convert(v2cfg)
 			err = equalsIgnoreIndentation(v3cfg.String(), test.expected)
 			if err != nil {
 				t.Fatalf("Expected:\n%v\nActual:\n%v\n%v", test.expected, v3cfg, err)

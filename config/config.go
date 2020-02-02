@@ -74,7 +74,7 @@ func unmarshal(content []byte, version int) (*v3.Config, error) {
 		if err != nil {
 			return nil, err
 		}
-		return v3.Convert(v2cfg), nil
+		return v3.Convert(v2cfg)
 	case 3:
 		return v3.Unmarshal(content)
 	default:

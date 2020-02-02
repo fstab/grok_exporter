@@ -16,6 +16,7 @@ package v3
 
 import (
 	"fmt"
+	v2 "github.com/fstab/grok_exporter/config/v2"
 	"github.com/fstab/grok_exporter/tailer/glob"
 	"github.com/fstab/grok_exporter/template"
 	"gopkg.in/yaml.v2"
@@ -55,6 +56,18 @@ func Unmarshal(config []byte) (*Config, error) {
 		return nil, err
 	}
 	return cfg, nil
+}
+
+func Convert(v2cfg *v2.Config) (*Config, error) {
+	v3cfg := convert(v2cfg)
+	for _, metric := range v3cfg.OrigMetrics {
+		v3cfg.AllMetrics = append(v3cfg.AllMetrics, metric)
+	}
+	err := AddDefaultsAndValidate(v3cfg)
+	if err != nil {
+		return nil, err
+	}
+	return v3cfg, nil
 }
 
 type Config struct {
