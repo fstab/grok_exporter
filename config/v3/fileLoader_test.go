@@ -15,7 +15,6 @@
 package v3
 
 import (
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"path"
@@ -24,47 +23,13 @@ import (
 	"testing"
 )
 
-const config = `
-global:
-    config_version: 3
-input:
-    type: stdin
-metrics:
-    - type: counter
-      name: metric_defined_in_config_yaml
-      help: Metric defined in config.yaml
-      match: ERROR
-imports:
-    - type: metrics
-      file: PLACEHOLDER
-      defaults:
-          path: /var/log/syslog/*
-          labels:
-              logfile: '{{base .logfile}}'
-`
-
-const file_1_yaml = `
-- type: counter
-  name: metric_defined_in_file_1_yaml
-  help: Metric defined in file1.yaml
-  match: WARN
-`
-
-const file_2_yaml = `
-- type: counter
-  name: metric_1_defined_in_file_2_yaml
-  help: Metric 1 defined in file2.yaml
-  match: WARN
-- type: counter
-  name: metric_2_defined_in_file_2_yaml
-  help: Metric 2 defined in file2.yaml
-  match: WARN
-`
+const file1Contents = "Contents of file1.yaml"
+const file2Contents = "Contents of file2.yaml"
 
 func TestLoadDirSuccess(t *testing.T) {
 	testDir := setUp(t)
 	defer tearDown(t, testDir)
-	result, err := loadDir(testDir)
+	result, err := NewFileLoader().LoadDir(testDir)
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -75,7 +40,7 @@ func TestLoadDirSuccess(t *testing.T) {
 
 func TestLoadDirNotFound(t *testing.T) {
 	dir := "/tmp/not/found"
-	_, err := loadDir(dir)
+	_, err := NewFileLoader().LoadDir(dir)
 	if err == nil || !os.IsNotExist(err) {
 		t.Fatal("expected file not found error")
 	}
@@ -89,7 +54,7 @@ func TestLoadDirError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error creating %v: %v", notRegularFile, err)
 	}
-	_, err = loadDir(testDir)
+	_, err = NewFileLoader().LoadDir(testDir)
 	if err == nil || !strings.Contains(err.Error(), notRegularFile) {
 		t.Fatalf("expected error message regarding %v not being a regular file", notRegularFile)
 	}
@@ -103,45 +68,27 @@ func TestLoadGlob(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error creating %v: %v", notRegularFile, err)
 	}
-	contents, err := loadGlob(filepath.Join(testDir, "*.yaml"))
+	files, err := NewFileLoader().LoadGlob(filepath.Join(testDir, "*.yaml"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(contents) != 2 {
-		t.Fatalf("expected 2 yaml files, but found %v", len(contents))
+	if len(files) != 2 {
+		t.Fatalf("expected 2 yaml files, but found %v", len(files))
 	}
 }
 
 func TestLoadFile(t *testing.T) {
 	testDir := setUp(t)
 	defer tearDown(t, testDir)
-	contents, err := loadGlob(filepath.Join(testDir, "file1.yaml"))
+	contents, err := NewFileLoader().LoadGlob(filepath.Join(testDir, "file1.yaml"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(contents) != 1 {
 		t.Fatalf("expected 1 yaml files, but found %v", len(contents))
 	}
-	if !strings.Contains(contents[0].contents, "Metric defined in file1.yaml") {
+	if !strings.Contains(contents[0].Contents, file1Contents) {
 		t.Fatalf("unexpected contents of file1.yaml")
-	}
-}
-
-func TestImportMetrics(t *testing.T) {
-	testDir := setUp(t)
-	defer tearDown(t, testDir)
-	files := path.Join(testDir, "*.yaml")
-	cfg := &Config{}
-	err := yaml.Unmarshal([]byte(strings.Replace(config, "PLACEHOLDER", files, 1)), &cfg)
-	if err != nil {
-		t.Fatalf("unexpeced error while unmarshalling config: %v", err)
-	}
-	imported, err := importMetrics(cfg.Imports)
-	if err != nil {
-		t.Fatalf("unexpected error while importing metric configs: %v", err)
-	}
-	if len(imported) != 3 {
-		t.Fatalf("expected 3 imported metrics, but found %v", len(imported))
 	}
 }
 
@@ -150,17 +97,20 @@ func setUp(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("failed to create test directory: %v", err)
 	}
-	err = ioutil.WriteFile(path.Join(dir, "file1.yaml"), []byte(file_1_yaml), 0644)
+	err = ioutil.WriteFile(path.Join(dir, "file1.yaml"), []byte(file1Contents), 0644)
 	if err != nil {
 		t.Fatalf("unexpected error writing file1.yaml: %v", err)
 	}
-	err = ioutil.WriteFile(path.Join(dir, "file2.yaml"), []byte(file_2_yaml), 0644)
+	err = ioutil.WriteFile(path.Join(dir, "file2.yaml"), []byte(file2Contents), 0644)
 	if err != nil {
 		t.Fatalf("unexpected error writing file2.yaml: %v", err)
 	}
 	return dir
 }
 
-func tearDown(t *testing.T, dir string) {
-	// todo: rm -r dir
+func tearDown(t *testing.T, testDir string) {
+	err := os.RemoveAll(testDir)
+	if err != nil {
+		t.Fatalf("unexpected error removing %v: %v", testDir, err)
+	}
 }

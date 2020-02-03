@@ -176,11 +176,18 @@ server:
     port: 9144
 `
 
-const additional_config_file = `
+const config_with_imports = `
 global:
     config_version: 3
 input:
     type: stdin
+imports:
+    - type: metrics
+      file: /etc/grok/metrics.d/*.yaml
+      defaults:
+          path: /var/log/syslog/*
+          labels:
+              logfile: '{{base .logfile}}'
 grok_patterns:
     - WARN WARN
     - ERROR ERROR
@@ -189,22 +196,36 @@ metrics:
       name: errors_total
       help: Dummy help message.
       match: ERROR
-imports:
-    - type: metrics
-      file: /etc/grok/metrics.d/*.yaml
-      defaults:
-          path: /var/log/syslog/*
-          labels:
-              logfile: '{{base .logfile}}'
 server:
     protocol: http
     port: 9144
 `
 
-//func TestAdditionalConfigFiles(t *testing.T) {
-//	cfg := loadOrFail(t, additional_config_file)
-//	fmt.Printf("cfg: %#v\n", cfg.Imports)
-//}
+const import_1 = `
+    - type: counter
+      name: errors_total_1
+      help: Dummy help message.
+      match: ERROR
+`
+
+const import_2 = `
+    - type: counter
+      name: errors_total_2
+      help: Dummy help message.
+      match: ERROR
+`
+
+type mockLoader struct {
+	files []*ConfigFile
+}
+
+func (f *mockLoader) LoadDir(dir string) ([]*ConfigFile, error) {
+	return f.files, nil
+}
+
+func (f *mockLoader) LoadGlob(globString string) ([]*ConfigFile, error) {
+	return f.files, nil
+}
 
 func TestCounterValidConfig(t *testing.T) {
 	loadOrFail(t, counter_config)
@@ -363,6 +384,26 @@ func TestGlobsAreGenerated(t *testing.T) {
 
 func TestEmptyGrokSection(t *testing.T) {
 	loadOrFail(t, empty_grok_section)
+}
+
+func TestConfigWithImports(t *testing.T) {
+	fileLoader := &mockLoader{
+		files: []*ConfigFile{
+			{Path: "file1.yaml", Contents: import_1},
+			{Path: "file2.yaml", Contents: import_2},
+		},
+	}
+	cfg, err := unmarshal([]byte(config_with_imports), fileLoader)
+	if err != nil {
+		t.Fatalf("Failed to read config: %v", err.Error())
+	}
+	err = equalsIgnoreIndentation(cfg.String(), config_with_imports)
+	if err != nil {
+		t.Fatalf("Expected:\n%v\nActual:\n%v\n%v", config_with_imports, cfg, err)
+	}
+	if len(cfg.AllMetrics) != 3 {
+		t.Fatalf("expected 3 metrics, but found %v", len(cfg.AllMetrics))
+	}
 }
 
 func loadOrFail(t *testing.T, cfgString string) *Config {

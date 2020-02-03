@@ -36,12 +36,17 @@ const (
 )
 
 func Unmarshal(config []byte) (*Config, error) {
+	return unmarshal(config, NewFileLoader())
+}
+
+// For testing, allow injection of mock file loader.
+func unmarshal(config []byte, fileLoader FileLoader) (*Config, error) {
 	cfg := &Config{}
 	err := yaml.Unmarshal(config, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("invalid configuration: %v. make sure to use 'single quotes' around strings with special characters (like match patterns or label templates), and make sure to use '-' only for lists (metrics) but not for maps (labels).", err.Error())
+		return nil, fmt.Errorf("invalid configuration: %v. make sure to use 'single quotes' around strings with special characters (like match patterns or label templates), and make sure to use '-' only for lists (metrics) but not for maps (labels)", err.Error())
 	}
-	importedMetrics, err := importMetrics(cfg.Imports)
+	importedMetrics, err := importMetrics(cfg.Imports, fileLoader)
 	if err != nil {
 		return nil, err
 	}
@@ -152,6 +157,68 @@ type ServerConfig struct {
 	Path     string `yaml:",omitempty"`
 	Cert     string `yaml:",omitempty"`
 	Key      string `yaml:",omitempty"`
+}
+
+func importMetrics(importsConfig ImportsConfig, fileLoader FileLoader) (MetricsConfig, error) {
+	var (
+		importConfig ImportConfig
+		result       MetricsConfig
+		err          error
+		files        []*ConfigFile
+	)
+	for _, importConfig = range importsConfig {
+		if importConfig.Type != importMetricsType {
+			continue
+		}
+		err = importConfig.validate()
+		if err != nil {
+			return nil, err
+		}
+		if len(importConfig.Dir) > 0 {
+			files, err = fileLoader.LoadDir(importConfig.Dir)
+		} else {
+			files, err = fileLoader.LoadGlob(importConfig.File)
+		}
+		if err != nil {
+			return nil, err
+		}
+		for _, file := range files {
+			var metricsConfig MetricsConfig
+			err := yaml.Unmarshal([]byte(file.Contents), &metricsConfig)
+			if err != nil {
+				return nil, fmt.Errorf("%v: %v", file.Path, err)
+			}
+			for i := range metricsConfig {
+				applyImportDefaults(&metricsConfig[i], importConfig.Defaults)
+				result = append(result, metricsConfig[i])
+			}
+		}
+	}
+	return result, nil
+}
+
+func applyImportDefaults(metricConfig *MetricConfig, defaults DefaultConfig) {
+	for key, value := range defaults.Labels {
+		if _, exists := metricConfig.Labels[key]; !exists {
+			if metricConfig.Labels == nil {
+				metricConfig.Labels = make(map[string]string)
+			}
+			metricConfig.Labels[key] = value
+		}
+	}
+	if len(metricConfig.Quantiles) == 0 {
+		metricConfig.Quantiles = defaults.Quantiles
+	}
+	if len(metricConfig.Buckets) == 0 {
+		metricConfig.Buckets = defaults.Buckets
+	}
+	if metricConfig.Retention == 0 {
+		metricConfig.Retention = defaults.Retention
+	}
+	if len(metricConfig.Path) == 0 && len(metricConfig.Paths) == 0 {
+		metricConfig.Path = defaults.Path
+		metricConfig.Paths = defaults.Paths
+	}
 }
 
 func (cfg *Config) addDefaults() {
