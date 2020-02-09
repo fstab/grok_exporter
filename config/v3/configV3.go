@@ -206,10 +206,10 @@ func applyImportDefaults(metricConfig *MetricConfig, defaults DefaultConfig) {
 			metricConfig.Labels[key] = value
 		}
 	}
-	if len(metricConfig.Quantiles) == 0 {
+	if metricConfig.Type == "summary" && len(metricConfig.Quantiles) == 0 {
 		metricConfig.Quantiles = defaults.Quantiles
 	}
-	if len(metricConfig.Buckets) == 0 {
+	if metricConfig.Type == "histogram" && len(metricConfig.Buckets) == 0 {
 		metricConfig.Buckets = defaults.Buckets
 	}
 	if metricConfig.Retention == 0 {

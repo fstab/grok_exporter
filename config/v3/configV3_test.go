@@ -186,6 +186,9 @@ imports:
       file: /etc/grok/metrics.d/*.yaml
       defaults:
           path: /var/log/syslog/*
+          retention: 2h30m0s
+          buckets: [0, 1, 2, 3]
+          quantiles: {0.5: 0.05, 0.9: 0.02, 0.99: 0.002}
           labels:
               logfile: '{{base .logfile}}'
 grok_patterns:
@@ -202,17 +205,36 @@ server:
 `
 
 const import_1 = `
-    - type: counter
-      name: errors_total_1
+    - type: histogram
+      name: test_histogram_1
       help: Dummy help message.
-      match: ERROR
+      match: Some %{NUMBER:val} here, then a %{DATE}.
+      value: '{{.val}}'
+      paths:
+        - /var/log/syslog/2021-*.log
+        - /var/log/syslog/2022-*.log
+    - type: summary
+      name: test_summary_1
+      help: Dummy help message.
+      match: Some %{NUMBER:val} here, then a %{DATE}.
+      value: '{{.val}}'
+      retention: 4h30m0s
 `
 
 const import_2 = `
-    - type: counter
-      name: errors_total_2
+    - type: histogram
+      name: test_histogram_2
       help: Dummy help message.
-      match: ERROR
+      match: Some %{NUMBER:val} here, then a %{DATE}.
+      value: '{{.val}}'
+      buckets: [0, 1, 2, 3, 4]
+      retention: 5h30m0s
+    - type: summary
+      name: test_summary_2
+      help: Dummy help message.
+      match: Some %{NUMBER:val} here, then a %{DATE}.
+      quantiles: {0.5: 0.05, 0.9: 0.02, 0.99: 0.002, 0.999: 0.0002}
+      value: '{{.val}}'
 `
 
 type mockLoader struct {
@@ -386,7 +408,7 @@ func TestEmptyGrokSection(t *testing.T) {
 	loadOrFail(t, empty_grok_section)
 }
 
-func TestConfigWithImports(t *testing.T) {
+func TestImportSuccess(t *testing.T) {
 	fileLoader := &mockLoader{
 		files: []*ConfigFile{
 			{Path: "file1.yaml", Contents: import_1},
@@ -401,8 +423,51 @@ func TestConfigWithImports(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Expected:\n%v\nActual:\n%v\n%v", config_with_imports, cfg, err)
 	}
-	if len(cfg.AllMetrics) != 3 {
-		t.Fatalf("expected 3 metrics, but found %v", len(cfg.AllMetrics))
+	if len(cfg.AllMetrics) != 5 {
+		t.Fatalf("expected 5 metrics, but found %v", len(cfg.AllMetrics))
+	}
+	expectMetric(t, cfg.AllMetrics[1], "test_histogram_1", []string{"/var/log/syslog/2021-*.log", "/var/log/syslog/2022-*.log"}, 4, 0, 2 * time.Hour + 30 * time.Minute)
+	expectMetric(t, cfg.AllMetrics[2], "test_summary_1", []string{"/var/log/syslog/*"}, 0, 3, 4 * time.Hour + 30 * time.Minute)
+	expectMetric(t, cfg.AllMetrics[3], "test_histogram_2", []string{"/var/log/syslog/*"}, 5, 0, 5 * time.Hour + 30 * time.Minute)
+	expectMetric(t, cfg.AllMetrics[4], "test_summary_2", []string{"/var/log/syslog/*"}, 0, 4, 2 * time.Hour + 30 * time.Minute)
+}
+
+func expectMetric(t *testing.T, metric MetricConfig, name string, paths []string, bucketLen, quantilesLen int, retention time.Duration) {
+	if metric.Name != name {
+		t.Fatalf("expected metric %v but found %v", name, metric.Name)
+	}
+	if len(metric.Paths) != len(paths) {
+		t.Fatalf("expected len(paths)=%v for metric %v, but found len(paths)=%v", len(paths), name, len(metric.Paths))
+	}
+	for i := range paths {
+		if metric.Paths[i] != paths[i] {
+			t.Fatalf("expected paths[%v]=%v for metric %v, but found paths[%v]=%v", i, paths[i], name, i, metric.Paths[i])
+		}
+	}
+	if len(metric.Buckets) != bucketLen {
+		t.Fatalf("expected %v buckets for metric %v, but found %v buckets", bucketLen, name, len(metric.Buckets))
+	}
+	if len(metric.Quantiles) != quantilesLen {
+		t.Fatalf("expected %v quantiles for metric %v, but found %v quantiles", quantilesLen, name, len(metric.Quantiles))
+	}
+	if metric.Retention != retention {
+		t.Fatalf("expected retention %v for metric %v, but found %v", retention, name, metric.Retention)
+	}
+}
+
+func TestImportDuplicateMetric(t *testing.T) {
+	fileLoader := &mockLoader{
+		files: []*ConfigFile{
+			{Path: "file1.yaml", Contents: import_1},
+			{Path: "file2.yaml", Contents: strings.Replace(import_2, "name: test_histogram_2", "name: errors_total", 1)},
+		},
+	}
+	_, err := unmarshal([]byte(config_with_imports), fileLoader)
+	if err == nil {
+		t.Fatalf("expected error about duplicate metric name, but got no error")
+	}
+	if !strings.Contains(err.Error(), "errors_total") {
+		t.Fatalf("expected error message to contain the name of the duplicate metric")
 	}
 }
 
