@@ -17,7 +17,6 @@ package v3
 import (
 	"io/ioutil"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -97,11 +96,11 @@ func setUp(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("failed to create test directory: %v", err)
 	}
-	err = ioutil.WriteFile(path.Join(dir, "file1.yaml"), []byte(file1Contents), 0644)
+	err = ioutil.WriteFile(filepath.Join(dir, "file1.yaml"), []byte(file1Contents), 0644)
 	if err != nil {
 		t.Fatalf("unexpected error writing file1.yaml: %v", err)
 	}
-	err = ioutil.WriteFile(path.Join(dir, "file2.yaml"), []byte(file2Contents), 0644)
+	err = ioutil.WriteFile(filepath.Join(dir, "file2.yaml"), []byte(file2Contents), 0644)
 	if err != nil {
 		t.Fatalf("unexpected error writing file2.yaml: %v", err)
 	}

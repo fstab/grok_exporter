@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"github.com/fstab/grok_exporter/tailer/glob"
 	"io/ioutil"
-	"path"
+	"path/filepath"
 )
 
 type ConfigFile struct {
@@ -38,7 +38,7 @@ func NewFileLoader() FileLoader {
 }
 
 func (f *fileLoader) LoadDir(dir string) ([]*ConfigFile, error) {
-	return f.LoadGlob(path.Join(dir, "*"))
+	return f.LoadGlob(filepath.Join(dir, "*"))
 }
 
 func (f *fileLoader) LoadGlob(globString string) ([]*ConfigFile, error) {
@@ -52,7 +52,7 @@ func (f *fileLoader) LoadGlob(globString string) ([]*ConfigFile, error) {
 		return nil, err
 	}
 	for _, fileInfo := range fileInfos {
-		filePath := path.Join(g.Dir(), fileInfo.Name())
+		filePath := filepath.Join(g.Dir(), fileInfo.Name())
 		if g.Match(filePath) {
 			contents, err := ioutil.ReadFile(filePath)
 			if err != nil {
