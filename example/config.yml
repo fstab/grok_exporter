@@ -1,21 +1,22 @@
 global:
-    config_version: 2
+  config_version: 3
 input:
-    type: file
-    path: ./example/exim-rejected-RCPT-examples.log
-    readall: true # Read from the beginning of the file? False means we start at the end of the file and read only new lines.
-grok:
-    patterns_dir: ./logstash-patterns-core/patterns
-    additional_patterns:
-    - 'EXIM_MESSAGE [a-zA-Z ]*'
+  type: file
+  path: ./example/exim-rejected-RCPT-examples.log
+  readall: true # Read from the beginning of the file? False means we start at the end of the file and read only new lines.
+imports:
+- type: grok_patterns
+  dir: ./logstash-patterns-core/patterns
+grok_patterns:
+- 'EXIM_MESSAGE [a-zA-Z ]*'
 metrics:
-    - type: counter
-      name: exim_rejected_rcpt_total
-      help: Total number of rejected recipients, partitioned by error message.
-      match: '%{EXIM_DATE} %{EXIM_REMOTE_HOST} F=<%{EMAILADDRESS}> rejected RCPT <%{EMAILADDRESS}>: %{EXIM_MESSAGE:message}'
-      labels:
-          logfile: '{{base .logfile}}'
-          error_message: '{{.message}}'
+- type: counter
+  name: exim_rejected_rcpt_total
+  help: Total number of rejected recipients, partitioned by error message.
+  match: '%{EXIM_DATE} %{EXIM_REMOTE_HOST} F=<%{EMAILADDRESS}> rejected RCPT <%{EMAILADDRESS}>: %{EXIM_MESSAGE:message}'
+  labels:
+    error_message: '{{.message}}'
+    logfile: '{{base .logfile}}'
 server:
-    host: localhost
-    port: 9144
+  protocol: http
+  port: 9144

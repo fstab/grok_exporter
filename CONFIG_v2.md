@@ -1,53 +1,28 @@
-grok_exporter Configuration
-===========================
+grok_exporter Configuration Version 2 (deprecated)
+==================================================
 
-This page describes the `grok_exporter` configuration file.
-The configuration is in YAML format. An example configuration can be found in [example/config.yml].
-The path to the configuration file is passed as a command line parameter when starting `grok_exporter`:
-
-```bash
-grok_exporter -config ./example/config.yml
-```
-
-Updating from Config Version 2
-------------------------------
-
-Configuration files are versioned. The `config_version` is specified in the `global` section of the configuration
-file, see [global Section] below.
-
-The versions allow for backwards compatibility: If an incompatible change in the config format is introduced,
-we increment the version number. New `grok_exporter` versions support old configuration versions.
-
-`grok_exporter` 1.0.0.RC3 introduced configuration version 3. While version 2 is still supported, we recommend
-updating to version 3. You can use the `-showconfig` command line option to convert the configuration automatically
-and print the result to the console:
+This page describes the deprecated version 2 of the `grok_exporter` configuration file.
+While `grok_exporter` still supports this format, we recommend converting to the current configuration version 3.
+The following command will convert the configuration automatically and print the result to the console:
 
 ```
-grok_exporter -config /path/to/config_v2.yml -showconfig
+grok_exporter -config path/to/config_v2.yml -showconfig
 ```
 
-The main difference between configuration version 2 and configuration version 3 is that the new version
-introduces an `imports` section for importing `grok_patterns` and `metrics` from external configuration files.
-The old `grok` section was renamed to `grok_patterns` and now contains just a plain list of grok patterns.
-There's also a minor change: `poll_interval_seconds` was renamed to `poll_interval`. The format is
-described in [How to Configure Durations] below.
-
-The old documentation for configuration version 2 can be found in [CONFIG_v2.md](CONFIG_v2.md).
+The current configuration version 3 is documented in [CONFIG.md](CONFIG.md).
 
 Overall Structure
 -----------------
 
-The `grok_exporter` configuration file consists of six main sections:
+The `grok_exporter` configuration file consists of five main sections:
 
 ```yaml
 global:
     # Config version
 input:
     # How to read log lines (file or stdin).
-imports:
-    # External configuration files for grok patterns and for metrics.
-grok_patterns:
-    # Grok patterns.
+grok:
+    # Available Grok patterns.
 metrics:
     # How to map Grok fields to Prometheus metrics.
 server:
@@ -56,20 +31,20 @@ server:
 
 The following shows the configuration options for each of these sections.
 
-global Section
+Global Section
 --------------
 
 The `global` section is as follows:
 
 ```yaml
 global:
-    config_version: 3
+    config_version: 2
     retention_check_interval: 53s
 ```
 
-The `config_version` specifies the version of the config file format. Specifying the `config_version` is mandatory, it has to be included in every configuration file. The current `config_version` is `3`.
+The `config_version` specifies the version of the config file format. Specifying the `config_version` is mandatory, it has to be included in every configuration file. The current `config_version` is `2`.
 
-The config file format is versioned independently of the `grok_exporter` program. When a new version of `grok_exporter` does not introduce incompatible changes to the config file, the `config_version` will remain the same.
+The config file format is versioned independently of the `grok_exporter` program. When a new version of `grok_exporter` keeps using the same config file, the `config_version` will remain the same.
 
 The following table shows which `grok_exporter` version uses which `config_version`:
 
@@ -77,14 +52,14 @@ The following table shows which `grok_exporter` version uses which `config_versi
 | --------------------------- | -------------- |
 | ≤ 0.1.4                     | 1              |
 | 0.2.X, 1.0.0.RC1, 1.0.0.RC2 | 2              |
-| ≥ 1.0.0.RC3                 | 3              |
+| 1.0.0.RC3                   | 3              |
 
 The `retention_check_interval` is the interval at which `grok_exporter` checks for expired metrics. By default, metrics don't expire so this is relevant only if `retention` is configured explicitly with a metric. The `retention_check_interval` is optional, the value defaults to `53s`. The default value is reasonable for production and should not be changed. This property is intended to be used in tests, where you might not want to wait 53 seconds until an expired metric is cleaned up. The format is described in [How to Configure Durations] below.
 
 Input Section
 -------------
 
-`grok_exporter` supports three input types: `file`, `stdin`, and `webhook`. The following three sections describe the input types respectively:
+We currently support three input types: `file`, `stdin`, and `webhook`. The following three sections describe the input types respectively:
 
 ### File Input Type
 
@@ -98,7 +73,7 @@ input:
     path: /var/logdir1/*.log
     readall: false
     fail_on_missing_logfile: true
-    poll_interval: 5s # should NOT be needed in most cases, see below
+    poll_interval_seconds: 5 # should not be needed in most cases, see below
 ```
 
 Example 2:
@@ -111,10 +86,10 @@ input:
     - /var/logdir2/*.log
     readall: false
     fail_on_missing_logfile: true
-    poll_interval: 5s # should NOT be needed in most cases, see below
+    poll_interval_seconds: 5 # should not be needed in most cases, see below
 ```
 
-The `path` is the path to the log file. `path` is used if you want to monitor a single path. If you want to monitor a list of paths, use `paths` instead, as in example 2 above. [Glob] patterns are supported on the file level, but not on the directory level. If you want to monitor multiple logfiles, see also [restricting a metric to specific log files](#restricting-a-metric-to-specific-log-files) and [pre-defined label variables](#pre-defined-label-variables) below.
+The `path` is the path to the log file. `path` is uses if you want to monitor a single path. If you want to monitor a list of paths, use `paths` instead, as in example 2 above. [Globs](https://en.wikipedia.org/wiki/Glob_(programming)) are supported on the file level, but not on the directory level. If you want to monitor multiple logfiles, see also [restricting a metric to specific log files](#restricting-a-metric-to-specific-log-files) and [pre-defined label variables](#pre-defined-label-variables) below.
 
 The `readall` flag defines if `grok_exporter` starts reading from the beginning or the end of the file.
 True means we read the whole file, false means we start at the end of the file and read only new lines.
@@ -127,15 +102,15 @@ This is the default value, and it should be used in most cases because a missing
 However, in some scenarios you might want `grok_exporter` to start successfully even if the logfile is not found,
 because you know the file will be created later. In that case, set `fail_on_missing_logfile: false`.
 
-On `poll_interval`: You probably don't need this. The internal implementation of `grok_exporter`'s
+On `poll_interval_seconds`: You probably don't need this. The internal implementation of `grok_exporter`'s
 file input is based on the operating system's file system notification mechanism, which is `inotify` on Linux,
 `kevent` on BSD (or macOS), and `ReadDirectoryChangesW` on Windows. These tools will inform `grok_exporter` as
 soon as a new log line is written to the log file, and let `grok_exporter` sleep as long as the log file doesn't
 change. There is no need for configuring a poll interval. However, there is one combination where the above
 notifications don't work: If the logging application keeps the logfile open and the underlying file system is NTFS
 (see [#17](https://github.com/fstab/grok_exporter/issues/17)). For this specific case you can configure a
-`poll_interval`. This will disable file system notifications and instead check the log file periodically.
-The format is described in [How to Configure Durations] below.
+`poll_interval_seconds`. This will disable file system notifications and instead check the log file periodically.
+The `poll_interval_seconds` option was introduced with release 0.2.2.
 
 ### Stdin Input Type
 
@@ -146,20 +121,22 @@ input:
     type: stdin
 ```
 
-This is useful if you want to pipe log data to the `grok_exporter` command.
-For example if you want to monitor the output of `journalctl`:
+This is useful if you want to pipe log data to the `grok_exporter` command,
+for example if you want to monitor the output of `journalctl`:
 
 ```bash
 journalctl -f | grok_exporter -config config.yml
 ```
 
 Note that `grok_exporter` terminates as soon as it finishes reading from `stdin`.
-That means, if you run `cat sample.log | grok_exporter -config config.yml`, the exporter will terminate as soon as `sample.log` is processed.
-In order to keep `grok_exporter` running, always use a command that keeps the output open, like `tail -f -n +1 sample.log | grok_exporter -config config.yml`.
+That means, if we run `cat sample.log | grok_exporter -config config.yml`,
+the exporter will terminate as soon as `sample.log` is processed,
+and we will not be able to access the result via HTTP(S) after that.
+Always use a command that keeps the output open (like `tail -f`) when testing the `grok_exporter` with the `stdin` input.
 
 ### Webhook Input Type
 
-The `grok_exporter` is capable of receive log entries from webhook sources.  It supports webhook reception in various formats... plain-text or JSON, single entries or bulk entries.
+The grok_exporter is capable of receive log entries from webhook sources.  It supports webhook reception in various formats... plain-text or JSON, single entries or bulk entries.
 
 The following input configuration example which demonstrates how to configure grok_exporter to receive HTTP webhooks from the [Logstash HTTP Output Plugin](https://www.elastic.co/guide/en/logstash/current/plugins-outputs-http.html) configured in `json_batch` mode, which allows the transmission of multiple json log entries in a single webhook.
 
@@ -198,80 +175,32 @@ input:
     webhook_text_bulk_separator: "\n\n"
 ```
 
-This configuration example may be found in the examples directory [here](example/config_logstash_http_input_ipv6.yml).
+This configuration example may be found in the examples directory
+[here](example/config_logstash_http_input_ipv6.yml).
 
-imports Section
----------------
+Grok Section
+------------
 
-The imports section is used to load `grok_patterns` and `metrics` from external configuration files.
-This is optional, the configuration can be defined directly in the configuration file, as described in the
-[grok_patterns Section] and the [metrics Section] below.
-
-Example:
+The `grok` section configures the available Grok patterns. An example configuration is as follows:
 
 ```yaml
-imports:
-- type: grok_patterns
-  dir: ./logstash-patterns-core/patterns
-- type: metrics
-  file: /etc/grok_exporter/metrics.d/*.yaml
-  defaults:
-    path: /var/log/syslog/*
-    retention: 2h30m0s
-    buckets: [0, 1, 2, 3]
-    quantiles: {0.5: 0.05, 0.9: 0.02, 0.99: 0.002}
-    labels:
-      logfile: '{{base .logfile}}'
+grok:
+    patterns_dir: ./logstash-patterns-core/patterns
+    additional_patterns:
+    - 'EXIM_MESSAGE [a-zA-Z ]*'
+    - 'EXIM_SENDER_ADDRESS F=<%{EMAILADDRESS}>'
 ```
 
-The `type` can either be `grok_patterns` or `metrics`. Each import can either specify a `file` or a `dir`.
-The `file` is either a path to a config file, or a [Glob] pattern matching multiple config files.
-The `dir` is a directory, all files in that directory will be imported.
+In most cases, we will have a directory containing the Grok pattern files. Grok's default pattern directory is included in the `grok_exporter` release. The path to this directory is configured with `patterns_dir`.
 
-### grok_patterns import type
+There are two ways to define additional Grok patterns:
 
-The [grok_exporter releases](https://github.com/fstab/grok_exporter/releases) contain a `patterns/` directory with the pre-defined grok patterns from [github.com/logstash-patterns-core].
-If you want to use them, configure an import for this directory. See the [grok_patterns Section] below for more information on the `grok_patterns`.
+1. Create a custom pattern file and store it in the `patterns_dir` directory.
+2. Add pattern definitions directly to the `grok_exporter` configuration. This can be done via the `additional_patterns` configuration. It takes a list of pattern definitions. The pattern definitions have the same format as the lines in the Grok pattern files.
 
-### metrics import type
+Grok patterns are simply key/value pairs: The key is the pattern name, and the value is a Grok macro defining a regular expression. There is a lot of documentation available on Grok patterns: The [logstash-patterns-core repository] contains [pre-defined patterns], the [Grok documentation] shows how patterns are defined, and there are online pattern builders available here: [http://grokdebug.herokuapp.com] and here: [http://grokconstructor.appspot.com].
 
-The external `metrics` configuration files are YAML files containing a list of metrics definitions. The contents is the same as in the [metrics Section].
-
-When importing metrics from external files, you can specify some default values in the `imports` section. If an imported metric configuration does not contain that value,
-the default from the `imports` is used. You can specify defaults for the following values:
-
-* `path`, `paths`
-* `retention`
-* `buckets`
-* `quantiles`
-* `labels` (will be merged with the labels defined in the imported metrics)
-
-The meaning of these values is defined in the [metrics Section] below.
-
-grok_patterns Section
----------------------
-
-As described in the [metrics Section] below, each metric uses a regular expression to match log lines.
-Regular expressions quickly become complex and hard to read. [Grok patterns] are a way to break down regular expression
-into smaller snippets to improve readability.
-
-The `grok_patterns` section configures these Grok patterns as a list of `name regular-expression-snippet` pairs.
-The regular expression snippets may themselves reference Grok patterns with the `%{name}` syntax.
-
-An example of a `grok_patterns` section is as follows:
-
-```yaml
-grok_patterns:
-  - 'EXIM_MESSAGE [a-zA-Z ]*'
-  - 'EXIM_SENDER_ADDRESS F=<%{EMAILADDRESS}>'
-```
-
-See the [metrics Section] below for more examples of Grok patterns and how to use them.
-
-The `grok_patterns` section is optional. If you want to use plain regular expressions, you don't need to define Grok patterns.
-
-The `grok_exporter` distribution includes a directory of pre-defined Grok patterns. These are taken from [github.com/logstash-patterns-core].
-This directory can be imported as defined in the [imports Section] above.
+At least one of `patterns_dir` or `additional_patterns` is required: If `patterns_dir` is missing all patterns must be defined directly in the `additional_patterns` config. If `additional_patterns` is missing all patterns must be defined in the `patterns_dir`.
 
 Metrics Section
 ---------------
@@ -312,19 +241,19 @@ metrics:
 
 The `match` is a regular expression. In the simple example above, `alice` is a regular expression matching the string _alice_.
 
-Regular expressions quickly become hard to read. [Grok patterns] are pre-defined regular expression snippets that you can use in your `match` patterns. For example, a complete `match` pattern for the log lines above looks like this:
+Regular expressions quickly become hard to read. [Grok patterns](https://www.elastic.co/guide/en/logstash/current/plugins-filters-grok.html#_grok_basics) are pre-defined regular expression snippets that you can use in your `match` patterns. For example, a complete `match` pattern for the log lines above looks like this:
 
 ```grok
 %{DATE} %{TIME} %{USER} %{NUMBER}
 ```
 
-The actual regular expression snippets referenced by `DATE`, `TIME`, `USER`, and `NUMBER` are defined in [github.com/logstash-patterns-core].
+The actual regular expression snippets referenced by `DATE`, `TIME`, `USER`, and `NUMBER` are defined in [logstash-patterns-core/patterns/grok-patterns](https://github.com/logstash-plugins/logstash-patterns-core/blob/6d25c13c15f98843513f7cdc07f0fb41fbd404ef/patterns/grok-patterns).
 
 ### Labels
 
 One of the main features of Prometheus is its multi-dimensional data model: A Prometheus metric can be further partitioned using labels.
 
-In order to define a label, you need two steps. First: Define a Grok field name in the `match:` pattern. Second: Add label template under `labels:`.
+In order to define a label, you need to first define a Grok field name in the `match:` pattern, and second add label template under `labels:`.
 
 1. _Define Grok field names._ In Grok, each field, like `%{USER}`, can be given a name, like `%{USER:user}`. The name `user` can then be used in label templates.
 2. _Define label templates._ Each metric type supports `labels`, which is a map of name/template pairs. The name will be used in Prometheus as the label name. The template is a [Go template] that may contain references to Grok fields, like `{{.user}}`.
@@ -620,12 +549,6 @@ How to Configure Durations
 * `1m30s`: 1 minute and 30 seconds
 * `5m`: 5 minutes
 
-[Glob]: https://en.wikipedia.org/wiki/Glob_(programming)
-[global Section]: #global-section
-[imports Section]: #imports-section
-[grok_patterns Section]: #grok_patterns-section
-[metrics Section]: #metrics-section
-[match]: #match
 [example/config.yml]: example/config.yml
 [How to Configure Durations]: #how-to-configure-durations
 [logstash-patterns-core repository]: https://github.com/logstash-plugins/logstash-patterns-core
@@ -648,6 +571,3 @@ How to Configure Durations
 [histograms and summaries]: https://prometheus.io/docs/practices/histograms/
 [time.ParseDuration()]: https://golang.org/pkg/time/#ParseDuration
 [http://localhost:9144/metrics]: http://localhost:9144/metrics
-[github.com/logstash-patterns-core]: https://github.com/logstash-plugins/logstash-patterns-core/tree/master/patterns
-[Grok patterns]: https://www.elastic.co/guide/en/logstash/current/plugins-filters-grok.html#_grok_basics
-[github.com/logstash-patterns-core]: https://github.com/logstash-plugins/logstash-patterns-core/tree/master/patterns

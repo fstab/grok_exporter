@@ -426,10 +426,10 @@ func TestImportSuccess(t *testing.T) {
 	if len(cfg.AllMetrics) != 5 {
 		t.Fatalf("expected 5 metrics, but found %v", len(cfg.AllMetrics))
 	}
-	expectMetric(t, cfg.AllMetrics[1], "test_histogram_1", []string{"/var/log/syslog/2021-*.log", "/var/log/syslog/2022-*.log"}, 4, 0, 2 * time.Hour + 30 * time.Minute)
-	expectMetric(t, cfg.AllMetrics[2], "test_summary_1", []string{"/var/log/syslog/*"}, 0, 3, 4 * time.Hour + 30 * time.Minute)
-	expectMetric(t, cfg.AllMetrics[3], "test_histogram_2", []string{"/var/log/syslog/*"}, 5, 0, 5 * time.Hour + 30 * time.Minute)
-	expectMetric(t, cfg.AllMetrics[4], "test_summary_2", []string{"/var/log/syslog/*"}, 0, 4, 2 * time.Hour + 30 * time.Minute)
+	expectMetric(t, cfg.AllMetrics[1], "test_histogram_1", []string{"/var/log/syslog/2021-*.log", "/var/log/syslog/2022-*.log"}, 4, 0, 2*time.Hour+30*time.Minute)
+	expectMetric(t, cfg.AllMetrics[2], "test_summary_1", []string{"/var/log/syslog/*"}, 0, 3, 4*time.Hour+30*time.Minute)
+	expectMetric(t, cfg.AllMetrics[3], "test_histogram_2", []string{"/var/log/syslog/*"}, 5, 0, 5*time.Hour+30*time.Minute)
+	expectMetric(t, cfg.AllMetrics[4], "test_summary_2", []string{"/var/log/syslog/*"}, 0, 4, 2*time.Hour+30*time.Minute)
 }
 
 func expectMetric(t *testing.T, metric MetricConfig, name string, paths []string, bucketLen, quantilesLen int, retention time.Duration) {

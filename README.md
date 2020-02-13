@@ -35,22 +35,24 @@ Example configuration:
 
 ```yaml
 global:
-    config_version: 2
+  config_version: 3
 input:
-    type: file
-    path: ./example/example.log
-    readall: true
-grok:
-    patterns_dir: ./logstash-patterns-core/patterns
+  type: file
+  path: ./example/example.log
+  readall: true
+imports:
+- type: grok_patterns
+  dir: ./logstash-patterns-core/patterns
 metrics:
-    - type: counter
-      name: grok_example_lines_total
-      help: Counter metric example with labels.
-      match: '%{DATE} %{TIME} %{USER:user} %{NUMBER}'
-      labels:
-          user: '{{.user}}'
+- type: counter
+  name: grok_example_lines_total
+  help: Counter metric example with labels.
+  match: '%{DATE} %{TIME} %{USER:user} %{NUMBER}'
+  labels:
+    user: '{{.user}}'
+    logfile: '{{base .logfile}}'
 server:
-    port: 9144
+  port: 9144
 ```
 
 [CONFIG.md] describes the `grok_exporter` configuration file and shows how to define Grok patterns, Prometheus metrics, and labels.  It also details how to configure file, stdin, and webhook inputs.
