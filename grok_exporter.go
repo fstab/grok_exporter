@@ -32,9 +32,10 @@ import (
 )
 
 var (
-	printVersion = flag.Bool("version", false, "Print the grok_exporter version.")
-	configPath   = flag.String("config", "", "Path to the config file. Try '-config ./example/config.yml' to get started.")
-	showConfig   = flag.Bool("showconfig", false, "Print the current configuration to the console. Example: 'grok_exporter -showconfig -config ./example/config.yml'")
+	printVersion           = flag.Bool("version", false, "Print the grok_exporter version.")
+	configPath             = flag.String("config", "", "Path to the config file. Try '-config ./example/config.yml' to get started.")
+	showConfig             = flag.Bool("showconfig", false, "Print the current configuration to the console. Example: 'grok_exporter -showconfig -config ./example/config.yml'")
+	disableExporterMetrics = flag.Bool("disable-exporter-metrics", false, "If this flag is set, the metrics about the exporter itself (go_*, process_*, promhttp_*) will be excluded from /metrics")
 )
 
 var (
@@ -67,27 +68,39 @@ func main() {
 		fmt.Printf("%v\n", cfg)
 		return
 	}
+	registry := prometheus.NewRegistry()
+	if !*disableExporterMetrics {
+		// init like the default registry, see client_golang/prometheus/registry.go init()
+		registry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
+		registry.MustRegister(prometheus.NewGoCollector())
+	}
 	patterns, err := initPatterns(cfg)
 	exitOnError(err)
 	metrics, err := createMetrics(cfg, patterns)
 	exitOnError(err)
 	for _, m := range metrics {
-		prometheus.MustRegister(m.Collector())
+		registry.MustRegister(m.Collector())
 	}
-	nLinesTotal, nMatchesByMetric, procTimeMicrosecondsByMetric, nErrorsByMetric := initSelfMonitoring(metrics)
+	nLinesTotal, nMatchesByMetric, procTimeMicrosecondsByMetric, nErrorsByMetric := initSelfMonitoring(metrics, registry)
 
-	tail, err := startTailer(cfg)
+	tail, err := startTailer(cfg, registry)
 	exitOnError(err)
 
 	// gather up the handlers with which to start the webserver
-	httpHandlers := []exporter.HttpServerPathHandler{}
+	var httpHandlers []exporter.HttpServerPathHandler
+	metricsHandler := promhttp.HandlerFor(registry, promhttp.HandlerOpts{})
+	if !*disableExporterMetrics {
+		metricsHandler = promhttp.InstrumentMetricHandler(registry, metricsHandler)
+	}
 	httpHandlers = append(httpHandlers, exporter.HttpServerPathHandler{
 		Path:    cfg.Server.Path,
-		Handler: promhttp.Handler()})
+		Handler: metricsHandler,
+	})
 	if cfg.Input.Type == "webhook" {
 		httpHandlers = append(httpHandlers, exporter.HttpServerPathHandler{
 			Path:    cfg.Input.WebhookPath,
-			Handler: tailer.WebhookHandler()})
+			Handler: tailer.WebhookHandler(),
+		})
 	}
 
 	fmt.Print(startMsg(cfg, httpHandlers))
@@ -250,7 +263,7 @@ func createMetrics(cfg *v3.Config, patterns *exporter.Patterns) ([]exporter.Metr
 	return result, nil
 }
 
-func initSelfMonitoring(metrics []exporter.Metric) (*prometheus.CounterVec, *prometheus.CounterVec, *prometheus.CounterVec, *prometheus.CounterVec) {
+func initSelfMonitoring(metrics []exporter.Metric, registry prometheus.Registerer) (*prometheus.CounterVec, *prometheus.CounterVec, *prometheus.CounterVec, *prometheus.CounterVec) {
 	buildInfo := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "grok_exporter_build_info",
 		Help: "A metric with a constant '1' value labeled by version, builddate, branch, revision, goversion, and platform on which grok_exporter was built.",
@@ -272,11 +285,11 @@ func initSelfMonitoring(metrics []exporter.Metric) (*prometheus.CounterVec, *pro
 		Help: "Number of errors for each metric. If this is > 0 there is an error in the configuration file. Check grok_exporter's console output.",
 	}, []string{"metric"})
 
-	prometheus.MustRegister(buildInfo)
-	prometheus.MustRegister(nLinesTotal)
-	prometheus.MustRegister(nMatchesByMetric)
-	prometheus.MustRegister(procTimeMicrosecondsByMetric)
-	prometheus.MustRegister(nErrorsByMetric)
+	registry.MustRegister(buildInfo)
+	registry.MustRegister(nLinesTotal)
+	registry.MustRegister(nMatchesByMetric)
+	registry.MustRegister(procTimeMicrosecondsByMetric)
+	registry.MustRegister(nErrorsByMetric)
 
 	buildInfo.WithLabelValues(exporter.Version, exporter.BuildDate, exporter.Branch, exporter.Revision, exporter.GoVersion, exporter.Platform).Set(1)
 	// Initializing a value with zero makes the label appear. Otherwise the label is not shown until the first value is observed.
@@ -310,7 +323,7 @@ func startServer(cfg v3.ServerConfig, httpHandlers []exporter.HttpServerPathHand
 	return serverErrors
 }
 
-func startTailer(cfg *v3.Config) (fswatcher.FileTailer, error) {
+func startTailer(cfg *v3.Config, registry prometheus.Registerer) (fswatcher.FileTailer, error) {
 	var (
 		tail fswatcher.FileTailer
 		err  error
@@ -337,6 +350,6 @@ func startTailer(cfg *v3.Config) (fswatcher.FileTailer, error) {
 	default:
 		return nil, fmt.Errorf("Config error: Input type '%v' unknown.", cfg.Input.Type)
 	}
-	bufferLoadMetric := exporter.NewBufferLoadMetric(logger, cfg.Input.MaxLinesInBuffer > 0)
+	bufferLoadMetric := exporter.NewBufferLoadMetric(logger, cfg.Input.MaxLinesInBuffer > 0, registry)
 	return tailer.BufferedTailerWithMetrics(tail, bufferLoadMetric, logger, cfg.Input.MaxLinesInBuffer), nil
 }

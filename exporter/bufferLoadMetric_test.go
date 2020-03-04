@@ -15,13 +15,14 @@
 package exporter
 
 import (
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"testing"
 	"time"
 )
 
 func TestBufferLoadMetric(t *testing.T) {
-	m := NewBufferLoadMetric(logrus.New(), false)
+	m := NewBufferLoadMetric(logrus.New(), false, prometheus.NewRegistry())
 	c := make(chan time.Time)
 	tick := &time.Ticker{
 		C: c,
@@ -159,7 +160,7 @@ func expectValues(t *testing.T, m *bufferLoadMetric, min15s, min30s, min45s, min
 }
 
 func TestResetBufferLoadMetrics(t *testing.T) {
-	m := NewBufferLoadMetric(logrus.New(), false)
+	m := NewBufferLoadMetric(logrus.New(), false, prometheus.NewRegistry())
 	c := make(chan time.Time)
 	tick := &time.Ticker{
 		C: c,

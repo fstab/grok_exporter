@@ -43,13 +43,15 @@ type bufferLoadMetric struct {
 	tick                           *time.Ticker
 	log                            logrus.FieldLogger
 	lineLimitSet                   bool
+	registry                       prometheus.Registerer
 }
 
-func NewBufferLoadMetric(log logrus.FieldLogger, lineLimitSet bool) *bufferLoadMetric {
+func NewBufferLoadMetric(log logrus.FieldLogger, lineLimitSet bool, registry prometheus.Registerer) *bufferLoadMetric {
 	m := &bufferLoadMetric{
 		mutex:        sync.NewCond(&sync.Mutex{}),
 		log:          log,
 		lineLimitSet: lineLimitSet,
+		registry:     registry,
 	}
 	return m
 }
@@ -66,7 +68,7 @@ func (m *bufferLoadMetric) start(ticker *time.Ticker, tickProcessed chan struct{
 		Name: "grok_exporter_line_buffer_load",
 		Help: "Number of lines that are read from the logfile and waiting to be processed.",
 	}, []string{"value", "interval"})
-	prometheus.MustRegister(m.bufferLoad)
+	m.registry.MustRegister(m.bufferLoad)
 	m.bufferLoad.With(minLabel).Set(0)
 	m.bufferLoad.With(maxLabel).Set(0)
 	go func() {
