@@ -25,6 +25,13 @@ import (
 	"strings"
 )
 
+type context_string struct {
+	// The log line itself
+	line string
+	// Optional extra context to be made available to go templating
+	extra map[string]interface{}
+}
+
 type WebhookTailer struct {
 	lines  chan *fswatcher.Line
 	errors chan fswatcher.Error
@@ -88,27 +95,31 @@ func (t WebhookTailer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	lines := WebhookProcessBody(wts.config, b)
-	for _, line := range lines {
+	context_strings := WebhookProcessBody(wts.config, b)
+	for _, context_string := range context_strings {
 		logrus.WithFields(logrus.Fields{
-			"line": line,
+			"line": context_string.line,
+			"extra": context_string.extra,
 		}).Debug("Groking line")
-		lineChan <- &fswatcher.Line{Line: line}
+		lineChan <- &fswatcher.Line{Line: context_string.line, Extra: context_string.extra}
 	}
 	return
 }
 
-func WebhookProcessBody(c *configuration.InputConfig, b []byte) []string {
+func WebhookProcessBody(c *configuration.InputConfig, b []byte) []context_string {
 
-	strs := []string{}
+	strs := []context_string{}
 
 	switch c.WebhookFormat {
 	case "text_single":
-		s := strings.TrimSpace(string(b))
+		s := context_string{line: strings.TrimSpace(string(b))}
 		strs = append(strs, s)
 	case "text_bulk":
 		s := strings.TrimSpace(string(b))
-		strs = strings.Split(s, c.WebhookTextBulkSeparator)
+		lines := strings.Split(s, c.WebhookTextBulkSeparator)
+		for _, s := range lines {
+			strs = append(strs, context_string{line: s})
+		}
 	case "json_single":
 		path := strings.Split(c.WebhookJsonSelector[1:], ".")
 		j, err := json.NewJson(b)
@@ -126,7 +137,7 @@ func WebhookProcessBody(c *configuration.InputConfig, b []byte) []string {
 			}).Warn("Unable to find selector path")
 			break
 		}
-		strs = append(strs, s)
+		strs = append(strs, context_string{line: s, extra: j.MustMap()})
 	case "json_bulk":
 		path := strings.Split(c.WebhookJsonSelector[1:], ".")
 		j, err := json.NewJson(b)
@@ -153,7 +164,7 @@ func WebhookProcessBody(c *configuration.InputConfig, b []byte) []string {
 				}).Warn("Unable to find selector path")
 				break
 			}
-			strs = append(strs, s)
+			strs = append(strs, context_string{line: s, extra: ej.MustMap()})
 		}
 	default:
 		// error silently
@@ -161,7 +172,7 @@ func WebhookProcessBody(c *configuration.InputConfig, b []byte) []string {
 
 	// Trim whitespace before and after every log entry
 	for i := range strs {
-		strs[i] = strings.TrimSpace(strs[i])
+		strs[i] = context_string{line: strings.TrimSpace(strs[i].line), extra: strs[i].extra}
 	}
 
 	return strs

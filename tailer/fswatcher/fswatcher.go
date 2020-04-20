@@ -34,6 +34,7 @@ type FileTailer interface {
 type Line struct {
 	Line string
 	File string
+	Extra interface{}
 }
 
 // ideas how this might look like in the config file:
