@@ -162,8 +162,8 @@ func main() {
 	}
 }
 
-func makeAdditionalFields(line *fswatcher.Line) map[string]string {
-	return map[string]string{
+func makeAdditionalFields(line *fswatcher.Line) map[string]interface{} {
+	return map[string]interface{}{
 		logfile: line.File,
 	}
 }

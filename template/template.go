@@ -26,7 +26,7 @@ import (
 // Executing this template is similar to text/template.Template.Execute(), and
 // ReferencedGrokFields() yields {"field1", "field2", "field3"}
 type Template interface {
-	Execute(grokValues map[string]string) (string, error)
+	Execute(grokValues map[string]interface{}) (string, error)
 	ReferencedGrokFields() []string
 	Name() string
 }
@@ -57,7 +57,7 @@ func (t *templateImpl) Name() string {
 	return t.template.Name()
 }
 
-func (t *templateImpl) Execute(grokValues map[string]string) (string, error) {
+func (t *templateImpl) Execute(grokValues map[string]interface{}) (string, error) {
 	var buf bytes.Buffer
 	err := t.template.Execute(&buf, grokValues)
 	if err != nil {
