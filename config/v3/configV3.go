@@ -265,7 +265,14 @@ func (c *InputConfig) addDefaults() {
 
 func (c *GrokPatternsConfig) addDefaults() {}
 
-func (c *MetricsConfig) addDefaults() {}
+func (c *MetricsConfig) addDefaults() {
+	for i := range *c {
+		metric := &(*c)[i]
+		if metric.Type == "counter" && len(metric.Value) == 0 {
+			metric.Value = "1.0"
+		}
+	}
+}
 
 func (c *ServerConfig) addDefaults() {
 	if c.Protocol == "" {
@@ -470,24 +477,22 @@ func (c *MetricConfig) validate() error {
 	if err != nil {
 		return err
 	}
-	var hasValue, cumulativeAllowed, bucketsAllowed, quantilesAllowed bool
+	var cumulativeAllowed, bucketsAllowed, quantilesAllowed bool
 	switch c.Type {
 	case "counter":
-		hasValue, cumulativeAllowed, bucketsAllowed, quantilesAllowed = false, false, false, false
+		cumulativeAllowed, bucketsAllowed, quantilesAllowed = false, false, false
 	case "gauge":
-		hasValue, cumulativeAllowed, bucketsAllowed, quantilesAllowed = true, true, false, false
+		cumulativeAllowed, bucketsAllowed, quantilesAllowed = true, false, false
 	case "histogram":
-		hasValue, cumulativeAllowed, bucketsAllowed, quantilesAllowed = true, false, true, false
+		cumulativeAllowed, bucketsAllowed, quantilesAllowed = false, true, false
 	case "summary":
-		hasValue, cumulativeAllowed, bucketsAllowed, quantilesAllowed = true, false, false, true
+		cumulativeAllowed, bucketsAllowed, quantilesAllowed = false, false, true
 	default:
 		return fmt.Errorf("Invalid 'metrics.type': '%v'. We currently only support 'counter' and 'gauge'.", c.Type)
 	}
 	switch {
-	case hasValue && len(c.Value) == 0:
+	case len(c.Value) == 0:
 		return fmt.Errorf("Invalid metric configuration: 'metrics.value' must not be empty for %v metrics.", c.Type)
-	case !hasValue && len(c.Value) > 0:
-		return fmt.Errorf("Invalid metric configuration: 'metrics.value' cannot be used for %v metrics.", c.Type)
 	case !cumulativeAllowed && c.Cumulative:
 		return fmt.Errorf("Invalid metric configuration: 'metrics.cumulative' cannot be used for %v metrics.", c.Type)
 	case !bucketsAllowed && len(c.Buckets) > 0:
@@ -586,11 +591,9 @@ func (metric *MetricConfig) InitTemplates() error {
 			*t.dest = append(*t.dest, tmplt)
 		}
 	}
-	if len(metric.Value) > 0 {
-		metric.ValueTemplate, err = template.New("__value__", metric.Value)
-		if err != nil {
-			return fmt.Errorf(msg, "value", metric.Name, err.Error())
-		}
+	metric.ValueTemplate, err = template.New("__value__", metric.Value)
+	if err != nil {
+		return fmt.Errorf(msg, "value", metric.Name, err.Error())
 	}
 	return nil
 }

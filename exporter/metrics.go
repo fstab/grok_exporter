@@ -70,12 +70,12 @@ type observeMetricWithLabels struct {
 }
 
 type counterMetric struct {
-	metric
+	observeMetric
 	counter prometheus.Counter
 }
 
 type counterVecMetric struct {
-	metricWithLabels
+	observeMetricWithLabels
 	counterVec *prometheus.CounterVec
 }
 
@@ -163,22 +163,6 @@ func (m *summaryVecMetric) Collector() prometheus.Collector {
 	return m.summaryVec
 }
 
-func (m *metric) processMatch(line string, callback func() bool) (*Match, error) {
-	searchResult, err := m.regex.Search(line)
-	if err != nil {
-		return nil, fmt.Errorf("error processing metric %v: %v", m.Name(), err.Error())
-	}
-	defer searchResult.Free()
-	if searchResult.IsMatch() {
-		if callback() {
-			return &Match{
-				Value: 1.0,
-			}, nil
-		}
-	}
-	return nil, nil
-}
-
 func (m *observeMetric) processMatch(line string, callback func(value float64) bool) (*Match, error) {
 	searchResult, err := m.regex.Search(line)
 	if err != nil {
@@ -193,28 +177,6 @@ func (m *observeMetric) processMatch(line string, callback func(value float64) b
 		if callback(floatVal) {
 			return &Match{
 				Value: floatVal,
-			}, nil
-		}
-	}
-	return nil, nil
-}
-
-func (m *metricWithLabels) processMatch(line string, additionalFields map[string]string, callback func(labels map[string]string) bool) (*Match, error) {
-	searchResult, err := m.regex.Search(line)
-	if err != nil {
-		return nil, fmt.Errorf("error while processing metric %v: %v", m.Name(), err.Error())
-	}
-	defer searchResult.Free()
-	if searchResult.IsMatch() {
-		labels, err := labelValues(m.Name(), searchResult, m.labelTemplates, additionalFields)
-		if err != nil {
-			return nil, err
-		}
-		m.labelValueTracker.Observe(labels)
-		if callback(labels) {
-			return &Match{
-				Value:	1.0,
-				Labels: labels,
 			}, nil
 		}
 	}
@@ -300,15 +262,21 @@ func (m *metricWithLabels) processRetention(vec deleterMetric) error {
 }
 
 func (m *counterMetric) ProcessMatch(line string, additionalFields map[string]string) (*Match, error) {
-	return m.processMatch(line, func() bool {
-		m.counter.Inc()
+	return m.processMatch(line, func(value float64) bool {
+		if value < 0 {
+			return false
+		}
+		m.counter.Add(value)
 		return true
 	})
 }
 
 func (m *counterVecMetric) ProcessMatch(line string, additionalFields map[string]string) (*Match, error) {
-	return m.processMatch(line, additionalFields, func(labels map[string]string) bool {
-		m.counterVec.With(labels).Inc()
+	return m.processMatch(line, additionalFields, func(value float64, labels map[string]string) bool {
+		if value < 0 {
+			return false
+		}
+		m.counterVec.With(labels).Add(value)
 		return true
 	})
 }
@@ -435,13 +403,13 @@ func NewCounterMetric(cfg *configuration.MetricConfig, regex *oniguruma.Regex, d
 	}
 	if len(cfg.Labels) == 0 {
 		return &counterMetric{
-			metric:  newMetric(cfg, regex, deleteRegex),
+			observeMetric: newObserveMetric(cfg, regex, deleteRegex),
 			counter: prometheus.NewCounter(counterOpts),
 		}
 	} else {
 		return &counterVecMetric{
-			metricWithLabels: newMetricWithLabels(cfg, regex, deleteRegex),
-			counterVec:       prometheus.NewCounterVec(counterOpts, prometheusLabels(cfg.LabelTemplates)),
+			observeMetricWithLabels: newObserveMetricWithLabels(cfg, regex, deleteRegex),
+			counterVec:		 prometheus.NewCounterVec(counterOpts, prometheusLabels(cfg.LabelTemplates)),
 		}
 	}
 }
