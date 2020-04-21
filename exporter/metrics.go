@@ -163,14 +163,14 @@ func (m *summaryVecMetric) Collector() prometheus.Collector {
 	return m.summaryVec
 }
 
-func (m *metric) processMatch(line string, cb func()) (*Match, error) {
+func (m *metric) processMatch(line string, callback func()) (*Match, error) {
 	searchResult, err := m.regex.Search(line)
 	if err != nil {
 		return nil, fmt.Errorf("error processing metric %v: %v", m.Name(), err.Error())
 	}
 	defer searchResult.Free()
 	if searchResult.IsMatch() {
-		cb()
+		callback()
 		return &Match{
 			Value: 1.0,
 		}, nil
@@ -179,7 +179,7 @@ func (m *metric) processMatch(line string, cb func()) (*Match, error) {
 	}
 }
 
-func (m *observeMetric) processMatch(line string, cb func(value float64)) (*Match, error) {
+func (m *observeMetric) processMatch(line string, callback func(value float64)) (*Match, error) {
 	searchResult, err := m.regex.Search(line)
 	if err != nil {
 		return nil, fmt.Errorf("error processing metric %v: %v", m.Name(), err.Error())
@@ -190,7 +190,7 @@ func (m *observeMetric) processMatch(line string, cb func(value float64)) (*Matc
 		if err != nil {
 			return nil, err
 		}
-		cb(floatVal)
+		callback(floatVal)
 		return &Match{
 			Value: floatVal,
 		}, nil
