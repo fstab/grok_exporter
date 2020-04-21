@@ -458,7 +458,8 @@ metrics:
     - type: counter
       name: grok_example_lines_total
       help: Example counter metric with labels.
-      match: '%{DATE} %{TIME} %{USER:user} %{NUMBER}'
+      match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
+      value: '{{.val}}'
       labels:
           user: '{{.user}}'
 ```
@@ -468,6 +469,7 @@ The configuration is as follows:
 * `name` is the name of the metric. Metric names are described in the [Prometheus data model documentation].
 * `help` is a comment describing the metric.
 * `match` is the Grok expression. See the [Grok documentation] for more info.
+* `value` is an optional [Go template] for the value to be monitored. The template must evaluate to a valid positive number. The template may use to Grok fields from the `match` patterns, like the label templates described above.
 * `labels` is an optional map of name/template pairs, as described above.
 
 Output for the example log lines above:
