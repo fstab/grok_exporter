@@ -163,23 +163,23 @@ func (m *summaryVecMetric) Collector() prometheus.Collector {
 	return m.summaryVec
 }
 
-func (m *metric) processMatch(line string, callback func()) (*Match, error) {
+func (m *metric) processMatch(line string, callback func() bool) (*Match, error) {
 	searchResult, err := m.regex.Search(line)
 	if err != nil {
 		return nil, fmt.Errorf("error processing metric %v: %v", m.Name(), err.Error())
 	}
 	defer searchResult.Free()
 	if searchResult.IsMatch() {
-		callback()
-		return &Match{
-			Value: 1.0,
-		}, nil
-	} else {
-		return nil, nil
+		if callback() {
+			return &Match{
+				Value: 1.0,
+			}, nil
+		}
 	}
+	return nil, nil
 }
 
-func (m *observeMetric) processMatch(line string, callback func(value float64)) (*Match, error) {
+func (m *observeMetric) processMatch(line string, callback func(value float64) bool) (*Match, error) {
 	searchResult, err := m.regex.Search(line)
 	if err != nil {
 		return nil, fmt.Errorf("error processing metric %v: %v", m.Name(), err.Error())
@@ -190,16 +190,16 @@ func (m *observeMetric) processMatch(line string, callback func(value float64)) 
 		if err != nil {
 			return nil, err
 		}
-		callback(floatVal)
-		return &Match{
-			Value: floatVal,
-		}, nil
-	} else {
-		return nil, nil
+		if callback(floatVal) {
+			return &Match{
+				Value: floatVal,
+			}, nil
+		}
 	}
+	return nil, nil
 }
 
-func (m *metricWithLabels) processMatch(line string, additionalFields map[string]string, callback func(labels map[string]string)) (*Match, error) {
+func (m *metricWithLabels) processMatch(line string, additionalFields map[string]string, callback func(labels map[string]string) bool) (*Match, error) {
 	searchResult, err := m.regex.Search(line)
 	if err != nil {
 		return nil, fmt.Errorf("error while processing metric %v: %v", m.Name(), err.Error())
@@ -211,17 +211,17 @@ func (m *metricWithLabels) processMatch(line string, additionalFields map[string
 			return nil, err
 		}
 		m.labelValueTracker.Observe(labels)
-		callback(labels)
-		return &Match{
-			Value:  1.0,
-			Labels: labels,
-		}, nil
-	} else {
-		return nil, nil
+		if callback(labels) {
+			return &Match{
+				Value:	1.0,
+				Labels: labels,
+			}, nil
+		}
 	}
+	return nil, nil
 }
 
-func (m *observeMetricWithLabels) processMatch(line string, additionalFields map[string]string, callback func(value float64, labels map[string]string)) (*Match, error) {
+func (m *observeMetricWithLabels) processMatch(line string, additionalFields map[string]string, callback func(value float64, labels map[string]string) bool) (*Match, error) {
 	searchResult, err := m.regex.Search(line)
 	if err != nil {
 		return nil, fmt.Errorf("error processing metric %v: %v", m.Name(), err.Error())
@@ -237,14 +237,14 @@ func (m *observeMetricWithLabels) processMatch(line string, additionalFields map
 			return nil, err
 		}
 		m.labelValueTracker.Observe(labels)
-		callback(floatVal, labels)
-		return &Match{
-			Value:  floatVal,
-			Labels: labels,
-		}, nil
-	} else {
-		return nil, nil
+		if callback(floatVal, labels) {
+			return &Match{
+				Value:  floatVal,
+				Labels: labels,
+			}, nil
+		}
 	}
+	return nil, nil
 }
 
 func (m *metric) ProcessDeleteMatch(line string, additionalFields map[string]string) (*Match, error) {
@@ -300,14 +300,16 @@ func (m *metricWithLabels) processRetention(vec deleterMetric) error {
 }
 
 func (m *counterMetric) ProcessMatch(line string, additionalFields map[string]string) (*Match, error) {
-	return m.processMatch(line, func() {
+	return m.processMatch(line, func() bool {
 		m.counter.Inc()
+		return true
 	})
 }
 
 func (m *counterVecMetric) ProcessMatch(line string, additionalFields map[string]string) (*Match, error) {
-	return m.processMatch(line, additionalFields, func(labels map[string]string) {
+	return m.processMatch(line, additionalFields, func(labels map[string]string) bool {
 		m.counterVec.With(labels).Inc()
+		return true
 	})
 }
 
@@ -320,22 +322,24 @@ func (m *counterVecMetric) ProcessRetention() error {
 }
 
 func (m *gaugeMetric) ProcessMatch(line string, additionalFields map[string]string) (*Match, error) {
-	return m.processMatch(line, func(value float64) {
+	return m.processMatch(line, func(value float64) bool {
 		if m.cumulative {
 			m.gauge.Add(value)
 		} else {
 			m.gauge.Set(value)
 		}
+		return true
 	})
 }
 
 func (m *gaugeVecMetric) ProcessMatch(line string, additionalFields map[string]string) (*Match, error) {
-	return m.processMatch(line, additionalFields, func(value float64, labels map[string]string) {
+	return m.processMatch(line, additionalFields, func(value float64, labels map[string]string) bool {
 		if m.cumulative {
 			m.gaugeVec.With(labels).Add(value)
 		} else {
 			m.gaugeVec.With(labels).Set(value)
 		}
+		return true
 	})
 }
 
@@ -348,14 +352,16 @@ func (m *gaugeVecMetric) ProcessRetention() error {
 }
 
 func (m *histogramMetric) ProcessMatch(line string, additionalFields map[string]string) (*Match, error) {
-	return m.processMatch(line, func(value float64) {
+	return m.processMatch(line, func(value float64) bool {
 		m.histogram.Observe(value)
+		return true
 	})
 }
 
 func (m *histogramVecMetric) ProcessMatch(line string, additionalFields map[string]string) (*Match, error) {
-	return m.processMatch(line, additionalFields, func(value float64, labels map[string]string) {
+	return m.processMatch(line, additionalFields, func(value float64, labels map[string]string) bool {
 		m.histogramVec.With(labels).Observe(value)
+		return true
 	})
 }
 
@@ -368,14 +374,16 @@ func (m *histogramVecMetric) ProcessRetention() error {
 }
 
 func (m *summaryMetric) ProcessMatch(line string, additionalFields map[string]string) (*Match, error) {
-	return m.processMatch(line, func(value float64) {
+	return m.processMatch(line, func(value float64) bool {
 		m.summary.Observe(value)
+		return true
 	})
 }
 
 func (m *summaryVecMetric) ProcessMatch(line string, additionalFields map[string]string) (*Match, error) {
-	return m.processMatch(line, additionalFields, func(value float64, labels map[string]string) {
+	return m.processMatch(line, additionalFields, func(value float64, labels map[string]string) bool {
 		m.summaryVec.With(labels).Observe(value)
+		return true
 	})
 }
 
