@@ -227,6 +227,10 @@ func initGaugeRegex(t *testing.T) *oniguruma.Regex {
 }
 
 func newMetricConfig(t *testing.T, cfg *configuration.MetricConfig) *configuration.MetricConfig {
+	// Handle default for counter's value
+	if len(cfg.Value) == 0 {
+		cfg.Value = "1.0"
+	}
 	err := cfg.InitTemplates()
 	if err != nil {
 		t.Fatal(err)
