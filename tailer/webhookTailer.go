@@ -16,6 +16,7 @@ package tailer
 
 import (
 	"errors"
+	"fmt"
 	json "github.com/bitly/go-simplejson"
 	configuration "github.com/fstab/grok_exporter/config/v3"
 	"github.com/fstab/grok_exporter/tailer/fswatcher"
@@ -110,7 +111,10 @@ func WebhookProcessBody(c *configuration.InputConfig, b []byte) []string {
 		s := strings.TrimSpace(string(b))
 		strs = strings.Split(s, c.WebhookTextBulkSeparator)
 	case "json_single":
-		path := strings.Split(c.WebhookJsonSelector[1:], ".")
+		if len(c.WebhookJsonSelector) == 0 || c.WebhookJsonSelector[0] != '.' {
+			logrus.Errorf("%v: invalid webhook json selector", c.WebhookJsonSelector)
+			break
+		}
 		j, err := json.NewJson(b)
 		if err != nil {
 			logrus.WithFields(logrus.Fields{
@@ -118,7 +122,7 @@ func WebhookProcessBody(c *configuration.InputConfig, b []byte) []string {
 			}).Warn("Unable to Parse JSON")
 			break
 		}
-		s, err := j.GetPath(path...).String()
+		s, err := processPath(j, c.WebhookJsonSelector)
 		if err != nil {
 			logrus.WithFields(logrus.Fields{
 				"post_body":             string(b),
@@ -128,7 +132,10 @@ func WebhookProcessBody(c *configuration.InputConfig, b []byte) []string {
 		}
 		strs = append(strs, s)
 	case "json_bulk":
-		path := strings.Split(c.WebhookJsonSelector[1:], ".")
+		if len(c.WebhookJsonSelector) == 0 || c.WebhookJsonSelector[0] != '.' {
+			logrus.Errorf("%v: invalid webhook json selector", c.WebhookJsonSelector)
+			break
+		}
 		j, err := json.NewJson(b)
 		if err != nil {
 			logrus.WithFields(logrus.Fields{
@@ -142,10 +149,8 @@ func WebhookProcessBody(c *configuration.InputConfig, b []byte) []string {
 			//   Unfortunately, this is how the simplejson lib works.
 			ej := json.New()
 			ej.Set("x", ei)
-			new_path := []string{}
-			new_path = append([]string{"x"}, path...)
-
-			s, err := ej.GetPath(new_path...).String()
+			newSelector := fmt.Sprintf(".x.%v", c.WebhookJsonSelector[1:])
+			s, err := processPath(ej, newSelector)
 			if err != nil {
 				logrus.WithFields(logrus.Fields{
 					"post_body":             string(b),
@@ -165,4 +170,40 @@ func WebhookProcessBody(c *configuration.InputConfig, b []byte) []string {
 	}
 
 	return strs
+}
+
+func processPath(json *json.Json, path string) (string, error) {
+	if len(path) <= 1 {
+		return "", fmt.Errorf("%q: invalid webhook json selector", path)
+	}
+	for _, pathElement := range strings.Split(path[1:], ".") {
+		i := len(pathElement) - 1
+		if i > 3 && pathElement[i] == ']' {
+			name, index, err := parseJsonPathElement(pathElement)
+			if err != nil {
+				return "", fmt.Errorf("%q: invalid webhook json selector: %v", path, err)
+			}
+			json = json.GetPath(name)
+			json = json.GetIndex(index)
+		} else {
+			json = json.GetPath(pathElement)
+		}
+	}
+	return json.String()
+}
+
+// pathElement is a string like "messages[0]", this method splits it into "messages" and 0.
+// We assume that pathElement ends with ']'.
+func parseJsonPathElement(pathElement string) (string, int, error) {
+	index := 0
+	i := len(pathElement) - 2
+	for ; i > 0 && pathElement[i] != '['; i-- {
+		digit := pathElement[i] - '0'
+		if digit < 0 || digit > 9 {
+			return "", 0, fmt.Errorf("%q: path element ends with ']' but array index is invalid", pathElement)
+		}
+		index *= 10
+		index += int(digit)
+	}
+	return pathElement[0:i], index, nil
 }
