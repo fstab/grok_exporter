@@ -220,6 +220,43 @@ func TestWebhookJsonBulkNegativeMalformedJson(t *testing.T) {
 	}
 }
 
+func TestArraySelector(t *testing.T) {
+	// See https://github.com/fstab/grok_exporter/issues/93
+	jsonString := `{
+    "transaction": {
+        "messages": [
+            {
+                "details": {
+                    "info": "line 0"
+                }
+            },
+            {
+                "details": {
+                    "info": "line 1"
+                }
+            }
+        ]
+    }}`
+
+	for _, format := range []string{"json_single", "json_bulk"} {
+		json := jsonString
+		if format == "json_bulk" {
+			json = fmt.Sprintf("[%v]", jsonString)
+		}
+		for _, lineNumber := range []string{"0", "1"} {
+			config := &configuration.InputConfig{
+				WebhookFormat:       format,
+				WebhookJsonSelector: fmt.Sprintf(".transaction.messages[%v].details.info", lineNumber),
+			}
+			lines := WebhookProcessBody(config, []byte(json))
+			expected := fmt.Sprintf("line %v", lineNumber)
+			if len(lines) != 1 || lines[0] != expected {
+				t.Fatalf("Expected: []string{\"%v\"}, Actual: %#v", expected, lines)
+			}
+		}
+	}
+}
+
 func createJsonBlob(message string) string {
 	s := fmt.Sprintf(`{
   "message": "%v",
