@@ -250,7 +250,7 @@ func TestArraySelector(t *testing.T) {
 			}
 			lines := WebhookProcessBody(config, []byte(json))
 			expected := fmt.Sprintf("line %v", lineNumber)
-			if len(lines) != 1 || lines[0] != expected {
+			if len(lines) != 1 || lines[0].line != expected {
 				t.Fatalf("Expected: []string{\"%v\"}, Actual: %#v", expected, lines)
 			}
 		}
