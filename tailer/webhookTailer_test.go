@@ -36,7 +36,7 @@ func TestWebhookTextSingle(t *testing.T) {
 	if len(lines) != 1 {
 		t.Fatal("Expected 1 line processed")
 	}
-	if lines[0] != message {
+	if lines[0].line != message {
 		t.Fatal("Expected line to match")
 	}
 }
@@ -62,7 +62,7 @@ func TestWebhookTextBulk(t *testing.T) {
 		t.Fatal("Expected number of lines to equal number of messages")
 	}
 	for i := range messages {
-		if messages[i] != lines[i] {
+		if messages[i] != lines[i].line {
 			t.Fatal("Expected line to match")
 		}
 	}
@@ -110,7 +110,7 @@ func TestWebhookJsonSingle(t *testing.T) {
 	if len(lines) != 1 {
 		t.Fatal("Expected 1 line processed")
 	}
-	if lines[0] != message {
+	if lines[0].line != message {
 		t.Fatal("Expected line to match")
 	}
 }
@@ -183,7 +183,7 @@ func TestWebhookJsonBulk(t *testing.T) {
 		t.Fatal("Expected number of lines to equal number of messages")
 	}
 	for i := range messages {
-		if messages[i] != lines[i] {
+		if messages[i] != lines[i].line {
 			t.Fatal("Expected line to match")
 		}
 	}

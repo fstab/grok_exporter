@@ -58,7 +58,7 @@ func TestTimestampCommaError(t *testing.T) {
 }
 
 func evalTimestamp(t *testing.T, template Template, value string) float64 {
-	resultString, err := template.Execute(map[string]string{
+	resultString, err := template.Execute(map[string]interface{}{
 		"date": value,
 	})
 	if err != nil {
