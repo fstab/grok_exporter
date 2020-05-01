@@ -404,12 +404,12 @@ func NewCounterMetric(cfg *configuration.MetricConfig, regex *oniguruma.Regex, d
 	if len(cfg.Labels) == 0 {
 		return &counterMetric{
 			observeMetric: newObserveMetric(cfg, regex, deleteRegex),
-			counter: prometheus.NewCounter(counterOpts),
+			counter:       prometheus.NewCounter(counterOpts),
 		}
 	} else {
 		return &counterVecMetric{
 			observeMetricWithLabels: newObserveMetricWithLabels(cfg, regex, deleteRegex),
-			counterVec:		 prometheus.NewCounterVec(counterOpts, prometheusLabels(cfg.LabelTemplates)),
+			counterVec:              prometheus.NewCounterVec(counterOpts, prometheusLabels(cfg.LabelTemplates)),
 		}
 	}
 }
