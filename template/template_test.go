@@ -36,7 +36,7 @@ func TestReferencedGrokFields(t *testing.T) {
 	for i, test := range []struct {
 		template           string
 		expectedGrokFields []string
-		example            map[string]string
+		example            map[string]interface{}
 		expectedResult     string
 	}{
 		// The template examples below are from Go's text/template documentation
@@ -45,21 +45,21 @@ func TestReferencedGrokFields(t *testing.T) {
 			// {{/* a comment */}}
 			template:           "{{/* a comment {.field} should be ignored */}}",
 			expectedGrokFields: []string{},
-			example:            map[string]string{},
+			example:            map[string]interface{}{},
 			expectedResult:     "",
 		},
 		{
 			// {{pipeline}} with fixed string
 			template:           "42",
 			expectedGrokFields: []string{},
-			example:            map[string]string{},
+			example:            map[string]interface{}{},
 			expectedResult:     "42",
 		},
 		{
 			// {{pipeline}} with simple values
 			template:           "{{.count_total}} items are made of {{.material}}",
 			expectedGrokFields: []string{"count_total", "material"},
-			example: map[string]string{
+			example: map[string]interface{}{
 				"count_total": "3",
 				"material":    "metal",
 			},
@@ -69,7 +69,7 @@ func TestReferencedGrokFields(t *testing.T) {
 			// {{pipeline}} with function call
 			template:           "{{.count_total}} items are made {{printf \"of %v\" .material}}",
 			expectedGrokFields: []string{"count_total", "material"},
-			example: map[string]string{
+			example: map[string]interface{}{
 				"count_total": "3",
 				"material":    "metal",
 			},
@@ -79,7 +79,7 @@ func TestReferencedGrokFields(t *testing.T) {
 			// {{if pipeline}} T1 {{end}}
 			template:           "{{if eq .field1 .field2}}{{.field3}}{{end}}",
 			expectedGrokFields: []string{"field1", "field2", "field3"},
-			example: map[string]string{
+			example: map[string]interface{}{
 				"field1": "a",
 				"field2": "b",
 				"field3": "c",
@@ -90,7 +90,7 @@ func TestReferencedGrokFields(t *testing.T) {
 			// {{if pipeline}} T1 {{else}} T0 {{end}}
 			template:           "{{if eq .field1 .field2}}{{.field3}}{{else}}{{.field4}}{{end}}",
 			expectedGrokFields: []string{"field1", "field2", "field3", "field4"},
-			example: map[string]string{
+			example: map[string]interface{}{
 				"field1": "a",
 				"field2": "b",
 				"field3": "c",
@@ -102,7 +102,7 @@ func TestReferencedGrokFields(t *testing.T) {
 			// {{if pipeline}} T1 {{else if pipeline}} T0 {{end}}
 			template:           "{{if eq .field1 .field2}}{{.field3}}{{else if eq .field4 .field5}}{{.field6}}{{end}}",
 			expectedGrokFields: []string{"field1", "field2", "field3", "field4", "field5", "field6"},
-			example: map[string]string{
+			example: map[string]interface{}{
 				"field1": "a",
 				"field2": "b",
 				"field3": "c",
@@ -116,7 +116,7 @@ func TestReferencedGrokFields(t *testing.T) {
 			// {{range pipeline}} T1 {{end}}
 			template:           "{{range testarray .field1 \" vs \" .field2}}{{printf \"%v\" .}}{{end}}",
 			expectedGrokFields: []string{"field1", "field2"},
-			example: map[string]string{
+			example: map[string]interface{}{
 				"field1": "23",
 				"field2": "42",
 			},
@@ -126,7 +126,7 @@ func TestReferencedGrokFields(t *testing.T) {
 			// {{range pipeline}} T1 {{else}} T0 {{end}}
 			template:           "{{range testarray \"42\"}}{{.}}{{else}}{{.field}}{{end}}",
 			expectedGrokFields: []string{"field"},
-			example: map[string]string{
+			example: map[string]interface{}{
 				"field": "128",
 			},
 			expectedResult: "42",
@@ -135,14 +135,14 @@ func TestReferencedGrokFields(t *testing.T) {
 			// {{template "name"}}
 			template:           "{{define \"T1\"}}some constant{{end}}{{template \"T1\"}}",
 			expectedGrokFields: []string{},
-			example:            map[string]string{},
+			example:            map[string]interface{}{},
 			expectedResult:     "some constant",
 		},
 		{
 			// {{template "name" pipeline}}
 			template:           "{{define \"T1\"}}{{print .field1 \".\" .field2}}{{end}}{{template \"T1\" .}}",
 			expectedGrokFields: []string{"field1", "field2"},
-			example: map[string]string{
+			example: map[string]interface{}{
 				"field1": "3",
 				"field2": "4",
 			},
@@ -152,7 +152,7 @@ func TestReferencedGrokFields(t *testing.T) {
 			// {{block "name" pipeline}} T1 {{end}}
 			template:           "{{block \"T1\" .}}{{print .field1}}{{end}}",
 			expectedGrokFields: []string{"field1"},
-			example: map[string]string{
+			example: map[string]interface{}{
 				"field1": "17",
 				"field2": "18",
 			},
@@ -162,7 +162,7 @@ func TestReferencedGrokFields(t *testing.T) {
 			// {{with pipeline}} T1 {{end}}
 			template:           "{{with .field}}{{.}}{{end}}",
 			expectedGrokFields: []string{"field"},
-			example: map[string]string{
+			example: map[string]interface{}{
 				"field": "23",
 			},
 			expectedResult: "23",
@@ -171,7 +171,7 @@ func TestReferencedGrokFields(t *testing.T) {
 			// {{with pipeline}} T1 {{else}} T0 {{end}}
 			template:           "{{with .field1}}{{.}}{{else}}{{.field2}}{{end}}",
 			expectedGrokFields: []string{"field1", "field2"},
-			example: map[string]string{
+			example: map[string]interface{}{
 				"field1": "23",
 				"field2": "42",
 			},
@@ -183,7 +183,7 @@ func TestReferencedGrokFields(t *testing.T) {
 		{
 			template:           "{{if eq .field1 .field2}}{{.field3}}{{else if eq .field4 .field5}}{{.field6}}{{else}}{{.field7}}{{end}}",
 			expectedGrokFields: []string{"field1", "field2", "field3", "field4", "field5", "field6", "field7"},
-			example: map[string]string{
+			example: map[string]interface{}{
 				"field1": "1",
 				"field2": "2",
 				"field3": "3",
@@ -197,7 +197,7 @@ func TestReferencedGrokFields(t *testing.T) {
 		{
 			template:           "{{if eq .val2 \"test\"}}yes{{else}}no{{end}}",
 			expectedGrokFields: []string{"val2"},
-			example: map[string]string{
+			example: map[string]interface{}{
 				"val2": "test",
 			},
 			expectedResult: "yes",
@@ -205,7 +205,7 @@ func TestReferencedGrokFields(t *testing.T) {
 		{
 			template:           "{{with $x := .field}}This is $x: {{$x}}{{end}}",
 			expectedGrokFields: []string{"field"},
-			example: map[string]string{
+			example: map[string]interface{}{
 				"field": "128",
 			},
 			expectedResult: "This is $x: 128",
@@ -213,7 +213,7 @@ func TestReferencedGrokFields(t *testing.T) {
 		{
 			template:           "{{define \"T1\"}}{{.}}{{end}}{{template \"T1\" .field}}",
 			expectedGrokFields: []string{"field"},
-			example: map[string]string{
+			example: map[string]interface{}{
 				"field": "77",
 			},
 			expectedResult: "77",

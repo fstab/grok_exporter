@@ -25,7 +25,7 @@ func TestGsubFunction(t *testing.T) {
 		t.Fatalf("unexpected error parsing template: %v", err)
 		return
 	}
-	result, err := template.Execute(map[string]string{
+	result, err := template.Execute(map[string]interface{}{
 		"url": "http://example.com/foo.asp?id=42&source=github&foo=bar",
 	})
 	if err != nil {
@@ -43,7 +43,7 @@ func TestNestedGsub(t *testing.T) {
 		t.Fatalf("unexpected error parsing template: %v", err)
 		return
 	}
-	result, err := template.Execute(map[string]string{
+	result, err := template.Execute(map[string]interface{}{
 		"message": "Sender verify failed",
 	})
 	if err != nil {
