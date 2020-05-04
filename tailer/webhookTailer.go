@@ -99,7 +99,7 @@ func (t WebhookTailer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	context_strings := WebhookProcessBody(wts.config, b)
 	for _, context_string := range context_strings {
 		logrus.WithFields(logrus.Fields{
-			"line": context_string.line,
+			"line":  context_string.line,
 			"extra": context_string.extra,
 		}).Debug("Groking line")
 		lineChan <- &fswatcher.Line{Line: context_string.line, Extra: context_string.extra}

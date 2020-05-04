@@ -32,8 +32,8 @@ type FileTailer interface {
 }
 
 type Line struct {
-	Line string
-	File string
+	Line  string
+	File  string
 	Extra interface{}
 }
 
