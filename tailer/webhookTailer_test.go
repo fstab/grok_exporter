@@ -36,7 +36,7 @@ func TestWebhookTextSingle(t *testing.T) {
 	if len(lines) != 1 {
 		t.Fatal("Expected 1 line processed")
 	}
-	if lines[0] != message {
+	if lines[0].line != message {
 		t.Fatal("Expected line to match")
 	}
 }
@@ -62,7 +62,7 @@ func TestWebhookTextBulk(t *testing.T) {
 		t.Fatal("Expected number of lines to equal number of messages")
 	}
 	for i := range messages {
-		if messages[i] != lines[i] {
+		if messages[i] != lines[i].line {
 			t.Fatal("Expected line to match")
 		}
 	}
@@ -110,7 +110,7 @@ func TestWebhookJsonSingle(t *testing.T) {
 	if len(lines) != 1 {
 		t.Fatal("Expected 1 line processed")
 	}
-	if lines[0] != message {
+	if lines[0].line != message {
 		t.Fatal("Expected line to match")
 	}
 }
@@ -183,7 +183,7 @@ func TestWebhookJsonBulk(t *testing.T) {
 		t.Fatal("Expected number of lines to equal number of messages")
 	}
 	for i := range messages {
-		if messages[i] != lines[i] {
+		if messages[i] != lines[i].line {
 			t.Fatal("Expected line to match")
 		}
 	}
@@ -217,6 +217,43 @@ func TestWebhookJsonBulkNegativeMalformedJson(t *testing.T) {
 	lines := WebhookProcessBody(c, []byte(s))
 	if len(lines) != 0 {
 		t.Fatal("Expected 0 lines processed")
+	}
+}
+
+func TestArraySelector(t *testing.T) {
+	// See https://github.com/fstab/grok_exporter/issues/93
+	jsonString := `{
+    "transaction": {
+        "messages": [
+            {
+                "details": {
+                    "info": "line 0"
+                }
+            },
+            {
+                "details": {
+                    "info": "line 1"
+                }
+            }
+        ]
+    }}`
+
+	for _, format := range []string{"json_single", "json_bulk"} {
+		json := jsonString
+		if format == "json_bulk" {
+			json = fmt.Sprintf("[%v]", jsonString)
+		}
+		for _, lineNumber := range []string{"0", "1"} {
+			config := &configuration.InputConfig{
+				WebhookFormat:       format,
+				WebhookJsonSelector: fmt.Sprintf(".transaction.messages[%v].details.info", lineNumber),
+			}
+			lines := WebhookProcessBody(config, []byte(json))
+			expected := fmt.Sprintf("line %v", lineNumber)
+			if len(lines) != 1 || lines[0].line != expected {
+				t.Fatalf("Expected: []string{\"%v\"}, Actual: %#v", expected, lines)
+			}
+		}
 	}
 }
 

@@ -109,10 +109,10 @@ func TestLogfileLabel(t *testing.T) {
 			"logfile":       "{{.logfile}}",
 		},
 	})
-	logfile1 := map[string]string{
+	logfile1 := map[string]interface{}{
 		"logfile": "/var/log/exim-1.log",
 	}
-	logfile2 := map[string]string{
+	logfile2 := map[string]interface{}{
 		"logfile": "/var/log/exim-2.log",
 	}
 	counter := NewCounterMetric(counterCfg, regex, nil)

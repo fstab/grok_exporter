@@ -16,6 +16,7 @@ package tailer
 
 import (
 	"errors"
+	"fmt"
 	json "github.com/bitly/go-simplejson"
 	configuration "github.com/fstab/grok_exporter/config/v3"
 	"github.com/fstab/grok_exporter/tailer/fswatcher"
@@ -24,6 +25,13 @@ import (
 	"net/http"
 	"strings"
 )
+
+type context_string struct {
+	// The log line itself
+	line string
+	// Optional extra context to be made available to go templating
+	extra map[string]interface{}
+}
 
 type WebhookTailer struct {
 	lines  chan *fswatcher.Line
@@ -88,29 +96,36 @@ func (t WebhookTailer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	lines := WebhookProcessBody(wts.config, b)
-	for _, line := range lines {
+	context_strings := WebhookProcessBody(wts.config, b)
+	for _, context_string := range context_strings {
 		logrus.WithFields(logrus.Fields{
-			"line": line,
+			"line":  context_string.line,
+			"extra": context_string.extra,
 		}).Debug("Groking line")
-		lineChan <- &fswatcher.Line{Line: line}
+		lineChan <- &fswatcher.Line{Line: context_string.line, Extra: context_string.extra}
 	}
 	return
 }
 
-func WebhookProcessBody(c *configuration.InputConfig, b []byte) []string {
+func WebhookProcessBody(c *configuration.InputConfig, b []byte) []context_string {
 
-	strs := []string{}
+	strs := []context_string{}
 
 	switch c.WebhookFormat {
 	case "text_single":
-		s := strings.TrimSpace(string(b))
+		s := context_string{line: strings.TrimSpace(string(b))}
 		strs = append(strs, s)
 	case "text_bulk":
 		s := strings.TrimSpace(string(b))
-		strs = strings.Split(s, c.WebhookTextBulkSeparator)
+		lines := strings.Split(s, c.WebhookTextBulkSeparator)
+		for _, s := range lines {
+			strs = append(strs, context_string{line: s})
+		}
 	case "json_single":
-		path := strings.Split(c.WebhookJsonSelector[1:], ".")
+		if len(c.WebhookJsonSelector) == 0 || c.WebhookJsonSelector[0] != '.' {
+			logrus.Errorf("%v: invalid webhook json selector", c.WebhookJsonSelector)
+			break
+		}
 		j, err := json.NewJson(b)
 		if err != nil {
 			logrus.WithFields(logrus.Fields{
@@ -118,7 +133,7 @@ func WebhookProcessBody(c *configuration.InputConfig, b []byte) []string {
 			}).Warn("Unable to Parse JSON")
 			break
 		}
-		s, err := j.GetPath(path...).String()
+		s, err := processPath(j, c.WebhookJsonSelector)
 		if err != nil {
 			logrus.WithFields(logrus.Fields{
 				"post_body":             string(b),
@@ -126,9 +141,12 @@ func WebhookProcessBody(c *configuration.InputConfig, b []byte) []string {
 			}).Warn("Unable to find selector path")
 			break
 		}
-		strs = append(strs, s)
+		strs = append(strs, context_string{line: s, extra: j.MustMap()})
 	case "json_bulk":
-		path := strings.Split(c.WebhookJsonSelector[1:], ".")
+		if len(c.WebhookJsonSelector) == 0 || c.WebhookJsonSelector[0] != '.' {
+			logrus.Errorf("%v: invalid webhook json selector", c.WebhookJsonSelector)
+			break
+		}
 		j, err := json.NewJson(b)
 		if err != nil {
 			logrus.WithFields(logrus.Fields{
@@ -142,10 +160,8 @@ func WebhookProcessBody(c *configuration.InputConfig, b []byte) []string {
 			//   Unfortunately, this is how the simplejson lib works.
 			ej := json.New()
 			ej.Set("x", ei)
-			new_path := []string{}
-			new_path = append([]string{"x"}, path...)
-
-			s, err := ej.GetPath(new_path...).String()
+			newSelector := fmt.Sprintf(".x.%v", c.WebhookJsonSelector[1:])
+			s, err := processPath(ej, newSelector)
 			if err != nil {
 				logrus.WithFields(logrus.Fields{
 					"post_body":             string(b),
@@ -153,7 +169,7 @@ func WebhookProcessBody(c *configuration.InputConfig, b []byte) []string {
 				}).Warn("Unable to find selector path")
 				break
 			}
-			strs = append(strs, s)
+			strs = append(strs, context_string{line: s, extra: ej.MustMap()})
 		}
 	default:
 		// error silently
@@ -161,8 +177,44 @@ func WebhookProcessBody(c *configuration.InputConfig, b []byte) []string {
 
 	// Trim whitespace before and after every log entry
 	for i := range strs {
-		strs[i] = strings.TrimSpace(strs[i])
+		strs[i] = context_string{line: strings.TrimSpace(strs[i].line), extra: strs[i].extra}
 	}
 
 	return strs
+}
+
+func processPath(json *json.Json, path string) (string, error) {
+	if len(path) <= 1 {
+		return "", fmt.Errorf("%q: invalid webhook json selector", path)
+	}
+	for _, pathElement := range strings.Split(path[1:], ".") {
+		i := len(pathElement) - 1
+		if i > 3 && pathElement[i] == ']' {
+			name, index, err := parseJsonPathElement(pathElement)
+			if err != nil {
+				return "", fmt.Errorf("%q: invalid webhook json selector: %v", path, err)
+			}
+			json = json.GetPath(name)
+			json = json.GetIndex(index)
+		} else {
+			json = json.GetPath(pathElement)
+		}
+	}
+	return json.String()
+}
+
+// pathElement is a string like "messages[0]", this method splits it into "messages" and 0.
+// We assume that pathElement ends with ']'.
+func parseJsonPathElement(pathElement string) (string, int, error) {
+	index := 0
+	i := len(pathElement) - 2
+	for ; i > 0 && pathElement[i] != '['; i-- {
+		digit := pathElement[i] - '0'
+		if digit < 0 || digit > 9 {
+			return "", 0, fmt.Errorf("%q: path element ends with ']' but array index is invalid", pathElement)
+		}
+		index *= 10
+		index += int(digit)
+	}
+	return pathElement[0:i], index, nil
 }

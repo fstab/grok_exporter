@@ -343,7 +343,13 @@ This simple example shows a one-to-one mapping of a Grok field to a Prometheus l
 
 ### Pre-Defined Label Variables
 
-`logfile` is currently the only pre-defined label variable that is independent of the Grok patterns. The `logfile` variable is always present for input type `file`, and contains the full path to the log file the line was read from. You can use it like this:
+Two pre-defined label variables, that are independent of Grok patterns are defined, namely:
+* `logfile`: Which contains the full path of the log file the line was read from (for input type `file`).
+* `extra`: Which contains the entire JSON object parsed from the input (for input type `webhook`, with format=`json_*`).
+
+#### logfile
+The `logfile` variable is always present for input type `file`, and contains the full path to the log file the line was read from.
+You can use it like this:
 
 ```yaml
 match: '%{DATE} %{TIME} %{USER:user} %{NUMBER:val}'
@@ -353,6 +359,24 @@ labels:
 ```
 
 If you don't want the full path but only the file name, you can use the `base` template function, see next section.
+
+#### extra
+The `extra` variable is always present for input type `webhook` with format being either `json_single` or `json_bulk`.
+It contains the entire JSON object that was parsed.
+You can use it like this:
+
+```yaml
+match: 'Login occured'
+labels:
+    user: '{{ index .extra "user" }}'
+    ip: '{{ index .extra "ip" }}'
+```
+
+With the incoming log object being:
+
+```json
+{"message": "Login occured", "user": "Skeen", "ip": "1.1.1.1"}'
+```
 
 ### Label Template Functions
 

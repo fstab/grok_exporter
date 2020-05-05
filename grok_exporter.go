@@ -40,6 +40,7 @@ var (
 
 var (
 	logfile = "logfile"
+	extra   = "extra"
 )
 
 const (
@@ -49,6 +50,7 @@ const (
 
 var additionalFieldDefinitions = map[string]string{
 	logfile: "full path of the log file",
+	extra:   "full json log object",
 }
 
 func main() {
@@ -161,9 +163,10 @@ func main() {
 	}
 }
 
-func makeAdditionalFields(line *fswatcher.Line) map[string]string {
-	return map[string]string{
+func makeAdditionalFields(line *fswatcher.Line) map[string]interface{} {
+	return map[string]interface{}{
 		logfile: line.File,
+		extra:   line.Extra,
 	}
 }
 

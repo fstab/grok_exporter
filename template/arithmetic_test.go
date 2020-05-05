@@ -44,7 +44,7 @@ func TestArithmeticFunctions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error parsing template %v: %v", data.template, err)
 		}
-		result, err := template.Execute(map[string]string{
+		result, err := template.Execute(map[string]interface{}{
 			"val": data.val,
 		})
 		if data.execError {
