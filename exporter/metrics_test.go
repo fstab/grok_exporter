@@ -260,7 +260,8 @@ func initCumulativeRegex(t *testing.T) *oniguruma.Regex {
 
 func newMetricConfig(t *testing.T, cfg *configuration.MetricConfig) *configuration.MetricConfig {
 	// Handle default for counter's value
-	if cfg.Type == "counter" && len(cfg.Value) == 0 {
+	// Note: cfg.Type is not set here
+	if len(cfg.Value) == 0 {
 		cfg.Value = "1.0"
 	}
 	err := cfg.InitTemplates()
