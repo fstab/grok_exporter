@@ -80,8 +80,8 @@ func TestCounter(t *testing.T) {
 func TestCounterValue(t *testing.T) {
 	regex := initCumulativeRegex(t)
 	counterCfg := newMetricConfig(t, &configuration.MetricConfig{
-		Name:       "rainfall",
-		Value:      "{{.rainfall}}",
+		Name:  "rainfall",
+		Value: "{{.rainfall}}",
 	})
 	counter := NewCounterMetric(counterCfg, regex, nil)
 
