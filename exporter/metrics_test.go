@@ -77,6 +77,29 @@ func TestCounter(t *testing.T) {
 	}
 }
 
+func TestCounterValue(t *testing.T) {
+	regex := initCumulativeRegex(t)
+	counterCfg := newMetricConfig(t, &configuration.MetricConfig{
+		Name:       "rainfall",
+		Value:      "{{.rainfall}}",
+	})
+	counter := NewCounterMetric(counterCfg, regex, nil)
+
+	counter.ProcessMatch("Rainfall in Berlin: 32", nil)
+	counter.ProcessMatch("Rainfall in Berlin: 5", nil)
+
+	switch c := counter.Collector().(type) {
+	case prometheus.Counter:
+		m := io_prometheus_client.Metric{}
+		c.Write(&m)
+		if *m.Counter.Value != float64(37) {
+			t.Errorf("Expected 37 as counter value, but got %v.", *m.Counter.Value)
+		}
+	default:
+		t.Errorf("Unexpected type of metric: %v", reflect.TypeOf(c))
+	}
+}
+
 func TestLogfileLabel(t *testing.T) {
 	regex := initCounterRegex(t)
 	counterCfg := newMetricConfig(t, &configuration.MetricConfig{
@@ -163,23 +186,23 @@ func TestGauge(t *testing.T) {
 }
 
 func TestGaugeCumulative(t *testing.T) {
-	regex := initGaugeRegex(t)
+	regex := initCumulativeRegex(t)
 	gaugeCfg := newMetricConfig(t, &configuration.MetricConfig{
-		Name:       "temperature",
-		Value:      "{{.temperature}}",
+		Name:       "rainfall",
+		Value:      "{{.rainfall}}",
 		Cumulative: true,
 	})
 	gauge := NewGaugeMetric(gaugeCfg, regex, nil)
 
-	gauge.ProcessMatch("Temperature in Berlin: 32", nil)
-	gauge.ProcessMatch("Temperature in Moscow: -5", nil)
+	gauge.ProcessMatch("Rainfall in Berlin: 32", nil)
+	gauge.ProcessMatch("Rainfall in Moscow: 5", nil)
 
 	switch c := gauge.Collector().(type) {
 	case prometheus.Gauge:
 		m := io_prometheus_client.Metric{}
 		c.Write(&m)
-		if *m.Gauge.Value != float64(27) {
-			t.Errorf("Expected 27 as cumulative value, but got %v.", *m.Gauge.Value)
+		if *m.Gauge.Value != float64(37) {
+			t.Errorf("Expected 37 as cumulative value, but got %v.", *m.Gauge.Value)
 		}
 	default:
 		t.Errorf("Unexpected type of metric: %v", reflect.TypeOf(c))
@@ -226,7 +249,21 @@ func initGaugeRegex(t *testing.T) *oniguruma.Regex {
 	return regex
 }
 
+func initCumulativeRegex(t *testing.T) *oniguruma.Regex {
+	patterns := loadPatternDir(t)
+	regex, err := Compile("Rainfall in %{WORD:city}: %{INT:rainfall}", patterns)
+	if err != nil {
+		t.Error(err)
+	}
+	return regex
+}
+
 func newMetricConfig(t *testing.T, cfg *configuration.MetricConfig) *configuration.MetricConfig {
+	// Handle default for counter's value
+	// Note: cfg.Type is not set here
+	if len(cfg.Value) == 0 {
+		cfg.Value = "1.0"
+	}
 	err := cfg.InitTemplates()
 	if err != nil {
 		t.Fatal(err)

@@ -132,8 +132,7 @@ func main() {
 					fmt.Fprintf(os.Stderr, "WARNING: skipping log line: %v\n", err.Error())
 					fmt.Fprintf(os.Stderr, "%v\n", line.Line)
 					nErrorsByMetric.WithLabelValues(metric.Name()).Inc()
-				}
-				if match != nil {
+				} else if match != nil {
 					nMatchesByMetric.WithLabelValues(metric.Name()).Inc()
 					procTimeMicrosecondsByMetric.WithLabelValues(metric.Name()).Add(float64(time.Since(start).Nanoseconds() / int64(1000)))
 					matched = true
