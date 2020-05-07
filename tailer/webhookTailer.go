@@ -15,6 +15,7 @@
 package tailer
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	json "github.com/bitly/go-simplejson"
@@ -142,6 +143,33 @@ func WebhookProcessBody(c *configuration.InputConfig, b []byte) []context_string
 			break
 		}
 		strs = append(strs, context_string{line: s, extra: j.MustMap()})
+	case "json_lines":
+		if len(c.WebhookJsonSelector) == 0 || c.WebhookJsonSelector[0] != '.' {
+			logrus.Errorf("%v: invalid webhook json selector", c.WebhookJsonSelector)
+			break
+		}
+
+		for _, split := range bytes.Split(b, []byte("\n")) {
+			if len(split) == 0 {
+				continue
+			}
+			j, err := json.NewJson(split)
+			if err != nil {
+				logrus.WithFields(logrus.Fields{
+					"post_body": string(b),
+				}).Warn("Unable to Parse JSON")
+				break
+			}
+			s, err := processPath(j, c.WebhookJsonSelector)
+			if err != nil {
+				logrus.WithFields(logrus.Fields{
+					"post_body":             string(b),
+					"webhook_json_selector": c.WebhookJsonSelector,
+				}).Warn("Unable to find selector path")
+				break
+			}
+			strs = append(strs, context_string{line: s, extra: j.MustMap()})
+		}
 	case "json_bulk":
 		if len(c.WebhookJsonSelector) == 0 || c.WebhookJsonSelector[0] != '.' {
 			logrus.Errorf("%v: invalid webhook json selector", c.WebhookJsonSelector)
