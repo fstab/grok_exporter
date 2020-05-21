@@ -295,6 +295,10 @@ func (cfg *Config) validate() error {
 	if err != nil {
 		return err
 	}
+	err = cfg.Imports.validate()
+	if err != nil {
+		return err
+	}
 	err = cfg.AllMetrics.validate()
 	if err != nil {
 		return err
@@ -431,6 +435,16 @@ func (c ImportConfig) validate() error {
 }
 
 func (c *GrokPatternsConfig) validate() error {
+	return nil
+}
+
+func (c *ImportsConfig) validate() error {
+	for _, cfg := range *c {
+		err := cfg.validate()
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

@@ -213,9 +213,16 @@ func initPatterns(cfg *v3.Config) (*exporter.Patterns, error) {
 	patterns := exporter.InitPatterns()
 	for _, importedPatterns := range cfg.Imports {
 		if importedPatterns.Type == "grok_patterns" {
-			err := patterns.AddDir(importedPatterns.Dir)
-			if err != nil {
-				return nil, err
+			if len(importedPatterns.Dir) > 0 {
+				err := patterns.AddDir(importedPatterns.Dir)
+				if err != nil {
+					return nil, err
+				}
+			} else if len(importedPatterns.File) > 0 {
+				err := patterns.AddGlob(importedPatterns.File)
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 	}

@@ -1,4 +1,4 @@
-// Copyright 2016-2018 The grok_exporter Authors
+// Copyright 2016-2020 The grok_exporter Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ package exporter
 import (
 	"bufio"
 	"fmt"
+	"github.com/fstab/grok_exporter/tailer/glob"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -34,7 +35,7 @@ func InitPatterns() *Patterns {
 func (p *Patterns) AddDir(path string) error {
 	files, err := ioutil.ReadDir(path)
 	if err != nil {
-		return fmt.Errorf("failed to read %v: %v", path, err.Error())
+		return fmt.Errorf("failed to read pattern directory %v: %v", path, err)
 	}
 	for _, file := range files {
 		err = p.AddFile(filepath.Join(path, file.Name()))
@@ -45,11 +46,47 @@ func (p *Patterns) AddDir(path string) error {
 	return nil
 }
 
+func (p *Patterns) AddGlob(globString string) error {
+	nFilesFound := 0
+	nDirsFound := 0
+	g, err := glob.Parse(globString)
+	if err != nil {
+		return err
+	}
+	fileInfos, err := ioutil.ReadDir(g.Dir())
+	if err != nil {
+		return fmt.Errorf("failed to read patterns from directory %v: %v", g.Dir(), err)
+	}
+	for _, fileInfo := range fileInfos {
+		filePath := filepath.Join(g.Dir(), fileInfo.Name())
+		if g.Match(filePath) {
+			if fileInfo.IsDir() {
+				// dirs are skipped, but we track this for better error messages
+				nDirsFound++
+			} else {
+				err = p.AddFile(filePath)
+				if err != nil {
+					return err
+				}
+				nFilesFound++
+			}
+		}
+	}
+	if nFilesFound == 0 {
+		if nDirsFound == 1 {
+			return fmt.Errorf("%v: expected a file, but found a directory. configuration should be 'dir' instead of 'file'", globString)
+		} else {
+			return fmt.Errorf("%v: no such file", globString)
+		}
+	}
+	return nil
+}
+
 // pattern files see https://github.com/logstash-plugins/logstash-patterns-core/tree/master/patterns
 func (p *Patterns) AddFile(path string) error {
 	file, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("Failed to read %v: %v", path, err.Error())
+		return fmt.Errorf("failed to read pattern file %v: %v", path, err)
 	}
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
@@ -58,12 +95,12 @@ func (p *Patterns) AddFile(path string) error {
 		if !isEmpty(line) && !isComment(line) {
 			err = p.AddPattern(scanner.Text())
 			if err != nil {
-				return fmt.Errorf("Failed to read %v: %v", path, err.Error())
+				return fmt.Errorf("failed to read pattern file %v: %v", path, err)
 			}
 		}
 	}
 	if scanner.Err() != nil {
-		return fmt.Errorf("Failed to read %v: %v", path, err.Error())
+		return fmt.Errorf("failed to read pattern file %v: %v", path, scanner.Err())
 	}
 	return nil
 }
@@ -72,7 +109,7 @@ func (p *Patterns) AddPattern(pattern string) error {
 	r := regexp.MustCompile(`([A-z0-9]+)\s+(.+)`)
 	match := r.FindStringSubmatch(pattern)
 	if match == nil {
-		return fmt.Errorf("'%v' is not a valid pattern definition.", pattern)
+		return fmt.Errorf("'%v' is not a valid pattern definition", pattern)
 	}
 	(*p)[match[1]] = match[2]
 	return nil
