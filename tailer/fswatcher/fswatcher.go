@@ -230,7 +230,6 @@ func (t *fileTailer) shutdown() {
 
 func (t *fileTailer) watchDirs(log logrus.FieldLogger) Error {
 	var (
-		err      error
 		Err      Error
 		dirPaths []string
 		dirPath  string
@@ -242,7 +241,7 @@ func (t *fileTailer) watchDirs(log logrus.FieldLogger) Error {
 	for _, dirPath = range dirPaths {
 		log.Debugf("watching directory %v", dirPath)
 		dir, Err := t.osSpecific.watchDir(dirPath)
-		if err != nil {
+		if Err != nil {
 			return Err
 		}
 		t.watchedDirs = append(t.watchedDirs, dir)
