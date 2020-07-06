@@ -286,6 +286,9 @@ func (c *ServerConfig) addDefaults() {
 	if c.Path == "" {
 		c.Path = "/metrics"
 	}
+	if len(c.ClientCA) > 0 && len(c.ClientAuth) == 0 {
+		c.ClientAuth = "RequireAndVerifyClientCert"
+	}
 }
 
 func (cfg *Config) validate() error {
@@ -566,6 +569,9 @@ func (c *ServerConfig) validate() error {
 			return fmt.Errorf("invalid server configuration: 'server.key' must not be specified without 'server.cert'")
 		}
 		if len(c.ClientAuth) > 0 {
+			if len(c.ClientCA) == 0 {
+				return fmt.Errorf("invalid server configuration: cannot use client_auth without client_ca")
+			}
 			if _, ok := clientAuthTypes[c.ClientAuth]; !ok {
 				return fmt.Errorf("invalid server configuration: client_auth '%v' is invalid", c.ClientAuth)
 			}
@@ -573,6 +579,9 @@ func (c *ServerConfig) validate() error {
 	case c.Protocol == "http":
 		if c.Cert != "" || c.Key != "" {
 			return fmt.Errorf("invalid server configuration: 'server.cert' and 'server.key' can only be configured for protocol 'https'")
+		}
+		if len(c.ClientCA) > 0 {
+			return fmt.Errorf("invalid server configuration: client_ca can only be configured for protocol 'https'")
 		}
 		if len(c.ClientAuth) > 0 {
 			return fmt.Errorf("invalid server configuration: client_auth can only be configured for protocol 'https'")
@@ -642,6 +651,9 @@ func (cfg *Config) String() string {
 	}
 	if stripped.Server.Path == "/metrics" {
 		stripped.Server.Path = ""
+	}
+	if stripped.Server.ClientAuth == "RequireAndVerifyClientCert" {
+		stripped.Server.ClientAuth = ""
 	}
 	if len(stripped.Input.Paths) == 1 {
 		stripped.Input.Path = stripped.Input.Paths[0]
