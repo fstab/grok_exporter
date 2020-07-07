@@ -627,6 +627,8 @@ server:
     path: /metrics
     cert: /path/to/cert
     key: /path/to/key
+    client_ca: /path/to/client_ca
+    client_auth: RequireAndVerifyClientCert
 ```
 
 * `protocol` can be `http` or `https`. Default is `http`.
@@ -635,6 +637,48 @@ server:
 * `path` is the path where the metrics are exposed. Default is `/metrics`, i.e. by default metrics will be exported on [http://localhost:9144/metrics].
 * `cert` is the path to the SSL certificate file for protocol `https`. It is optional. If omitted, a hard-coded default certificate will be used.
 * `key` is the path to the SSL key file for protocol `https`. It is optional. If omitted, a hard-coded default key will be used.
+* `client_ca` is the CA certificate used for client authentication. It is optional. If omitted, `grok_exporter` will not validate client certificates.
+* `client_auth` is the policy used for client authentication. It can only be used together with `client_ca`. It is optional. The default is `RequireAndVerifyClientCert`, meaning if you specify a `client_ca`, you want to allow only clients with a valid certificate. [Golang's tls.ClientAuthType](https://golang.org/pkg/crypto/tls/#ClientAuthType) documentation contains a list of valid values: `NoClientCert`, `RequestClientCert`, `RequireAnyClientCert`, `VerifyClientCertIfGiven`, and `RequireAndVerifyClientCert`.
+
+Example commands for creating SSL test certificates:
+
+The following will generate `server.crt` and `server.key`:
+
+```
+openssl req -x509 -sha256 -subj "/CN=localhost" -nodes -days 365 -newkey rsa:2048 -keyout server.key -out server.crt
+```
+
+These can be configured in `grok_exporter` as follows:
+
+```yaml
+server:
+    protocol: https
+    cert: ./server.crt
+    key: ./server.key
+```
+
+The following will generate `client.crt` and `client.key`:
+
+```
+openssl req -x509 -sha256 -subj "/CN=localhost" -nodes -days 365 -newkey rsa:2048 -keyout client.key -out client.crt
+```
+
+The `client.crt` can be configured in `grok_exporter` as follows:
+
+```yaml
+server:
+  protocol: https
+  cert: ./server.crt
+  key: ./server.key
+  client_ca: ./client.crt
+  client_auth: RequireAndVerifyClientCert
+```
+
+The `client.key` can be used to authenticate client requests. With `curl`, you can test this as follows:
+
+```
+curl --cacert server.crt --cert client.crt --key client.key https://localhost:9144/metrics
+```
 
 How to Configure Durations
 --------------------------

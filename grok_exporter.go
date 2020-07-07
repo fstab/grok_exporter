@@ -319,11 +319,7 @@ func startServer(cfg v3.ServerConfig, httpHandlers []exporter.HttpServerPathHand
 		case cfg.Protocol == "http":
 			serverErrors <- exporter.RunHttpServer(cfg.Host, cfg.Port, httpHandlers)
 		case cfg.Protocol == "https":
-			if cfg.Cert != "" && cfg.Key != "" {
-				serverErrors <- exporter.RunHttpsServer(cfg.Host, cfg.Port, cfg.Cert, cfg.Key, httpHandlers)
-			} else {
-				serverErrors <- exporter.RunHttpsServerWithDefaultKeys(cfg.Host, cfg.Port, httpHandlers)
-			}
+			serverErrors <- exporter.RunHttpsServer(cfg, httpHandlers)
 		default:
 			// This cannot happen, because cfg.validate() makes sure that protocol is either http or https.
 			serverErrors <- fmt.Errorf("Configuration error: Invalid 'server.protocol': '%v'. Expecting 'http' or 'https'.", cfg.Protocol)

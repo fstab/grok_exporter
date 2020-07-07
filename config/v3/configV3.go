@@ -151,12 +151,14 @@ type DefaultConfig struct {
 }
 
 type ServerConfig struct {
-	Protocol string `yaml:",omitempty"`
-	Host     string `yaml:",omitempty"`
-	Port     int    `yaml:",omitempty"`
-	Path     string `yaml:",omitempty"`
-	Cert     string `yaml:",omitempty"`
-	Key      string `yaml:",omitempty"`
+	Protocol   string `yaml:",omitempty"`
+	Host       string `yaml:",omitempty"`
+	Port       int    `yaml:",omitempty"`
+	Path       string `yaml:",omitempty"`
+	Cert       string `yaml:",omitempty"`
+	Key        string `yaml:",omitempty"`
+	ClientCA   string `yaml:"client_ca,omitempty"`
+	ClientAuth string `yaml:"client_auth,omitempty"`
 }
 
 func importMetrics(importsConfig ImportsConfig, fileLoader FileLoader) (MetricsConfig, error) {
@@ -283,6 +285,9 @@ func (c *ServerConfig) addDefaults() {
 	}
 	if c.Path == "" {
 		c.Path = "/metrics"
+	}
+	if len(c.ClientCA) > 0 && len(c.ClientAuth) == 0 {
+		c.ClientAuth = "RequireAndVerifyClientCert"
 	}
 }
 
@@ -540,23 +545,46 @@ func (c *MetricConfig) validate() error {
 }
 
 func (c *ServerConfig) validate() error {
+
+	clientAuthTypes := map[string]interface{}{
+		"NoClientCert":               nil,
+		"RequestClientCert":          nil,
+		"RequireAnyClientCert":       nil,
+		"VerifyClientCertIfGiven":    nil,
+		"RequireAndVerifyClientCert": nil,
+	}
+
 	switch {
 	case c.Protocol != "https" && c.Protocol != "http":
-		return fmt.Errorf("Invalid 'server.protocol': '%v'. Expecting 'http' or 'https'.", c.Protocol)
+		return fmt.Errorf("invalid 'server.protocol': '%v'. Expecting 'http' or 'https'.", c.Protocol)
 	case c.Port <= 0:
-		return fmt.Errorf("Invalid 'server.port': '%v'.", c.Port)
+		return fmt.Errorf("invalid 'server.port': '%v'.", c.Port)
 	case !strings.HasPrefix(c.Path, "/"):
-		return fmt.Errorf("Invalid server configuration: 'server.path' must start with '/'.")
+		return fmt.Errorf("invalid server configuration: 'server.path' must start with '/'.")
 	case c.Protocol == "https":
 		if c.Cert != "" && c.Key == "" {
-			return fmt.Errorf("Invalid server configuration: 'server.cert' must not be specified without 'server.key'")
+			return fmt.Errorf("invalid server configuration: 'server.cert' must not be specified without 'server.key'")
 		}
 		if c.Cert == "" && c.Key != "" {
-			return fmt.Errorf("Invalid server configuration: 'server.key' must not be specified without 'server.cert'")
+			return fmt.Errorf("invalid server configuration: 'server.key' must not be specified without 'server.cert'")
+		}
+		if len(c.ClientAuth) > 0 {
+			if len(c.ClientCA) == 0 {
+				return fmt.Errorf("invalid server configuration: cannot use client_auth without client_ca")
+			}
+			if _, ok := clientAuthTypes[c.ClientAuth]; !ok {
+				return fmt.Errorf("invalid server configuration: client_auth '%v' is invalid", c.ClientAuth)
+			}
 		}
 	case c.Protocol == "http":
 		if c.Cert != "" || c.Key != "" {
-			return fmt.Errorf("Invalid server configuration: 'server.cert' and 'server.key' can only be configured for protocol 'https'.")
+			return fmt.Errorf("invalid server configuration: 'server.cert' and 'server.key' can only be configured for protocol 'https'")
+		}
+		if len(c.ClientCA) > 0 {
+			return fmt.Errorf("invalid server configuration: client_ca can only be configured for protocol 'https'")
+		}
+		if len(c.ClientAuth) > 0 {
+			return fmt.Errorf("invalid server configuration: client_auth can only be configured for protocol 'https'")
 		}
 	}
 	return nil
@@ -623,6 +651,9 @@ func (cfg *Config) String() string {
 	}
 	if stripped.Server.Path == "/metrics" {
 		stripped.Server.Path = ""
+	}
+	if stripped.Server.ClientAuth == "RequireAndVerifyClientCert" {
+		stripped.Server.ClientAuth = ""
 	}
 	if len(stripped.Input.Paths) == 1 {
 		stripped.Input.Path = stripped.Input.Paths[0]
