@@ -25,6 +25,8 @@ const empty_v2 = ``
 const empty_v3 = `
 global:
     config_version: 3
+input:
+    line_delimiter:
 `
 
 const full_v2 = `
@@ -33,7 +35,7 @@ global:
     retention_check_interval: 3s
 input:
     type: file
-	line_delimiter: \n
+    line_delimiter: \n
     paths:
       - /path/to/file1.log
       - /dir/with/*.log
@@ -90,7 +92,7 @@ global:
     retention_check_interval: 3s
 input:
     type: file
-	line_delimiter: \n
+    line_delimiter: \n
     paths:
       - /path/to/file1.log
       - /dir/with/*.log

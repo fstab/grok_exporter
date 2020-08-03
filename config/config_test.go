@@ -42,7 +42,7 @@ server:
 const globalMissing = `
 input:
     type: file
-	line_delimiter: \n
+    line_delimiter: \n
     path: x/x/x
     readall: true
 grok:
