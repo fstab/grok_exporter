@@ -15,16 +15,18 @@
 package fswatcher
 
 import (
-	"bytes"
 	"io"
+	"regexp"
 )
 
 type lineReader struct {
+	lineDelimiter              string
 	remainingBytesFromLastRead []byte
 }
 
-func NewLineReader() *lineReader {
+func NewLineReader(lineDelimiter string) *lineReader {
 	return &lineReader{
+		lineDelimiter:              lineDelimiter,
 		remainingBytesFromLastRead: []byte{},
 	}
 }
@@ -41,10 +43,12 @@ func (r *lineReader) ReadLine(file io.Reader) (string, bool, error) {
 		err error
 		buf = make([]byte, 512)
 		n   = 0
+		reg = regexp.MustCompile(r.lineDelimiter)
 	)
 	for {
-		newlinePos := bytes.IndexByte(r.remainingBytesFromLastRead, '\n')
-		if newlinePos >= 0 {
+		newlinesLoc := reg.FindAllIndex(r.remainingBytesFromLastRead, 2)
+		if newlinesLoc != nil && len(newlinesLoc) == 2 {
+			newlinePos := newlinesLoc[1][0]
 			l := len(r.remainingBytesFromLastRead)
 			result := make([]byte, newlinePos)
 			copy(result, r.remainingBytesFromLastRead[:newlinePos])
@@ -53,7 +57,10 @@ func (r *lineReader) ReadLine(file io.Reader) (string, bool, error) {
 			return string(stripWindowsLineEnding(result)), false, nil
 		} else if err != nil {
 			if err == io.EOF {
-				return "", true, nil
+				result := make([]byte, len(r.remainingBytesFromLastRead))
+				copy(result, r.remainingBytesFromLastRead)
+				r.remainingBytesFromLastRead = []byte{}
+				return string(stripWindowsLineEnding(result)), true, nil
 			} else {
 				return "", false, err
 			}

@@ -92,6 +92,7 @@ type GlobalConfig struct {
 
 type InputConfig struct {
 	Type                       string `yaml:",omitempty"`
+	LineDelimiter              string `yaml:"line_delimiter"`
 	PathsAndGlobs              `yaml:",inline"`
 	FailOnMissingLogfileString string        `yaml:"fail_on_missing_logfile,omitempty"` // cannot use bool directly, because yaml.v2 doesn't support true as default value.
 	FailOnMissingLogfile       bool          `yaml:"-"`

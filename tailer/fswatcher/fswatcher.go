@@ -48,13 +48,14 @@ type Line struct {
 // Moreover, we should provide vars {{.filename}} and {{.filepath}} for labels.
 
 type fileTailer struct {
-	globs        []glob.Glob
-	watchedDirs  []*Dir
-	watchedFiles map[string]*fileWithReader // path -> fileWithReader
-	osSpecific   fswatcher
-	lines        chan *Line
-	errors       chan Error
-	done         chan struct{}
+	lineDelimiter string
+	globs         []glob.Glob
+	watchedDirs   []*Dir
+	watchedFiles  map[string]*fileWithReader // path -> fileWithReader
+	osSpecific    fswatcher
+	lines         chan *Line
+	errors        chan Error
+	done          chan struct{}
 }
 
 type fswatcher interface {
@@ -96,18 +97,18 @@ func (t *fileTailer) Close() {
 	close(t.done)
 }
 
-func RunFileTailer(globs []glob.Glob, readall bool, failOnMissingFile bool, log logrus.FieldLogger) (FileTailer, error) {
-	return runFileTailer(initWatcher, globs, readall, failOnMissingFile, log)
+func RunFileTailer(globs []glob.Glob, readall bool, failOnMissingFile bool, lineDelimiter string, log logrus.FieldLogger) (FileTailer, error) {
+	return runFileTailer(initWatcher, globs, readall, failOnMissingFile, lineDelimiter, log)
 }
 
-func RunPollingFileTailer(globs []glob.Glob, readall bool, failOnMissingFile bool, pollInterval time.Duration, log logrus.FieldLogger) (FileTailer, error) {
+func RunPollingFileTailer(globs []glob.Glob, readall bool, failOnMissingFile bool, lineDelimiter string, pollInterval time.Duration, log logrus.FieldLogger) (FileTailer, error) {
 	initFunc := func() (fswatcher, Error) {
 		return initPollingWatcher(pollInterval)
 	}
-	return runFileTailer(initFunc, globs, readall, failOnMissingFile, log)
+	return runFileTailer(initFunc, globs, readall, failOnMissingFile, lineDelimiter, log)
 }
 
-func runFileTailer(initFunc func() (fswatcher, Error), globs []glob.Glob, readall bool, failOnMissingFile bool, log logrus.FieldLogger) (FileTailer, error) {
+func runFileTailer(initFunc func() (fswatcher, Error), globs []glob.Glob, readall bool, failOnMissingFile bool, lineDelimiter string, log logrus.FieldLogger) (FileTailer, error) {
 
 	var (
 		t   *fileTailer
@@ -115,11 +116,12 @@ func runFileTailer(initFunc func() (fswatcher, Error), globs []glob.Glob, readal
 	)
 
 	t = &fileTailer{
-		globs:        globs,
-		watchedFiles: make(map[string]*fileWithReader),
-		lines:        make(chan *Line),
-		errors:       make(chan Error),
-		done:         make(chan struct{}),
+		lineDelimiter: lineDelimiter,
+		globs:         globs,
+		watchedFiles:  make(map[string]*fileWithReader),
+		lines:         make(chan *Line),
+		errors:        make(chan Error),
+		done:          make(chan struct{}),
 	}
 
 	t.osSpecific, Err = initFunc()
@@ -326,7 +328,7 @@ func (t *fileTailer) syncFilesInDir(dir *Dir, readall bool, log logrus.FieldLogg
 			return Err
 		}
 
-		newFileWithReader := &fileWithReader{file: newFile, reader: NewLineReader()}
+		newFileWithReader := &fileWithReader{file: newFile, reader: NewLineReader(t.lineDelimiter)}
 		Err = t.readNewLines(newFileWithReader, fileLogger)
 		if Err != nil {
 			newFile.Close()
@@ -356,14 +358,14 @@ func (t *fileTailer) readNewLines(file *fileWithReader, log logrus.FieldLogger) 
 		if err != nil {
 			return NewErrorf(NotSpecified, err, "%v: read() failed", file.file.Name())
 		}
-		if eof {
-			return nil
-		}
 		log.Debugf("read line %q", line)
 		select {
 		case <-t.done:
 			return nil
 		case t.lines <- &Line{Line: line, File: file.file.Name()}:
+		}
+		if eof {
+			return nil
 		}
 	}
 }
