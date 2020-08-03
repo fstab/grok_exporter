@@ -43,6 +43,7 @@ func convertGlobal(v2cfg *v2.Config) GlobalConfig {
 func convertInput(v2cfg *v2.Config) InputConfig {
 	return InputConfig{
 		Type:                       v2cfg.Input.Type,
+		LineDelimiter:              "\n",
 		PathsAndGlobs:              convertPathsAndGlobs(v2cfg.Input.PathsAndGlobs),
 		FailOnMissingLogfileString: v2cfg.Input.FailOnMissingLogfileString,
 		FailOnMissingLogfile:       v2cfg.Input.FailOnMissingLogfile,

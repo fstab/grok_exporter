@@ -250,6 +250,11 @@ func (c *InputConfig) addDefaults() {
 	if c.Type == inputTypeFile && len(c.FailOnMissingLogfileString) == 0 {
 		c.FailOnMissingLogfileString = "true"
 	}
+	if c.Type == inputTypeFile || c.Type == inputTypeStdin {
+		if len(c.LineDelimiter) == 0 {
+			c.LineDelimiter = "\n"
+		}
+	}
 	if c.Type == inputTypeWebhook {
 		if len(c.WebhookPath) == 0 {
 			c.WebhookPath = "/webhook"
