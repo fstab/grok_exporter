@@ -114,7 +114,23 @@ input:
     poll_interval: 5s # should NOT be needed in most cases, see below
 ```
 
+Example 3:
+
+```yaml
+input:
+    type: file
+    line_delimiter: "[0-9]{2}.[0-9]{2}.[0-9]{4}"
+    path:
+    - /var/logdir2/*.log
+    readall: false
+    fail_on_missing_logfile: true
+    poll_interval: 5s # should NOT be needed in most cases, see below
+```
+
 The `path` is the path to the log file. `path` is used if you want to monitor a single path. If you want to monitor a list of paths, use `paths` instead, as in example 2 above. [Glob] patterns are supported on the file level, but not on the directory level. If you want to monitor multiple logfiles, see also [restricting a metric to specific log files](#restricting-a-metric-to-specific-log-files) and [pre-defined label variables](#pre-defined-label-variables) below.
+
+The `line_delimiter` you may use to handle multiline messages. Some services, such as Oracle DB, produce logs in a format 
+with specific message delimiter (for example, date). If not set, will be line break symbol by default.
 
 The `readall` flag defines if `grok_exporter` starts reading from the beginning or the end of the file.
 True means we read the whole file, false means we start at the end of the file and read only new lines.
@@ -375,7 +391,7 @@ labels:
 With the incoming log object being:
 
 ```json
-{"message": "Login occured", "user": "Skeen", "ip": "1.1.1.1"}'
+{"message": "Login occured", "user": "Skeen", "ip": "1.1.1.1"}
 ```
 
 ### Label Template Functions
