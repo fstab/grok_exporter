@@ -686,6 +686,7 @@ func (cfg *Config) copy() *Config {
 func (cfg *Config) marshalToString() string {
 	var newlineEscape = "___GROK_EXPORTER_NEWLINE_ESCAPE___"
 	cfg.Input.WebhookTextBulkSeparator = strings.Replace(cfg.Input.WebhookTextBulkSeparator, "\n", newlineEscape, -1)
+	cfg.Input.LineDelimiter = strings.Replace(cfg.Input.LineDelimiter, "\n", newlineEscape, -1)
 	out, err := yaml.Marshal(cfg)
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "unexpected fatal error: failed to marshal config: %v", err)
