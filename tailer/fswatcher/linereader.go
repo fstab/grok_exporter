@@ -47,8 +47,16 @@ func (r *lineReader) ReadLine(file io.Reader) (string, bool, error) {
 	)
 	for {
 		newlinesLoc := reg.FindAllIndex(r.remainingBytesFromLastRead, 2)
-		if newlinesLoc != nil && len(newlinesLoc) == 2 {
-			newlinePos := newlinesLoc[1][0]
+		var newlinePos int
+		if newlinesLoc != nil {
+			// if first found match is not the first symbol(s)
+			newlinePos = newlinesLoc[0][0]
+			if len(newlinesLoc) == 2 && newlinePos == 0 {
+				// if first found match is message start symbol(s)
+				newlinePos = newlinesLoc[1][0]
+			}
+		}
+		if newlinePos != 0 {
 			l := len(r.remainingBytesFromLastRead)
 			result := make([]byte, newlinePos)
 			copy(result, r.remainingBytesFromLastRead[:newlinePos])

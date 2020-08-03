@@ -358,14 +358,14 @@ func (t *fileTailer) readNewLines(file *fileWithReader, log logrus.FieldLogger) 
 		if err != nil {
 			return NewErrorf(NotSpecified, err, "%v: read() failed", file.file.Name())
 		}
+		if eof {
+			return nil
+		}
 		log.Debugf("read line %q", line)
 		select {
 		case <-t.done:
 			return nil
 		case t.lines <- &Line{Line: line, File: file.file.Name()}:
-		}
-		if eof {
-			return nil
 		}
 	}
 }
