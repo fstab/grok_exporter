@@ -349,7 +349,7 @@ func startTailer(cfg *v3.Config, registry prometheus.Registerer) (fswatcher.File
 			}
 		}
 	case cfg.Input.Type == "stdin":
-		tail = tailer.RunStdinTailer()
+		tail = tailer.RunStdinTailer(cfg.Input.LineDelimiter)
 	case cfg.Input.Type == "webhook":
 		tail = tailer.InitWebhookTailer(&cfg.Input)
 	default:

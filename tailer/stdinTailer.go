@@ -15,7 +15,6 @@
 package tailer
 
 import (
-	"bufio"
 	"github.com/fstab/grok_exporter/tailer/fswatcher"
 	"os"
 	"strings"
@@ -38,13 +37,14 @@ func (t *stdinTailer) Close() {
 	// TODO: How to stop the go-routine reading on stdin?
 }
 
-func RunStdinTailer() fswatcher.FileTailer {
+func RunStdinTailer(lineDelimiter string) fswatcher.FileTailer {
 	lineChan := make(chan *fswatcher.Line)
 	errorChan := make(chan fswatcher.Error)
 	go func() {
-		reader := bufio.NewReader(os.Stdin)
+		reader := fswatcher.NewLineReader(lineDelimiter)
 		for {
-			line, err := reader.ReadString('\n')
+			// ignoring eof
+			line, _, err := reader.ReadLine(os.Stdin)
 			if err != nil {
 				errorChan <- fswatcher.NewError(fswatcher.NotSpecified, err, "")
 				return
