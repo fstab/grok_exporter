@@ -26,7 +26,7 @@ const empty_v3 = `
 global:
     config_version: 3
 input:
-    line_delimiter:
+    line_delimiter: \n
 `
 
 const full_v2 = `
