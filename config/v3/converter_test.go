@@ -33,6 +33,7 @@ global:
     retention_check_interval: 3s
 input:
     type: file
+	line_delimiter: \n
     paths:
       - /path/to/file1.log
       - /dir/with/*.log
@@ -89,6 +90,7 @@ global:
     retention_check_interval: 3s
 input:
     type: file
+	line_delimiter: \n
     paths:
       - /path/to/file1.log
       - /dir/with/*.log

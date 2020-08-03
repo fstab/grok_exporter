@@ -26,6 +26,7 @@ global:
     config_version: 3
 input:
     type: file
+	line_delimiter: \n
     path: x/x/x
     fail_on_missing_logfile: false
     readall: true
@@ -47,6 +48,7 @@ global:
     config_version: 3
 input:
     type: file
+	line_delimiter: \n
     path: x/x/x
 metrics:
     - type: gauge
@@ -66,6 +68,7 @@ global:
     config_version: 3
 input:
     type: stdin
+	line_delimiter: \n
 metrics:
     - type: histogram
       name: test_histogram
@@ -83,6 +86,7 @@ global:
     config_version: 3
 input:
     type: stdin
+	line_delimiter: \n
 metrics:
     - type: summary
       name: test_summary
@@ -100,6 +104,7 @@ global:
     config_version: 3
 input:
     type: stdin
+	line_delimiter: \n
 metrics:
     - type: counter
       name: test_count_total
@@ -121,6 +126,7 @@ global:
     config_version: 3
 input:
     type: stdin
+	line_delimiter: \n
 metrics:
     - type: counter
       name: test_count_total
@@ -139,6 +145,7 @@ global:
     config_version: 3
 input:
     type: file
+	line_delimiter: \n
     paths:
     - /tmp/dir1/*.log
     - /tmp/dir2/*.log
@@ -165,6 +172,7 @@ global:
     config_version: 3
 input:
     type: file
+	line_delimiter: \n
     path: /tmp/test/*.log
 metrics:
     - type: counter
@@ -181,6 +189,7 @@ global:
     config_version: 3
 input:
     type: stdin
+	line_delimiter: \n
 imports:
     - type: metrics
       file: /etc/grok/metrics.d/*.yaml
