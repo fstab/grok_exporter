@@ -441,6 +441,18 @@ func TestImportSuccess(t *testing.T) {
 	expectMetric(t, cfg.AllMetrics[4], "test_summary_2", []string{"/var/log/syslog/*"}, 0, 4, 2*time.Hour+30*time.Minute)
 }
 
+func TestLineDelimiterGeneration(t *testing.T) {
+	cfgWithoutDelimiter := strings.Replace(counter_config, "[\\s]*line_delimiter:[^\\n]*", "", 1)
+	cfgWithDelimiter, err := Unmarshal([]byte(cfgWithoutDelimiter))
+	if err != nil {
+		t.Fatalf("unexpected unmarshalling error: %v", err)
+	}
+	err = equalsIgnoreIndentation(cfgWithDelimiter.String(), counter_config)
+	if err != nil {
+		t.Fatalf("Expected:\n%v\nActual:\n%v\n%v", counter_config, cfgWithDelimiter, err)
+	}
+}
+
 func expectMetric(t *testing.T, metric MetricConfig, name string, paths []string, bucketLen, quantilesLen int, retention time.Duration) {
 	if metric.Name != name {
 		t.Fatalf("expected metric %v but found %v", name, metric.Name)
