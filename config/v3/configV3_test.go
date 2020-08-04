@@ -16,6 +16,7 @@ package v3
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -442,7 +443,8 @@ func TestImportSuccess(t *testing.T) {
 }
 
 func TestLineDelimiterGeneration(t *testing.T) {
-	cfgWithoutDelimiter := strings.Replace(counter_config, "[\\s]*line_delimiter:[^\\n]*", "", 1)
+	re := regexp.MustCompile("[\\s]*line_delimiter:[^\\n]*")
+	cfgWithoutDelimiter := re.ReplaceAllString(counter_config, "")
 	cfgWithDelimiter, err := Unmarshal([]byte(cfgWithoutDelimiter))
 	if err != nil {
 		t.Fatalf("unexpected unmarshalling error: %v", err)
