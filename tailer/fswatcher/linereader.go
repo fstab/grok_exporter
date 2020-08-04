@@ -17,6 +17,7 @@ package fswatcher
 import (
 	"io"
 	"regexp"
+	"strings"
 )
 
 type lineReader struct {
@@ -62,13 +63,13 @@ func (r *lineReader) ReadLine(file io.Reader) (string, bool, error) {
 			copy(result, r.remainingBytesFromLastRead[:newlinePos])
 			copy(r.remainingBytesFromLastRead, r.remainingBytesFromLastRead[newlinePos+1:])
 			r.remainingBytesFromLastRead = r.remainingBytesFromLastRead[:l-(newlinePos+1)]
-			return string(stripWindowsLineEnding(result)), false, nil
+			return stripLineEnding(string(result)), false, nil
 		} else if err != nil {
 			if err == io.EOF {
 				result := make([]byte, len(r.remainingBytesFromLastRead))
 				copy(result, r.remainingBytesFromLastRead)
 				r.remainingBytesFromLastRead = []byte{}
-				return string(stripWindowsLineEnding(result)), true, nil
+				return stripLineEnding(string(result)), true, nil
 			} else {
 				return "", false, err
 			}
@@ -82,12 +83,11 @@ func (r *lineReader) ReadLine(file io.Reader) (string, bool, error) {
 	}
 }
 
-func stripWindowsLineEnding(s []byte) []byte {
-	if len(s) > 0 && s[len(s)-1] == '\r' {
-		return s[:len(s)-1]
-	} else {
-		return s
-	}
+func stripLineEnding(s string) string {
+	// in standard delimiter case
+	s = strings.TrimPrefix(s, "\n")
+	s = strings.TrimSuffix(s, "\r")
+	return s
 }
 
 func (r *lineReader) Clear() {
