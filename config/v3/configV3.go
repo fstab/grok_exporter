@@ -123,7 +123,7 @@ type MetricConfig struct {
 	Cumulative           bool                `yaml:",omitempty"`
 	Buckets              []float64           `yaml:",flow,omitempty"`
 	Quantiles            map[float64]float64 `yaml:",flow,omitempty"`
-	MaxAge               time.Duration       `yaml:",omitempty"`
+	MaxAge               time.Duration       `yaml:"max_age,omitempty"`
 	Labels               map[string]string   `yaml:",omitempty"`
 	LabelTemplates       []template.Template `yaml:"-"` // parsed version of Labels, will not be serialized to yaml.
 	ValueTemplate        template.Template   `yaml:"-"` // parsed version of Value, will not be serialized to yaml.
