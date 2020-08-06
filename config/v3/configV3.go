@@ -148,7 +148,7 @@ type DefaultConfig struct {
 	Retention     time.Duration       `yaml:",omitempty"` // implicitly parsed with time.ParseDuration()
 	Buckets       []float64           `yaml:",flow,omitempty"`
 	Quantiles     map[float64]float64 `yaml:",flow,omitempty"`
-	MaxAge        time.Duration       `yaml:",omitempty"`
+	MaxAge        time.Duration       `yaml:"max_age,omitempty"`
 	Labels        map[string]string   `yaml:",omitempty"`
 }
 
