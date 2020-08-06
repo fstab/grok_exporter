@@ -123,6 +123,7 @@ type MetricConfig struct {
 	Cumulative           bool                `yaml:",omitempty"`
 	Buckets              []float64           `yaml:",flow,omitempty"`
 	Quantiles            map[float64]float64 `yaml:",flow,omitempty"`
+	MaxAge               time.Duration       `yaml:",omitempty"`
 	Labels               map[string]string   `yaml:",omitempty"`
 	LabelTemplates       []template.Template `yaml:"-"` // parsed version of Labels, will not be serialized to yaml.
 	ValueTemplate        template.Template   `yaml:"-"` // parsed version of Value, will not be serialized to yaml.
@@ -147,6 +148,7 @@ type DefaultConfig struct {
 	Retention     time.Duration       `yaml:",omitempty"` // implicitly parsed with time.ParseDuration()
 	Buckets       []float64           `yaml:",flow,omitempty"`
 	Quantiles     map[float64]float64 `yaml:",flow,omitempty"`
+	MaxAge        time.Duration       `yaml:",omitempty"`
 	Labels        map[string]string   `yaml:",omitempty"`
 }
 
@@ -210,6 +212,10 @@ func applyImportDefaults(metricConfig *MetricConfig, defaults DefaultConfig) {
 	}
 	if metricConfig.Type == "summary" && len(metricConfig.Quantiles) == 0 {
 		metricConfig.Quantiles = defaults.Quantiles
+	}
+	if metricConfig.Type == "summary" && metricConfig.MaxAge == 0 {
+		fmt.Print("set max age default")
+		metricConfig.MaxAge = defaults.MaxAge
 	}
 	if metricConfig.Type == "histogram" && len(metricConfig.Buckets) == 0 {
 		metricConfig.Buckets = defaults.Buckets
@@ -416,6 +422,7 @@ func (c ImportConfig) validate() error {
 			{"retention", c.Defaults.Retention != 0},
 			{"buckets", len(c.Defaults.Buckets) > 0},
 			{"quantiles", len(c.Defaults.Quantiles) > 0},
+			{"max_age", c.Defaults.MaxAge != 0},
 			{"labels", len(c.Defaults.Labels) > 0},
 		} {
 			if field.present {
@@ -496,16 +503,16 @@ func (c *MetricConfig) validate() error {
 	if err != nil {
 		return err
 	}
-	var cumulativeAllowed, bucketsAllowed, quantilesAllowed bool
+	var cumulativeAllowed, bucketsAllowed, quantilesAllowed, maxAgeAllowed bool
 	switch c.Type {
 	case "counter":
-		cumulativeAllowed, bucketsAllowed, quantilesAllowed = false, false, false
+		cumulativeAllowed, bucketsAllowed, quantilesAllowed, maxAgeAllowed = false, false, false, false
 	case "gauge":
-		cumulativeAllowed, bucketsAllowed, quantilesAllowed = true, false, false
+		cumulativeAllowed, bucketsAllowed, quantilesAllowed, maxAgeAllowed = true, false, false, false
 	case "histogram":
-		cumulativeAllowed, bucketsAllowed, quantilesAllowed = false, true, false
+		cumulativeAllowed, bucketsAllowed, quantilesAllowed, maxAgeAllowed = false, true, false, false
 	case "summary":
-		cumulativeAllowed, bucketsAllowed, quantilesAllowed = false, false, true
+		cumulativeAllowed, bucketsAllowed, quantilesAllowed, maxAgeAllowed = false, false, true, true
 	default:
 		return fmt.Errorf("Invalid 'metrics.type': '%v'. We currently only support 'counter' and 'gauge'.", c.Type)
 	}
@@ -517,7 +524,9 @@ func (c *MetricConfig) validate() error {
 	case !bucketsAllowed && len(c.Buckets) > 0:
 		return fmt.Errorf("Invalid metric configuration: 'metrics.buckets' cannot be used for %v metrics.", c.Type)
 	case !quantilesAllowed && len(c.Quantiles) > 0:
-		return fmt.Errorf("Invalid metric configuration: 'metrics.buckets' cannot be used for %v metrics.", c.Type)
+		return fmt.Errorf("Invalid metric configuration: 'metrics.quantiles' cannot be used for %v metrics.", c.Type)
+	case !maxAgeAllowed && c.MaxAge != 0:
+		return fmt.Errorf("Invalid metric configuration: 'metrics.max_age' cannot be used for %v metrics.", c.Type)
 	}
 	if len(c.DeleteMatch) > 0 && len(c.Labels) == 0 {
 		return fmt.Errorf("Invalid metric configuration: 'metrics.delete_match' is only supported for metrics with labels.")
