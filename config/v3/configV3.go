@@ -214,7 +214,6 @@ func applyImportDefaults(metricConfig *MetricConfig, defaults DefaultConfig) {
 		metricConfig.Quantiles = defaults.Quantiles
 	}
 	if metricConfig.Type == "summary" && metricConfig.MaxAge == 0 {
-		fmt.Print("set max age default")
 		metricConfig.MaxAge = defaults.MaxAge
 	}
 	if metricConfig.Type == "histogram" && len(metricConfig.Buckets) == 0 {
