@@ -471,6 +471,9 @@ func NewSummaryMetric(cfg *configuration.MetricConfig, regex *oniguruma.Regex, d
 	if len(cfg.Quantiles) > 0 {
 		summaryOpts.Objectives = cfg.Quantiles
 	}
+	if cfg.MaxAge != 0 {
+		summaryOpts.MaxAge = cfg.MaxAge
+	}
 	if len(cfg.Labels) == 0 {
 		return &summaryMetric{
 			observeMetric: newObserveMetric(cfg, regex, deleteRegex),
