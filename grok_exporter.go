@@ -25,6 +25,7 @@ import (
 	"github.com/fstab/grok_exporter/config/v3"
 	"github.com/fstab/grok_exporter/exporter"
 	"github.com/fstab/grok_exporter/oniguruma"
+	"github.com/fstab/grok_exporter/perfmonitor"
 	"github.com/fstab/grok_exporter/tailer"
 	"github.com/fstab/grok_exporter/tailer/fswatcher"
 	"github.com/prometheus/client_golang/prometheus"
@@ -44,10 +45,12 @@ var (
 	extra   = "extra"
 )
 
+/*
 const (
 	number_of_lines_matched_label = "matched"
 	number_of_lines_ignored_label = "ignored"
 )
+*/
 
 var additionalFieldDefinitions = map[string]string{
 	logfile: "full path of the log file",
@@ -84,9 +87,15 @@ func main() {
 	for _, m := range metrics {
 		registry.MustRegister(m.Collector())
 	}
-	nLinesTotal, nMatchesByMetric, procTimeMicrosecondsByMetric, nErrorsByMetric := initSelfMonitoring(metrics, registry)
+	logger := logrus.New()
+	logger.Level = logrus.WarnLevel
+	selfMonitoring := perfmonitor.New(registry, logger, cfg.Input.MaxLinesInBuffer > 0)
+	selfMonitoring.SetBuildInfo(exporter.Version, exporter.BuildDate, exporter.Branch, exporter.Revision, exporter.GoVersion, exporter.Platform)
+	selfMonitoring.InitCounters(metrics)
+	processorState := selfMonitoring.ForProcessor()
+	//nLinesTotal, nMatchesByMetric, procTimeMicrosecondsByMetric, nErrorsByMetric := initSelfMonitoring(metrics, registry)
 
-	tail, err := startTailer(cfg, registry)
+	tail, err := startTailer(cfg, selfMonitoring, logger)
 	exitOnError(err)
 
 	// gather up the handlers with which to start the webserver
@@ -112,6 +121,7 @@ func main() {
 	retentionTicker := time.NewTicker(cfg.Global.RetentionCheckInterval)
 
 	for {
+		processorState.WaitingForLogLine()
 		select {
 		case err := <-serverErrors:
 			exitOnError(fmt.Errorf("server error: %v", err.Error()))
@@ -124,39 +134,35 @@ func main() {
 		case line := <-tail.Lines():
 			matched := false
 			for _, metric := range metrics {
-				start := time.Now()
 				if !metric.PathMatches(line.File) {
 					continue
 				}
+				processorState.ProcessingMatch(metric.Name())
 				match, err := metric.ProcessMatch(line.Line, makeAdditionalFields(line))
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "WARNING: skipping log line: %v\n", err.Error())
 					fmt.Fprintf(os.Stderr, "%v\n", line.Line)
-					nErrorsByMetric.WithLabelValues(metric.Name()).Inc()
+					selfMonitoring.ObserverLineProcessingError(metric.Name())
 				} else if match != nil {
-					nMatchesByMetric.WithLabelValues(metric.Name()).Inc()
-					procTimeMicrosecondsByMetric.WithLabelValues(metric.Name()).Add(float64(time.Since(start).Nanoseconds() / int64(1000)))
+					selfMonitoring.ObserveLineMatched(metric.Name())
 					matched = true
 				}
+				processorState.ProcessingDeleteMatch(metric.Name())
 				_, err = metric.ProcessDeleteMatch(line.Line, makeAdditionalFields(line))
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "WARNING: skipping log line: %v\n", err.Error())
 					fmt.Fprintf(os.Stderr, "%v\n", line.Line)
-					nErrorsByMetric.WithLabelValues(metric.Name()).Inc()
+					selfMonitoring.ObserverLineProcessingError(metric.Name())
 				}
 				// TODO: create metric to monitor number of matching delete_patterns
 			}
-			if matched {
-				nLinesTotal.WithLabelValues(number_of_lines_matched_label).Inc()
-			} else {
-				nLinesTotal.WithLabelValues(number_of_lines_ignored_label).Inc()
-			}
+			selfMonitoring.ObserveLineProcessed(matched)
 		case <-retentionTicker.C:
 			for _, metric := range metrics {
 				err = metric.ProcessRetention()
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "WARNING: error while processing retention on metric %v: %v", metric.Name(), err)
-					nErrorsByMetric.WithLabelValues(metric.Name()).Inc()
+					selfMonitoring.ObserverLineProcessingError(metric.Name())
 				}
 			}
 			// TODO: create metric to monitor number of metrics cleaned up via retention
@@ -273,27 +279,9 @@ func createMetrics(cfg *v3.Config, patterns *exporter.Patterns) ([]exporter.Metr
 	return result, nil
 }
 
+/*
+
 func initSelfMonitoring(metrics []exporter.Metric, registry prometheus.Registerer) (*prometheus.CounterVec, *prometheus.CounterVec, *prometheus.CounterVec, *prometheus.CounterVec) {
-	buildInfo := prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "grok_exporter_build_info",
-		Help: "A metric with a constant '1' value labeled by version, builddate, branch, revision, goversion, and platform on which grok_exporter was built.",
-	}, []string{"version", "builddate", "branch", "revision", "goversion", "platform"})
-	nLinesTotal := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "grok_exporter_lines_total",
-		Help: "Total number of log lines processed by grok_exporter.",
-	}, []string{"status"})
-	nMatchesByMetric := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "grok_exporter_lines_matching_total",
-		Help: "Number of lines matched for each metric. Note that one line can be matched by multiple metrics.",
-	}, []string{"metric"})
-	procTimeMicrosecondsByMetric := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "grok_exporter_lines_processing_time_microseconds_total",
-		Help: "Processing time in microseconds for each metric. Divide by grok_exporter_lines_matching_total to get the averge processing time for one log line.",
-	}, []string{"metric"})
-	nErrorsByMetric := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "grok_exporter_line_processing_errors_total",
-		Help: "Number of errors for each metric. If this is > 0 there is an error in the configuration file. Check grok_exporter's console output.",
-	}, []string{"metric"})
 
 	registry.MustRegister(buildInfo)
 	registry.MustRegister(nLinesTotal)
@@ -301,7 +289,6 @@ func initSelfMonitoring(metrics []exporter.Metric, registry prometheus.Registere
 	registry.MustRegister(procTimeMicrosecondsByMetric)
 	registry.MustRegister(nErrorsByMetric)
 
-	buildInfo.WithLabelValues(exporter.Version, exporter.BuildDate, exporter.Branch, exporter.Revision, exporter.GoVersion, exporter.Platform).Set(1)
 	// Initializing a value with zero makes the label appear. Otherwise the label is not shown until the first value is observed.
 	nLinesTotal.WithLabelValues(number_of_lines_matched_label).Add(0)
 	nLinesTotal.WithLabelValues(number_of_lines_ignored_label).Add(0)
@@ -312,6 +299,8 @@ func initSelfMonitoring(metrics []exporter.Metric, registry prometheus.Registere
 	}
 	return nLinesTotal, nMatchesByMetric, procTimeMicrosecondsByMetric, nErrorsByMetric
 }
+
+*/
 
 func startServer(cfg v3.ServerConfig, httpHandlers []exporter.HttpServerPathHandler) chan error {
 	serverErrors := make(chan error)
@@ -329,22 +318,24 @@ func startServer(cfg v3.ServerConfig, httpHandlers []exporter.HttpServerPathHand
 	return serverErrors
 }
 
-func startTailer(cfg *v3.Config, registry prometheus.Registerer) (fswatcher.FileTailer, error) {
+// -----------------------------------------
+// TODO: Replace registry with perfmonitor and pass it to fswatcher as well as buffered tailer.
+// -----------------------------------------
+
+func startTailer(cfg *v3.Config, metrics *perfmonitor.Metrics, logger logrus.FieldLogger) (fswatcher.FileTailer, error) {
 	var (
 		tail fswatcher.FileTailer
 		err  error
 	)
-	logger := logrus.New()
-	logger.Level = logrus.WarnLevel
 	switch {
 	case cfg.Input.Type == "file":
 		if cfg.Input.PollInterval == 0 {
-			tail, err = fswatcher.RunFileTailer(cfg.Input.Globs, cfg.Input.Readall, cfg.Input.FailOnMissingLogfile, logger)
+			tail, err = fswatcher.RunFileTailer(cfg.Input.Globs, cfg.Input.Readall, cfg.Input.FailOnMissingLogfile, metrics.ForFileSystemWatcher(), logger)
 			if err != nil {
 				return nil, err
 			}
 		} else {
-			tail, err = fswatcher.RunPollingFileTailer(cfg.Input.Globs, cfg.Input.Readall, cfg.Input.FailOnMissingLogfile, cfg.Input.PollInterval, logger)
+			tail, err = fswatcher.RunPollingFileTailer(cfg.Input.Globs, cfg.Input.Readall, cfg.Input.FailOnMissingLogfile, cfg.Input.PollInterval, metrics.ForFileSystemWatcher(), logger)
 			if err != nil {
 				return nil, err
 			}
@@ -358,6 +349,5 @@ func startTailer(cfg *v3.Config, registry prometheus.Registerer) (fswatcher.File
 	default:
 		return nil, fmt.Errorf("Config error: Input type '%v' unknown.", cfg.Input.Type)
 	}
-	bufferLoadMetric := exporter.NewBufferLoadMetric(logger, cfg.Input.MaxLinesInBuffer > 0, registry)
-	return tailer.BufferedTailerWithMetrics(tail, bufferLoadMetric, logger, cfg.Input.MaxLinesInBuffer), nil
+	return tailer.BufferedTailerWithMetrics(tail, cfg.Input.MaxLinesInBuffer, metrics.BufferLoadMetric(), metrics.ForLogLineBufferProducer(), metrics.ForLogLineBufferConsumer(), logger), nil
 }

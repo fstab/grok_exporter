@@ -16,6 +16,7 @@ package fswatcher
 
 import (
 	"fmt"
+	"github.com/fstab/grok_exporter/perfmonitor"
 	"github.com/fstab/grok_exporter/tailer/glob"
 	"github.com/prometheus/common/log"
 	"github.com/sirupsen/logrus"
@@ -96,18 +97,18 @@ func (t *fileTailer) Close() {
 	close(t.done)
 }
 
-func RunFileTailer(globs []glob.Glob, readall bool, failOnMissingFile bool, log logrus.FieldLogger) (FileTailer, error) {
-	return runFileTailer(initWatcher, globs, readall, failOnMissingFile, log)
+func RunFileTailer(globs []glob.Glob, readall bool, failOnMissingFile bool, state perfmonitor.FileSystemWatcherMonitor, log logrus.FieldLogger) (FileTailer, error) {
+	return runFileTailer(initWatcher, globs, readall, failOnMissingFile, state, log)
 }
 
-func RunPollingFileTailer(globs []glob.Glob, readall bool, failOnMissingFile bool, pollInterval time.Duration, log logrus.FieldLogger) (FileTailer, error) {
+func RunPollingFileTailer(globs []glob.Glob, readall bool, failOnMissingFile bool, pollInterval time.Duration, state perfmonitor.FileSystemWatcherMonitor, log logrus.FieldLogger) (FileTailer, error) {
 	initFunc := func() (fswatcher, Error) {
 		return initPollingWatcher(pollInterval)
 	}
-	return runFileTailer(initFunc, globs, readall, failOnMissingFile, log)
+	return runFileTailer(initFunc, globs, readall, failOnMissingFile, state, log)
 }
 
-func runFileTailer(initFunc func() (fswatcher, Error), globs []glob.Glob, readall bool, failOnMissingFile bool, log logrus.FieldLogger) (FileTailer, error) {
+func runFileTailer(initFunc func() (fswatcher, Error), globs []glob.Glob, readall bool, failOnMissingFile bool, state perfmonitor.FileSystemWatcherMonitor, log logrus.FieldLogger) (FileTailer, error) {
 
 	var (
 		t   *fileTailer
@@ -169,6 +170,7 @@ func runFileTailer(initFunc func() (fswatcher, Error), globs []glob.Glob, readal
 		}
 
 		for { // event consumer loop
+			state.WaitingForFileSystemEvent()
 			select {
 			case <-t.done:
 				return
@@ -176,6 +178,7 @@ func runFileTailer(initFunc func() (fswatcher, Error), globs []glob.Glob, readal
 				if !open {
 					return
 				}
+				state.ProcessingFileSystemEvent()
 				processEventError := t.osSpecific.processEvent(t, event, log)
 				if processEventError != nil {
 					select {

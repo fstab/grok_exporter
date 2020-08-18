@@ -15,6 +15,7 @@
 package tailer
 
 import (
+	"github.com/fstab/grok_exporter/perfmonitor"
 	"github.com/fstab/grok_exporter/tailer/fswatcher"
 	"github.com/sirupsen/logrus"
 )
@@ -40,7 +41,8 @@ func (b *bufferedTailer) Close() {
 }
 
 func BufferedTailer(orig fswatcher.FileTailer) fswatcher.FileTailer {
-	return BufferedTailerWithMetrics(orig, &noopMetric{}, logrus.New(), 0)
+	noop := &noopMetric{}
+	return BufferedTailerWithMetrics(orig, 0, noop, noop, noop, logrus.New())
 }
 
 // Wrapper around a tailer that consumes the lines channel quickly.
@@ -102,7 +104,7 @@ func BufferedTailer(orig fswatcher.FileTailer) fswatcher.FileTailer {
 //
 // To minimize the risk, use the buffered tailer to make sure file system events are handled
 // as quickly as possible without waiting for the grok patterns to be processed.
-func BufferedTailerWithMetrics(orig fswatcher.FileTailer, bufferLoadMetric BufferLoadMetric, log logrus.FieldLogger, maxLinesInBuffer int) fswatcher.FileTailer {
+func BufferedTailerWithMetrics(orig fswatcher.FileTailer, maxLinesInBuffer int, bufferLoadMetric BufferLoadMetric, producerMonitor perfmonitor.LogLineBufferProducerMonitor, consumerMonitor perfmonitor.LogLineBufferConsumerMonitor, log logrus.FieldLogger) fswatcher.FileTailer {
 	buffer := NewLineBuffer()
 	out := make(chan *fswatcher.Line)
 	done := make(chan struct{})
@@ -111,8 +113,10 @@ func BufferedTailerWithMetrics(orig fswatcher.FileTailer, bufferLoadMetric Buffe
 	go func() {
 		bufferLoadMetric.Start()
 		for {
+			producerMonitor.WaitingForLogLine()
 			line, ok := <-orig.Lines()
 			if ok {
+				producerMonitor.PuttingLogLIneIntoBuffer()
 				if maxLinesInBuffer > 0 && buffer.Len() > maxLinesInBuffer-1 {
 					log.Warnf("Line buffer reached limit of %v lines. Dropping lines in buffer.", maxLinesInBuffer)
 					buffer.Clear()
@@ -131,6 +135,7 @@ func BufferedTailerWithMetrics(orig fswatcher.FileTailer, bufferLoadMetric Buffe
 	// consumer
 	go func() {
 		for {
+			consumerMonitor.WaitingForLogLine()
 			line := buffer.BlockingPop()
 			if line == nil {
 				// buffer closed
@@ -138,6 +143,7 @@ func BufferedTailerWithMetrics(orig fswatcher.FileTailer, bufferLoadMetric Buffe
 				return
 			}
 			bufferLoadMetric.Dec()
+			consumerMonitor.ProcessingLogLine()
 			select {
 			case out <- line:
 			case <-done:
@@ -161,8 +167,11 @@ type BufferLoadMetric interface {
 
 type noopMetric struct{}
 
-func (m *noopMetric) Start()          {}
-func (m *noopMetric) Inc()            {}
-func (m *noopMetric) Dec()            {}
-func (m *noopMetric) Set(value int64) {}
-func (m *noopMetric) Stop()           {}
+func (m *noopMetric) Start()                    {}
+func (m *noopMetric) Inc()                      {}
+func (m *noopMetric) Dec()                      {}
+func (m *noopMetric) Set(value int64)           {}
+func (m *noopMetric) Stop()                     {}
+func (m *noopMetric) WaitingForLogLine()        {}
+func (m *noopMetric) PuttingLogLIneIntoBuffer() {}
+func (m *noopMetric) ProcessingLogLine()        {}

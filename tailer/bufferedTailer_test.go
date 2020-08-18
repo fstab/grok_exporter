@@ -48,7 +48,8 @@ func (tail *sourceTailer) Close() {
 func TestLineBufferSequential_withMetrics(t *testing.T) {
 	src := &sourceTailer{lines: make(chan *fswatcher.Line)}
 	metric := &peakLoadMetric{}
-	buffered := BufferedTailerWithMetrics(src, metric, log, 0)
+	noopMonitor := &noopMetric{}
+	buffered := BufferedTailerWithMetrics(src, 0, metric, noopMonitor, noopMonitor, log)
 	for i := 1; i <= nTestLines; i++ {
 		src.lines <- &fswatcher.Line{Line: fmt.Sprintf("This is line number %v.", i)}
 	}
@@ -82,7 +83,8 @@ func TestLineBufferSequential_withMetrics(t *testing.T) {
 func TestLineBufferParallel_withMetrics(t *testing.T) {
 	src := &sourceTailer{lines: make(chan *fswatcher.Line)}
 	metric := &peakLoadMetric{}
-	buffered := BufferedTailerWithMetrics(src, metric, log, 0)
+	noopMonitor := &noopMetric{}
+	buffered := BufferedTailerWithMetrics(src, 0, metric, noopMonitor, noopMonitor, log)
 	var wg sync.WaitGroup
 	go func() {
 		start := time.Now()

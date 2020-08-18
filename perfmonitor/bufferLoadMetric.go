@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package exporter
+package perfmonitor
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
@@ -81,6 +81,7 @@ func (m *bufferLoadMetric) start(ticker *time.Ticker, tickProcessed chan struct{
 				ticksSinceLastLog++
 				if ticksSinceLastLog >= 4 { // every minute
 					if m.min60s > 1000 && !m.lineLimitSet {
+						// TODO: Update warning message
 						m.log.Warnf("Log lines are written faster than grok_exporter processes them. In the last minute there were constantly more than %d log lines in the buffer waiting to be processed. Check the built-in grok_exporter_lines_processing_time_microseconds_total metric to learn which metric takes most of the processing time.", m.min60s)
 					}
 					ticksSinceLastLog = 0

@@ -37,6 +37,8 @@ type Metric interface {
 	PathMatches(logfilePath string) bool
 	// Returns the match if the line matched, and nil if the line didn't match.
 	ProcessMatch(line string, additionalFields map[string]interface{}) (*Match, error)
+	// Check if a delete pattern is configured
+	HasDeleteMatch() bool
 	// Returns the match if the delete pattern matched, nil otherwise.
 	ProcessDeleteMatch(line string, additionalFields map[string]interface{}) (*Match, error)
 	// Remove old metrics
@@ -217,8 +219,12 @@ func (m *observeMetricWithLabels) processMatch(line string, additionalFields map
 	return nil, nil
 }
 
+func (m *metric) HasDeleteMatch() bool {
+	return m.deleteRegex != nil
+}
+
 func (m *metric) ProcessDeleteMatch(line string, additionalFields map[string]interface{}) (*Match, error) {
-	if m.deleteRegex == nil {
+	if !m.HasDeleteMatch() {
 		return nil, nil
 	}
 	return nil, fmt.Errorf("error processing metric %v: delete_match is currently only supported for metrics with labels.", m.Name())
@@ -232,7 +238,7 @@ func (m *metric) ProcessRetention() error {
 }
 
 func (m *metricWithLabels) processDeleteMatch(line string, vec deleterMetric, additionalFields map[string]interface{}) (*Match, error) {
-	if m.deleteRegex == nil {
+	if !m.HasDeleteMatch() {
 		return nil, nil
 	}
 	searchResult, err := m.deleteRegex.Search(line)

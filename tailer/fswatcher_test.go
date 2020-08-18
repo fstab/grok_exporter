@@ -624,10 +624,11 @@ func startFileTailer(t *testing.T, ctx *context, params []string) {
 		}
 		parsedGlobs = append(parsedGlobs, parsedGlob)
 	}
+	monitor := &mockMonitor{}
 	if ctx.tailerCfg == fseventTailer {
-		tailer, err = fswatcher.RunFileTailer(parsedGlobs, readall, failOnMissingFile, ctx.log)
+		tailer, err = fswatcher.RunFileTailer(parsedGlobs, readall, failOnMissingFile, monitor, ctx.log)
 	} else {
-		tailer, err = fswatcher.RunPollingFileTailer(parsedGlobs, readall, failOnMissingFile, 10*time.Millisecond, ctx.log)
+		tailer, err = fswatcher.RunPollingFileTailer(parsedGlobs, readall, failOnMissingFile, 10*time.Millisecond, monitor, ctx.log)
 	}
 	if err != nil {
 		fatalf(t, ctx, "%v", err)
@@ -636,6 +637,11 @@ func startFileTailer(t *testing.T, ctx *context, params []string) {
 	ctx.tailer = tailer
 	ctx.linesFromTailer = makeLinesFromTailer(tailer)
 }
+
+type mockMonitor struct{}
+
+func (m *mockMonitor) WaitingForFileSystemEvent() {}
+func (m *mockMonitor) ProcessingFileSystemEvent() {}
 
 func expect(t *testing.T, ctx *context, line string, file string) {
 	actualLine, err := ctx.linesFromTailer.nextLine(filepath.Join(ctx.basedir, file), 500*time.Millisecond)
@@ -944,7 +950,8 @@ func runTestShutdown(t *testing.T, mode string) {
 	if err != nil {
 		fatalf(t, ctx, "%q: failed to parse glob: %q", parsedGlob, err)
 	}
-	tailer, err := fswatcher.RunFileTailer([]glob.Glob{parsedGlob}, false, true, ctx.log)
+	monitor := &mockMonitor{}
+	tailer, err := fswatcher.RunFileTailer([]glob.Glob{parsedGlob}, false, true, monitor, ctx.log)
 	if err != nil {
 		fatalf(t, ctx, "failed to start tailer: %v", err)
 	}
