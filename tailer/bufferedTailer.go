@@ -15,7 +15,7 @@
 package tailer
 
 import (
-	"github.com/fstab/grok_exporter/perfmonitor"
+	"github.com/fstab/grok_exporter/selfmonitoring"
 	"github.com/fstab/grok_exporter/tailer/fswatcher"
 	"github.com/sirupsen/logrus"
 )
@@ -104,7 +104,7 @@ func BufferedTailer(orig fswatcher.FileTailer) fswatcher.FileTailer {
 //
 // To minimize the risk, use the buffered tailer to make sure file system events are handled
 // as quickly as possible without waiting for the grok patterns to be processed.
-func BufferedTailerWithMetrics(orig fswatcher.FileTailer, maxLinesInBuffer int, bufferLoadMetric BufferLoadMetric, producerMonitor perfmonitor.LogLineBufferProducerMonitor, consumerMonitor perfmonitor.LogLineBufferConsumerMonitor, log logrus.FieldLogger) fswatcher.FileTailer {
+func BufferedTailerWithMetrics(orig fswatcher.FileTailer, maxLinesInBuffer int, bufferLoadMetric BufferLoadMetric, producerMonitor selfmonitoring.LogLineBufferProducerMonitor, consumerMonitor selfmonitoring.LogLineBufferConsumerMonitor, log logrus.FieldLogger) fswatcher.FileTailer {
 	buffer := NewLineBuffer()
 	out := make(chan *fswatcher.Line)
 	done := make(chan struct{})

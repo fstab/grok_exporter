@@ -25,7 +25,7 @@ import (
 	"github.com/fstab/grok_exporter/config/v3"
 	"github.com/fstab/grok_exporter/exporter"
 	"github.com/fstab/grok_exporter/oniguruma"
-	"github.com/fstab/grok_exporter/perfmonitor"
+	"github.com/fstab/grok_exporter/selfmonitoring"
 	"github.com/fstab/grok_exporter/tailer"
 	"github.com/fstab/grok_exporter/tailer/fswatcher"
 	"github.com/prometheus/client_golang/prometheus"
@@ -89,9 +89,8 @@ func main() {
 	}
 	logger := logrus.New()
 	logger.Level = logrus.WarnLevel
-	selfMonitoring := perfmonitor.New(registry, logger, cfg.Input.MaxLinesInBuffer > 0)
+	selfMonitoring := selfmonitoring.Start(registry, metrics, cfg.Input.MaxLinesInBuffer > 0, logger)
 	selfMonitoring.SetBuildInfo(exporter.Version, exporter.BuildDate, exporter.Branch, exporter.Revision, exporter.GoVersion, exporter.Platform)
-	selfMonitoring.InitCounters(metrics)
 	processorState := selfMonitoring.ForProcessor()
 	//nLinesTotal, nMatchesByMetric, procTimeMicrosecondsByMetric, nErrorsByMetric := initSelfMonitoring(metrics, registry)
 
@@ -322,7 +321,7 @@ func startServer(cfg v3.ServerConfig, httpHandlers []exporter.HttpServerPathHand
 // TODO: Replace registry with perfmonitor and pass it to fswatcher as well as buffered tailer.
 // -----------------------------------------
 
-func startTailer(cfg *v3.Config, metrics *perfmonitor.Metrics, logger logrus.FieldLogger) (fswatcher.FileTailer, error) {
+func startTailer(cfg *v3.Config, selfMonitoring selfmonitoring.SelfMonitoring, logger logrus.FieldLogger) (fswatcher.FileTailer, error) {
 	var (
 		tail fswatcher.FileTailer
 		err  error
@@ -330,12 +329,12 @@ func startTailer(cfg *v3.Config, metrics *perfmonitor.Metrics, logger logrus.Fie
 	switch {
 	case cfg.Input.Type == "file":
 		if cfg.Input.PollInterval == 0 {
-			tail, err = fswatcher.RunFileTailer(cfg.Input.Globs, cfg.Input.Readall, cfg.Input.FailOnMissingLogfile, metrics.ForFileSystemWatcher(), logger)
+			tail, err = fswatcher.RunFileTailer(cfg.Input.Globs, cfg.Input.Readall, cfg.Input.FailOnMissingLogfile, selfMonitoring.ForFileSystemWatcher(), logger)
 			if err != nil {
 				return nil, err
 			}
 		} else {
-			tail, err = fswatcher.RunPollingFileTailer(cfg.Input.Globs, cfg.Input.Readall, cfg.Input.FailOnMissingLogfile, cfg.Input.PollInterval, metrics.ForFileSystemWatcher(), logger)
+			tail, err = fswatcher.RunPollingFileTailer(cfg.Input.Globs, cfg.Input.Readall, cfg.Input.FailOnMissingLogfile, cfg.Input.PollInterval, selfMonitoring.ForFileSystemWatcher(), logger)
 			if err != nil {
 				return nil, err
 			}
@@ -349,5 +348,5 @@ func startTailer(cfg *v3.Config, metrics *perfmonitor.Metrics, logger logrus.Fie
 	default:
 		return nil, fmt.Errorf("Config error: Input type '%v' unknown.", cfg.Input.Type)
 	}
-	return tailer.BufferedTailerWithMetrics(tail, cfg.Input.MaxLinesInBuffer, metrics.BufferLoadMetric(), metrics.ForLogLineBufferProducer(), metrics.ForLogLineBufferConsumer(), logger), nil
+	return tailer.BufferedTailerWithMetrics(tail, cfg.Input.MaxLinesInBuffer, selfMonitoring.BufferLoadMetric(), selfMonitoring.ForLogLineBufferProducer(), selfMonitoring.ForLogLineBufferConsumer(), logger), nil
 }
