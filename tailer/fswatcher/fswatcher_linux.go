@@ -20,6 +20,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 )
 
@@ -100,13 +101,30 @@ func (w *watcher) watchFile(_ fileMeta) Error {
 	return nil
 }
 
-func findDir(t *fileTailer, event inotifyEvent) *Dir {
+func findDir(t *fileTailer, event inotifyEvent) (*Dir, Error) {
 	for _, dir := range t.watchedDirs {
 		if dir.wd == int(event.Wd) {
-			return dir
+			return dir, nil
 		}
 	}
-	return nil
+	// We should always find the directory in watchedDirs if we receive an inotifyEvent.
+	// The following code should never be executed.
+	// However, Github issue #124 is a bug report where we receive an inotifyEvent for an unwatched directory.
+	// Create a detailed error message to help figuring out why this happens.
+	var (
+		errMsg strings.Builder
+		first  = true
+	)
+	fmt.Fprintf(&errMsg, "watch list inconsistent: cannot find directory for file system event %q in the list of watched directories [", event.String())
+	for _, dir := range t.watchedDirs {
+		if !first {
+			fmt.Fprintf(&errMsg, ", ")
+		}
+		fmt.Fprintf(&errMsg, "%q", dir.Path())
+		first = false
+	}
+	fmt.Fprintf(&errMsg, "]")
+	return nil, NewError(NotSpecified, nil, errMsg.String())
 }
 
 func (w *watcher) processEvent(t *fileTailer, fsevent fsevent, log logrus.FieldLogger) Error {
@@ -114,9 +132,9 @@ func (w *watcher) processEvent(t *fileTailer, fsevent fsevent, log logrus.FieldL
 	if !ok {
 		return NewErrorf(NotSpecified, nil, "received a file system event of unknown type %T", event)
 	}
-	dir := findDir(t, event)
-	if dir == nil {
-		return NewError(NotSpecified, nil, "watch list inconsistent: received a file system event for an unknown directory")
+	dir, Err := findDir(t, event)
+	if Err != nil {
+		return Err
 	}
 	dirLogger := log.WithField("directory", dir.path)
 	dirLogger.Debugf("received event: %v", event)
