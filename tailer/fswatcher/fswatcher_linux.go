@@ -115,12 +115,12 @@ func findDir(t *fileTailer, event inotifyEvent) (*Dir, Error) {
 		errMsg strings.Builder
 		first  = true
 	)
-	fmt.Fprintf(&errMsg, "watch list inconsistent: cannot find directory for file system event %q in the list of watched directories [", event.String())
+	fmt.Fprintf(&errMsg, "watch list inconsistent: cannot find directory for file system event %q with watch descriptor %d in the list of watched directories [", event.String(), event.Wd)
 	for _, dir := range t.watchedDirs {
 		if !first {
 			fmt.Fprintf(&errMsg, ", ")
 		}
-		fmt.Fprintf(&errMsg, "%q", dir.Path())
+		fmt.Fprintf(&errMsg, "Wd=%d (%q)", dir.wd, dir.Path())
 		first = false
 	}
 	fmt.Fprintf(&errMsg, "]")
