@@ -17,6 +17,10 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
+	"strings"
+	"time"
+
 	"github.com/fstab/grok_exporter/config"
 	"github.com/fstab/grok_exporter/config/v3"
 	"github.com/fstab/grok_exporter/exporter"
@@ -26,9 +30,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
-	"os"
-	"strings"
-	"time"
 )
 
 var (
@@ -352,6 +353,8 @@ func startTailer(cfg *v3.Config, registry prometheus.Registerer) (fswatcher.File
 		tail = tailer.RunStdinTailer()
 	case cfg.Input.Type == "webhook":
 		tail = tailer.InitWebhookTailer(&cfg.Input)
+	case cfg.Input.Type == "kafka":
+		tail = tailer.RunKafkaTailer(&cfg.Input)
 	default:
 		return nil, fmt.Errorf("Config error: Input type '%v' unknown.", cfg.Input.Type)
 	}

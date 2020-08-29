@@ -66,8 +66,11 @@ func verifyFieldName(metricName string, template template.Template, regex *onigu
 					return fmt.Errorf("%v: field name %v is ambigous, as this field is defined in the grok pattern but is also a global field provided by grok_exporter for the %v", metricName, grokFieldName, description)
 				}
 			} else {
-				if !regex.HasCaptureGroup(grokFieldName) {
+				numGroups := regex.NumberOfCaptureGroups(grokFieldName)
+				if numGroups == 0 {
 					return fmt.Errorf("%v: grok field %v not found in match pattern", metricName, grokFieldName)
+				} else if numGroups > 1 {
+					return fmt.Errorf("%v: grok field %v found %d times in match pattern: this is ambiguous, the pattern should define each grok field exactly once", metricName, grokFieldName, numGroups)
 				}
 			}
 		}

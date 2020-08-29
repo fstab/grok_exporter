@@ -200,6 +200,37 @@ input:
 
 This configuration example may be found in the examples directory [here](example/config_logstash_http_input_ipv6.yml).
 
+### Kafka Input Type
+
+The `grok_exporter` is also capable of consuming log entries from Kafka.  Currently, only plain-text encoded messages are supported.
+
+```yaml
+input:
+  type: kafka
+  # Version corresponding to the kafka cluster
+  kafka_version: 2.1.0
+
+  # The list of the Kafka brokers part of the Kafka cluster.  Please note that you need an instance of grok_exporter per Kafka cluster if you plan on consuming from topics from multiple clusters.
+  kafka_brokers:
+    - localhost:9092
+
+  # The list of Kafka topics to consume from.
+  kafka_topics: 
+    - grok_exporter_test
+
+  # The assignor to use, which can be either range, roundrobin, sticky (range by default)
+  kafka_partition_assignor: range
+
+  # The name of the consumer group to register as on the broker.  If not specified, the default is 'grok_exporter'
+  kafka_consumer_group_name: grok_exporter
+
+  # Indicates if the exporter should start consuming as of the most recent messages in the topic (true), or consume from the earliest messages in the topic (false).
+  kafka_consume_from_oldest: false
+```
+
+This configuration example may be found in the examples directory [here](example/config-kafka.yml).
+
+
 imports Section
 ---------------
 
