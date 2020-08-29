@@ -24,10 +24,11 @@ type goroutineName string
 type stateName string
 
 const (
-	fileSystemWatcher     goroutineName = "file system watcher"
-	logLineBufferProducer goroutineName = "log line buffer (producer)"
-	logLineBufferConsumer goroutineName = "log line buffer (consumer)"
-	processor             goroutineName = "processor"
+	fileSystemEventProducer goroutineName = "file system event watcher (producer)"
+	fileSystemEventConsumer goroutineName = "file system event watcher (consumer)"
+	logLineBufferProducer   goroutineName = "log line buffer (producer)"
+	logLineBufferConsumer   goroutineName = "log line buffer (consumer)"
+	processor               goroutineName = "processor"
 )
 
 const (
@@ -41,6 +42,16 @@ const (
 )
 
 type FileSystemWatcherMonitor interface {
+	FileSystemEventProducerState() FileSystemEventProducerMonitor
+	FileSystemEventConsumerState() FileSystemEventConsumerMonitor
+}
+
+type FileSystemEventConsumerMonitor interface {
+	WaitingForFileSystemEvent()
+	ProcessingFileSystemEvent()
+}
+
+type FileSystemEventProducerMonitor interface {
 	WaitingForFileSystemEvent()
 	ProcessingFileSystemEvent()
 }
@@ -68,19 +79,35 @@ type state struct {
 	matchName string
 }
 
-func (m *fileSystemWatcherMonitor) WaitingForFileSystemEvent() {
+func (m *fileSystemEventProducerMonitor) WaitingForFileSystemEvent() {
 	m.stateChanges <- &state{
 		name:      waitingForFileSystemEvent,
-		goroutine: fileSystemWatcher,
+		goroutine: fileSystemEventProducer,
 		active:    false,
 	}
 }
 
-func (m *fileSystemWatcherMonitor) ProcessingFileSystemEvent() {
+func (m *fileSystemEventProducerMonitor) ProcessingFileSystemEvent() {
 	m.stateChanges <- &state{
 		name:      processingFileSystemEvent,
-		goroutine: fileSystemWatcher,
+		goroutine: fileSystemEventProducer,
+		active:    true,
+	}
+}
+
+func (m *fileSystemEventConsumerMonitor) WaitingForFileSystemEvent() {
+	m.stateChanges <- &state{
+		name:      waitingForFileSystemEvent,
+		goroutine: fileSystemEventConsumer,
 		active:    false,
+	}
+}
+
+func (m *fileSystemEventConsumerMonitor) ProcessingFileSystemEvent() {
+	m.stateChanges <- &state{
+		name:      processingFileSystemEvent,
+		goroutine: fileSystemEventConsumer,
+		active:    true,
 	}
 }
 
@@ -148,6 +175,18 @@ func (m *selfMonitoring) ForFileSystemWatcher() FileSystemWatcherMonitor {
 	}
 }
 
+func (m *fileSystemWatcherMonitor) FileSystemEventProducerState() FileSystemEventProducerMonitor {
+	return &fileSystemEventProducerMonitor{
+		stateChanges: m.stateChanges,
+	}
+}
+
+func (m *fileSystemWatcherMonitor) FileSystemEventConsumerState() FileSystemEventConsumerMonitor {
+	return &fileSystemEventConsumerMonitor{
+		stateChanges: m.stateChanges,
+	}
+}
+
 func (m *selfMonitoring) ForLogLineBufferProducer() LogLineBufferProducerMonitor {
 	return &logLineBufferProducerMonitor{
 		stateChanges: m.stateChanges,
@@ -167,6 +206,14 @@ func (m *selfMonitoring) ForProcessor() ProcessorMonitor {
 }
 
 type fileSystemWatcherMonitor struct {
+	stateChanges chan *state
+}
+
+type fileSystemEventProducerMonitor struct {
+	stateChanges chan *state
+}
+
+type fileSystemEventConsumerMonitor struct {
 	stateChanges chan *state
 }
 
@@ -262,17 +309,19 @@ func Start(registry prometheus.Registerer, metrics []exporter.Metric, lineLimitS
 	registry.MustRegister(result.linesMatched)
 	registry.MustRegister(result.lineProcessingErrors)
 
-	result.timeSpent.WithLabelValues("file system watcher", "waiting for file system event", "false", "").Add(0)
-	result.timeSpent.WithLabelValues("file system watcher", "processing file system event", "true", "").Add(0)
-	result.timeSpent.WithLabelValues("log line buffer (producer)", "waiting for log line", "false", "").Add(0)
-	result.timeSpent.WithLabelValues("log line buffer (producer)", "putting log line into buffer", "true", "").Add(0)
-	result.timeSpent.WithLabelValues("log line buffer (consumer)", "waiting for log line", "true", "").Add(0)
-	result.timeSpent.WithLabelValues("log line buffer (consumer)", "processing log line", "true", "").Add(0)
-	result.timeSpent.WithLabelValues("processor", "waiting for log line", "false", "").Add(0)
+	result.timeSpent.WithLabelValues(string(fileSystemEventProducer), string(waitingForFileSystemEvent), "false", "").Add(0)
+	result.timeSpent.WithLabelValues(string(fileSystemEventProducer), string(processingFileSystemEvent), "true", "").Add(0)
+	result.timeSpent.WithLabelValues(string(fileSystemEventConsumer), string(waitingForFileSystemEvent), "false", "").Add(0)
+	result.timeSpent.WithLabelValues(string(fileSystemEventConsumer), string(processingFileSystemEvent), "true", "").Add(0)
+	result.timeSpent.WithLabelValues(string(logLineBufferProducer), string(waitingForLogLine), "false", "").Add(0)
+	result.timeSpent.WithLabelValues(string(logLineBufferProducer), string(puttingLogLineIntoBuffer), "true", "").Add(0)
+	result.timeSpent.WithLabelValues(string(logLineBufferConsumer), string(waitingForLogLine), "false", "").Add(0)
+	result.timeSpent.WithLabelValues(string(logLineBufferConsumer), string(processingLogLine), "true", "").Add(0)
+	result.timeSpent.WithLabelValues(string(processor), string(waitingForLogLine), "false", "").Add(0)
 	for _, metric := range metrics {
-		result.timeSpent.WithLabelValues("processor", "processing match", "true", metric.Name()).Add(0)
+		result.timeSpent.WithLabelValues(string(processor), string(processingMatch), "true", metric.Name()).Add(0)
 		if metric.HasDeleteMatch() {
-			result.timeSpent.WithLabelValues("processor", "processing delete match", "true", metric.Name()).Add(0)
+			result.timeSpent.WithLabelValues(string(processor), string(processingDeleteMatch), "true", metric.Name()).Add(0)
 		}
 		result.linesMatched.WithLabelValues(metric.Name()).Add(0)
 		result.lineProcessingErrors.WithLabelValues(metric.Name()).Add(0)
@@ -280,7 +329,12 @@ func Start(registry prometheus.Registerer, metrics []exporter.Metric, lineLimitS
 	result.linesProcessed.WithLabelValues("true").Add(0)
 	result.linesProcessed.WithLabelValues("false").Add(0)
 
-	result.lastStateChangeEvent[fileSystemWatcher] = &stateChangeEvent{
+	result.lastStateChangeEvent[fileSystemEventProducer] = &stateChangeEvent{
+		name:   waitingForFileSystemEvent,
+		active: false,
+		start:  time.Now(),
+	}
+	result.lastStateChangeEvent[fileSystemEventConsumer] = &stateChangeEvent{
 		name:   waitingForFileSystemEvent,
 		active: false,
 		start:  time.Now(),

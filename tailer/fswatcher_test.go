@@ -16,6 +16,7 @@ package tailer
 
 import (
 	"fmt"
+	"github.com/fstab/grok_exporter/selfmonitoring"
 	"github.com/fstab/grok_exporter/tailer/fswatcher"
 	"github.com/fstab/grok_exporter/tailer/glob"
 	"github.com/sirupsen/logrus"
@@ -642,6 +643,12 @@ type mockMonitor struct{}
 
 func (m *mockMonitor) WaitingForFileSystemEvent() {}
 func (m *mockMonitor) ProcessingFileSystemEvent() {}
+func (m *mockMonitor) FileSystemEventProducerState() selfmonitoring.FileSystemEventProducerMonitor {
+	return m
+}
+func (m *mockMonitor) FileSystemEventConsumerState() selfmonitoring.FileSystemEventConsumerMonitor {
+	return m
+}
 
 func expect(t *testing.T, ctx *context, line string, file string) {
 	actualLine, err := ctx.linesFromTailer.nextLine(filepath.Join(ctx.basedir, file), 500*time.Millisecond)

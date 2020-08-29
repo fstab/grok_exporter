@@ -16,6 +16,7 @@ package fswatcher
 
 import (
 	"fmt"
+	"github.com/fstab/grok_exporter/selfmonitoring"
 	"strings"
 	"syscall"
 	"time"
@@ -50,7 +51,7 @@ func (l *inotifyloop) Close() {
 	close(l.done)
 }
 
-func runInotifyLoop(fd int) *inotifyloop {
+func runInotifyLoop(fd int, state selfmonitoring.FileSystemEventProducerMonitor) *inotifyloop {
 	var result = &inotifyloop{
 		fd:     fd,
 		events: make(chan fsevent),
@@ -70,7 +71,9 @@ func runInotifyLoop(fd int) *inotifyloop {
 			close(result.events)
 		}()
 		for {
+			state.WaitingForFileSystemEvent()
 			n, err = syscall.Read(l.fd, buf)
+			state.ProcessingFileSystemEvent()
 			if err != nil {
 				// Getting an err might be part of the shutdown, when l.fd is closed.
 				// We decide whether it is an actual error or not by checking if l.done is closed.

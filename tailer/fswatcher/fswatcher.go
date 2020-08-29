@@ -60,7 +60,7 @@ type fileTailer struct {
 
 type fswatcher interface {
 	io.Closer
-	runFseventProducerLoop() fseventProducerLoop
+	runFseventProducerLoop(state selfmonitoring.FileSystemEventProducerMonitor) fseventProducerLoop
 	processEvent(t *fileTailer, event fsevent, log logrus.FieldLogger) Error
 	watchDir(path string) (*Dir, Error)
 	unwatchDir(dir *Dir) error
@@ -108,11 +108,12 @@ func RunPollingFileTailer(globs []glob.Glob, readall bool, failOnMissingFile boo
 	return runFileTailer(initFunc, globs, readall, failOnMissingFile, state, log)
 }
 
-func runFileTailer(initFunc func() (fswatcher, Error), globs []glob.Glob, readall bool, failOnMissingFile bool, state selfmonitoring.FileSystemWatcherMonitor, log logrus.FieldLogger) (FileTailer, error) {
+func runFileTailer(initFunc func() (fswatcher, Error), globs []glob.Glob, readall bool, failOnMissingFile bool, stateMonitor selfmonitoring.FileSystemWatcherMonitor, log logrus.FieldLogger) (FileTailer, error) {
 
 	var (
-		t   *fileTailer
-		Err Error
+		t             *fileTailer
+		Err           Error
+		consumerState = stateMonitor.FileSystemEventConsumerState()
 	)
 
 	t = &fileTailer{
@@ -141,7 +142,7 @@ func runFileTailer(initFunc func() (fswatcher, Error), globs []glob.Glob, readal
 			return
 		}
 
-		eventProducerLoop := t.osSpecific.runFseventProducerLoop()
+		eventProducerLoop := t.osSpecific.runFseventProducerLoop(stateMonitor.FileSystemEventProducerState())
 		defer eventProducerLoop.Close()
 
 		for _, dir := range t.watchedDirs {
@@ -170,7 +171,7 @@ func runFileTailer(initFunc func() (fswatcher, Error), globs []glob.Glob, readal
 		}
 
 		for { // event consumer loop
-			state.WaitingForFileSystemEvent()
+			consumerState.WaitingForFileSystemEvent()
 			select {
 			case <-t.done:
 				return
@@ -178,7 +179,7 @@ func runFileTailer(initFunc func() (fswatcher, Error), globs []glob.Glob, readal
 				if !open {
 					return
 				}
-				state.ProcessingFileSystemEvent()
+				consumerState.ProcessingFileSystemEvent()
 				processEventError := t.osSpecific.processEvent(t, event, log)
 				if processEventError != nil {
 					select {

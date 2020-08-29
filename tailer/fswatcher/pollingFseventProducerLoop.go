@@ -14,7 +14,10 @@
 
 package fswatcher
 
-import "time"
+import (
+	"github.com/fstab/grok_exporter/selfmonitoring"
+	"time"
+)
 
 type pollloop struct {
 	events chan fsevent
@@ -34,7 +37,7 @@ func (l *pollloop) Close() {
 	close(l.done)
 }
 
-func runPollLoop(pollInterval time.Duration) *pollloop {
+func runPollLoop(pollInterval time.Duration, state selfmonitoring.FileSystemEventProducerMonitor) *pollloop {
 
 	events := make(chan fsevent)
 	errors := make(chan Error) // unused
@@ -46,7 +49,9 @@ func runPollLoop(pollInterval time.Duration) *pollloop {
 			close(errors)
 		}()
 		for {
+			state.WaitingForFileSystemEvent()
 			tick := time.After(pollInterval)
+			state.ProcessingFileSystemEvent()
 			select {
 			case <-tick:
 				select {

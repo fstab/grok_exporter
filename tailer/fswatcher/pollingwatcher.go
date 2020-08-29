@@ -15,6 +15,7 @@
 package fswatcher
 
 import (
+	"github.com/fstab/grok_exporter/selfmonitoring"
 	"github.com/sirupsen/logrus"
 	"io"
 	"time"
@@ -30,8 +31,8 @@ func initPollingWatcher(pollInterval time.Duration) (fswatcher, Error) {
 	}, nil
 }
 
-func (w *pollingWatcher) runFseventProducerLoop() fseventProducerLoop {
-	return runPollLoop(w.pollInterval)
+func (w *pollingWatcher) runFseventProducerLoop(state selfmonitoring.FileSystemEventProducerMonitor) fseventProducerLoop {
+	return runPollLoop(w.pollInterval, state)
 }
 
 func (w *pollingWatcher) processEvent(t *fileTailer, fsevent fsevent, log logrus.FieldLogger) Error {

@@ -14,7 +14,10 @@
 
 package fswatcher
 
-import "golang.org/x/exp/winfsnotify"
+import (
+	"github.com/fstab/grok_exporter/selfmonitoring"
+	"golang.org/x/exp/winfsnotify"
+)
 
 type winwatcherloop struct {
 	events chan fsevent
@@ -34,7 +37,7 @@ func (l *winwatcherloop) Close() {
 	close(l.done)
 }
 
-func runWinWatcherLoop(w *winfsnotify.Watcher) *winwatcherloop {
+func runWinWatcherLoop(w *winfsnotify.Watcher, state selfmonitoring.FileSystemEventProducerMonitor) *winwatcherloop {
 	var (
 		events = make(chan fsevent)
 		errors = make(chan Error)
@@ -42,8 +45,10 @@ func runWinWatcherLoop(w *winfsnotify.Watcher) *winwatcherloop {
 	)
 	go func() {
 		for {
+			state.WaitingForFileSystemEvent()
 			select {
 			case event := <-w.Event:
+				state.ProcessingFileSystemEvent()
 				select {
 				case events <- event:
 				case <-done:
@@ -51,6 +56,7 @@ func runWinWatcherLoop(w *winfsnotify.Watcher) *winwatcherloop {
 					return
 				}
 			case err := <-w.Error:
+				state.ProcessingFileSystemEvent()
 				select {
 				case errors <- NewError(NotSpecified, err, ""):
 				case <-done:

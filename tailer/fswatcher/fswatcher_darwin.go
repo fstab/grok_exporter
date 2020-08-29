@@ -16,6 +16,7 @@ package fswatcher
 
 import (
 	"fmt"
+	"github.com/fstab/grok_exporter/selfmonitoring"
 	"github.com/sirupsen/logrus"
 	"io"
 	"os"
@@ -51,8 +52,8 @@ func (w *watcher) Close() error {
 	}
 }
 
-func (w *watcher) runFseventProducerLoop() fseventProducerLoop {
-	return runKeventLoop(w.kq)
+func (w *watcher) runFseventProducerLoop(state selfmonitoring.FileSystemEventProducerMonitor) fseventProducerLoop {
+	return runKeventLoop(w.kq, state)
 }
 
 func initWatcher() (fswatcher, Error) {

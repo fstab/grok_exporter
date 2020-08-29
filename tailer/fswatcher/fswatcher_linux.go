@@ -16,6 +16,7 @@ package fswatcher
 
 import (
 	"fmt"
+	"github.com/fstab/grok_exporter/selfmonitoring"
 	"github.com/sirupsen/logrus"
 	"io"
 	"os"
@@ -63,8 +64,8 @@ func unwatchDirByEvent(t *fileTailer, event inotifyEvent) {
 	t.watchedDirs = watchedDirsAfter
 }
 
-func (w *watcher) runFseventProducerLoop() fseventProducerLoop {
-	return runInotifyLoop(w.fd)
+func (w *watcher) runFseventProducerLoop(state selfmonitoring.FileSystemEventProducerMonitor) fseventProducerLoop {
+	return runInotifyLoop(w.fd, state)
 }
 
 func initWatcher() (fswatcher, Error) {

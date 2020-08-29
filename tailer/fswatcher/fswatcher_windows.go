@@ -16,6 +16,7 @@ package fswatcher
 
 import (
 	"fmt"
+	"github.com/fstab/grok_exporter/selfmonitoring"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/exp/winfsnotify"
 	"io"
@@ -60,8 +61,8 @@ func (w *watcher) Close() error {
 	}
 }
 
-func (w *watcher) runFseventProducerLoop() fseventProducerLoop {
-	return runWinWatcherLoop(w.winWatcher)
+func (w *watcher) runFseventProducerLoop(state selfmonitoring.FileSystemEventProducerMonitor) fseventProducerLoop {
+	return runWinWatcherLoop(w.winWatcher, state)
 }
 
 func initWatcher() (fswatcher, Error) {

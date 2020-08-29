@@ -15,6 +15,7 @@
 package fswatcher
 
 import (
+	"github.com/fstab/grok_exporter/selfmonitoring"
 	"strings"
 	"syscall"
 )
@@ -41,7 +42,7 @@ func (p *keventloop) Errors() chan Error {
 	return p.errors
 }
 
-func runKeventLoop(kq int) *keventloop {
+func runKeventLoop(kq int, state selfmonitoring.FileSystemEventProducerMonitor) *keventloop {
 	var result = &keventloop{
 		kq:     kq,
 		events: make(chan fsevent),
@@ -60,7 +61,9 @@ func runKeventLoop(kq int) *keventloop {
 		}()
 		for {
 			eventBuf = make([]syscall.Kevent_t, 10)
+			state.WaitingForFileSystemEvent()
 			n, err = syscall.Kevent(l.kq, nil, eventBuf, nil)
+			state.ProcessingFileSystemEvent()
 			if err == syscall.EBADF {
 				// kq was closed, i.e. Close() was called.
 				return
