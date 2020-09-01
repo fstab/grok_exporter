@@ -83,8 +83,15 @@ func (regex *Regex) Free() {
 }
 
 func (regex *Regex) HasCaptureGroup(name string) bool {
-	_, err := regex.getCaptureGroupNums(name)
-	return err == nil
+	return regex.NumberOfCaptureGroups(name) > 0
+}
+
+func (regex *Regex) NumberOfCaptureGroups(name string) int {
+	groups, err := regex.getCaptureGroupNums(name)
+	if err != nil {
+		return 0
+	}
+	return len(groups)
 }
 
 func (r *Regex) getCaptureGroupNums(name string) ([]C.int, error) {
