@@ -60,7 +60,7 @@ func containsWildcards(pattern string) bool {
 			continue
 		}
 		if !escaped && (p[i] == '[' || p[i] == '*' || p[i] == '?') {
-			return false
+			return true
 		}
 		escaped = false
 	}
