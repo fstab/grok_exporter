@@ -27,6 +27,14 @@ input:
   # json_single: Webhook POST body is a single json log entry.  Log entry
   #   text is selected from the value of a json key determined by
   #   webhook_json_selector.
+  # json_lines: Webhook POST body contains multiple json log entries, with
+  #   newline-separated log lines holding an individual json object. JSON
+  #   object itself may not contain newlines. For example:
+  #   example:
+  #       { app="foo", stage="prod", log="example log message" }
+  #       { app="bar", stage="dev", log="another line" }
+  #   Log entry text is selected from the value of a json key determined
+  #   by webhook_json_selector.
   # json_bulk: Webhook POST body contains multiple json log entries.  The
   #   POST body envelope must be a json array "[ <entry>, <entry> ]".  Log
   #   entry text is selected from the value of a json key determined by

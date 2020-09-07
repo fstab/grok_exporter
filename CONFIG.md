@@ -183,6 +183,14 @@ input:
     #   POST body envelope must be a json array "[ <entry>, <entry> ]".  Log
     #   entry text is selected from the value of a json key determined by
     #   webhook_json_selector.
+    # json_lines: Webhook POST body contains multiple json log entries, with
+    #   newline-separated log lines holding an individual json object. JSON
+    #   object itself may not contain newlines. For example:
+    #   example:
+    #       { app="foo", stage="prod", log="example log message" }
+    #       { app="bar", stage="dev", log="another line" }
+    #   Log entry text is selected from the value of a json key determined
+    #   by webhook_json_selector. 
     # Default is `text_single`
     webhook_format: json_bulk
 
@@ -361,7 +369,7 @@ labels:
 If you don't want the full path but only the file name, you can use the `base` template function, see next section.
 
 #### extra
-The `extra` variable is always present for input type `webhook` with format being either `json_single` or `json_bulk`.
+The `extra` variable is always present for input type `webhook` with format being either `json_single`, `json_lines` or `json_bulk`.
 It contains the entire JSON object that was parsed.
 You can use it like this:
 

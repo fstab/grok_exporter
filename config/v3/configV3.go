@@ -392,8 +392,8 @@ func (c *InputConfig) validate() error {
 		} else if c.WebhookPath[0] != '/' {
 			return fmt.Errorf("invalid input configuration: 'input.webhook_path' must start with \"/\"")
 		}
-		if c.WebhookFormat != "text_single" && c.WebhookFormat != "text_bulk" && c.WebhookFormat != "json_single" && c.WebhookFormat != "json_bulk" {
-			return fmt.Errorf("invalid input configuration: 'input.webhook_format' must be \"text_single|text_bulk|json_single|json_bulk\"")
+		if c.WebhookFormat != "text_single" && c.WebhookFormat != "text_bulk" && c.WebhookFormat != "json_single" && c.WebhookFormat != "json_bulk" && c.WebhookFormat != "json_lines" {
+			return fmt.Errorf("invalid input configuration: 'input.webhook_format' must be \"text_single|text_bulk|json_single|json_bulk|json_lines\"")
 		}
 		if c.WebhookJsonSelector == "" {
 			return fmt.Errorf("invalid input configuration: 'input.webhook_json_selector' is required for input type \"webhook\"")

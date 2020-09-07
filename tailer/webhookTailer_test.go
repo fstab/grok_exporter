@@ -189,6 +189,42 @@ func TestWebhookJsonBulk(t *testing.T) {
 	}
 }
 
+func TestWebhookJsonLines(t *testing.T) {
+	// This test follows the format of Logstash HTTP Non-Bulk Output
+	// https://www.elastic.co/guide/en/logstash/current/plugins-outputs-http.html
+	// format="json_batch"
+
+	c := &configuration.InputConfig{
+		Type:                     "webhook",
+		WebhookPath:              "/webhook",
+		WebhookFormat:            "json_lines",
+		WebhookJsonSelector:      ".message",
+		WebhookTextBulkSeparator: "",
+	}
+
+	messages := []string{
+		"2016-04-18 09:33:27 H=(85.214.241.101) [114.37.190.56] F=<z2007tw@yahoo.com.tw> rejected RCPT <alan.a168@msa.hinet.net>: relay not permitted",
+		"2016-04-18 12:28:04 H=(85.214.241.101) [118.161.243.219] F=<z2007tw@yahoo.com.tw> rejected RCPT <alan.a168@msa.hinet.net>: relay not permitted",
+		"2016-04-18 19:16:30 H=(85.214.241.101) [114.24.5.12] F=<z2007tw@yahoo.com.tw> rejected RCPT <alan.a168@msa.hinet.net>: relay not permitted",
+	}
+
+	blobs := []string{}
+	for _, message := range messages {
+		blobs = append(blobs, strings.Replace(createJsonBlob(message), "\n", " ", -1))
+	}
+	s := strings.Join(blobs, "\n")
+	fmt.Printf("Sending Payload: %v", s)
+	lines := WebhookProcessBody(c, []byte(s))
+	if len(lines) != len(messages) {
+		t.Fatal("Expected number of lines to equal number of messages")
+	}
+	for i := range messages {
+		if messages[i] != lines[i].line {
+			t.Fatal("Expected line to match")
+		}
+	}
+}
+
 func TestWebhookJsonBulkNegativeMalformedJson(t *testing.T) {
 	// This test follows the format of Logstash HTTP Non-Bulk Output
 	// https://www.elastic.co/guide/en/logstash/current/plugins-outputs-http.html
