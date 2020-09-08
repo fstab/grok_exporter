@@ -16,14 +16,16 @@ package v3
 
 import (
 	"fmt"
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
 	v2 "github.com/fstab/grok_exporter/config/v2"
 	"github.com/fstab/grok_exporter/tailer/glob"
 	"github.com/fstab/grok_exporter/template"
 	"gopkg.in/yaml.v2"
-	"os"
-	"strconv"
-	"strings"
-	"time"
 )
 
 const (
@@ -31,6 +33,7 @@ const (
 	inputTypeStdin                = "stdin"
 	inputTypeFile                 = "file"
 	inputTypeWebhook              = "webhook"
+	inputTypeKafka                = "kafka"
 	importMetricsType             = "metrics"
 	importPatternsType            = "grok_patterns"
 )
@@ -102,6 +105,12 @@ type InputConfig struct {
 	WebhookFormat              string        `yaml:"webhook_format,omitempty"`
 	WebhookJsonSelector        string        `yaml:"webhook_json_selector,omitempty"`
 	WebhookTextBulkSeparator   string        `yaml:"webhook_text_bulk_separator,omitempty"`
+	KafkaVersion               string        `yaml:"kafka_version,omitempty"`
+	KafkaBrokers               []string      `yaml:"kafka_brokers,omitempty"`
+	KafkaTopics                []string      `yaml:"kafka_topics,omitempty"`
+	KafkaPartitionAssignor     string        `yaml:"kafka_partition_assignor,omitempty"`
+	KafkaConsumerGroupName     string        `yaml:"kafka_consumer_group_name,omitempty"`
+	KafkaConsumeFromOldest     bool          `yaml:"kafka_consume_from_oldest,omitempty"`
 }
 
 type GrokPatternsConfig []string
@@ -268,6 +277,19 @@ func (c *InputConfig) addDefaults() {
 			c.WebhookTextBulkSeparator = "\n\n"
 		}
 	}
+	if c.Type == inputTypeKafka {
+		c.KafkaConsumeFromOldest = false
+
+		if c.KafkaPartitionAssignor == "" {
+			c.KafkaPartitionAssignor = "range"
+		}
+		if c.KafkaVersion == "" {
+			c.KafkaVersion = "2.1.0"
+		}
+		if c.KafkaConsumerGroupName == "" {
+			c.KafkaConsumerGroupName = "grok_exporter"
+		}
+	}
 }
 
 func (c *GrokPatternsConfig) addDefaults() {}
@@ -403,6 +425,26 @@ func (c *InputConfig) validate() error {
 		if c.WebhookFormat == "text_bulk" && c.WebhookTextBulkSeparator == "" {
 			return fmt.Errorf("invalid input configuration: 'input.webhook_text_bulk_separator' is required for input type \"webhook\" and webhook_format \"text_bulk\"")
 		}
+	case c.Type == inputTypeKafka:
+		if len(c.KafkaBrokers) == 0 {
+			return fmt.Errorf("invalid input configuration: Kafka 'input.kafka_brokers' cannot be empty")
+		}
+		if len(c.KafkaTopics) == 0 {
+			return fmt.Errorf("invalid input configuration: Kafka 'input.kafka_topics' cannot be empty")
+		}
+
+		matched, _ := regexp.MatchString(`^[0-9]\.[0-9]\.[0-9]$`, c.KafkaVersion)
+		if !matched {
+			return fmt.Errorf("invalid input configuration: Kafka 'input.kafka_version' must a valid semantic version X.Y.Z")
+		}
+
+		versionParts := strings.Split(c.KafkaVersion, ".")
+		vMajor, vMajorErr := strconv.Atoi(versionParts[0])
+		vMinor, vMinorErr := strconv.Atoi(versionParts[1])
+		if vMajorErr != nil && vMinorErr != nil && vMajor < 1 && vMinor < 8 {
+			return fmt.Errorf("invalid input configuration: Kafka 'input.kafka_version' must be >= 0.8.0")
+		}
+
 	default:
 		return fmt.Errorf("unsupported 'input.type': %v", c.Type)
 	}

@@ -1,0 +1,25 @@
+global:
+  config_version: 3
+input:
+  type: kafka
+  kafka_version: 2.1.0
+  kafka_brokers:
+    - localhost:9092
+  kafka_topics: 
+    - grok_exporter_test
+  kafka_consumer_group_name: grok_exporter
+  kafka_consume_from_oldest: true
+imports:
+  - type: grok_patterns
+    dir: ./logstash-patterns-core/patterns
+metrics:
+  - type: counter
+    name: test_strings
+    help: Test string detected.
+    match: 'test'
+    labels:
+      logfile: '{{base .logfile}}'
+server:
+  protocol: http
+  port: 9144
+
