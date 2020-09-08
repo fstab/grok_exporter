@@ -50,7 +50,7 @@ docker-compose -f docker-compose-kafka-single.yml exec kafka kafka-topics --crea
 
 5. Publish a sample test message:
 ```
-docker-compose -f docker-compose-kafka-single.yml exec bash -c "echo 'this is a test' | kafka-console-producer --request-required-acks 1 --broker-list localhost:9092 --topic grok_exporter_test"
+docker-compose -f docker-compose-kafka-single.yml exec kafka bash -c "echo 'this is a test' | kafka-console-producer --request-required-acks 1 --broker-list localhost:9092 --topic grok_exporter_test"
   ```
 
-6. Given that the grok_exporter was properly configured and you're matching for a string in the message you've previously published to kafka, you should have matches that appear on the metrics page.
+6. Given that the `grok_exporter` was properly configured and you're matching for a string in the message you've previously published to kafka, you should have matches that appear on the metrics page.
