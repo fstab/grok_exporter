@@ -2,7 +2,7 @@
 
 set -e
 
-if [[ $(go version) != *"go1.11"* && $(go version) != *"go1.12"* && $(go version) != *"go1.13"* && $(go version) != *"go1.14"* ]] ; then
+if [[ $(go version) != *"go1.11"* && $(go version) != *"go1.12"* && $(go version) != *"go1.13"* && $(go version) != *"go1.14"* && $(go version) != *"go1.15"* ]] ; then
     echo "grok_exporter uses Go 1.11 Modules. Please use Go version >= 1.11." >&2
     echo "Version found is $(go version)" >&2
     exit 1
