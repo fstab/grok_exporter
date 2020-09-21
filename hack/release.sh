@@ -23,7 +23,7 @@ export GO111MODULE=on
 
 cd ${GOPATH:=$HOME/go}/src/github.com/fstab/grok_exporter
 
-export VERSION=1.0.0-SNAPSHOT
+export VERSION=1.0.0.RC5
 
 export VERSION_FLAGS="\
         -X github.com/fstab/grok_exporter/exporter.Version=$VERSION
@@ -38,14 +38,6 @@ export VERSION_FLAGS="\
 
 function run_tests {
     go fmt ./... && go vet ./... && go test ./...
-}
-
-function create_vendor {
-    go mod vendor
-}
-
-function remove_vendor {
-    rm -fr ./vendor
 }
 
 #--------------------------------------------------------------
@@ -67,7 +59,6 @@ function revert_legacy_static_linking {
 
 function cleanup {
     revert_legacy_static_linking
-    remove_vendor
 }
 
 # Make sure revert_legacy_static_linking is called even if a compile error makes this script terminate early
@@ -90,7 +81,7 @@ function run_docker_linux_amd64 {
         -v $GOPATH/src/github.com/fstab/grok_exporter:/go/src/github.com/fstab/grok_exporter \
         --net none \
         --user $(id -u):$(id -g) \
-        --rm -ti fstab/grok_exporter-compiler-amd64 \
+        --rm -ti "fstab/grok_exporter-compiler-amd64:v$VERSION" \
         ./compile-linux.sh -ldflags "$VERSION_FLAGS" -o "dist/grok_exporter-$VERSION.linux-amd64/grok_exporter"
 }
 
@@ -99,7 +90,7 @@ function run_docker_windows_amd64 {
         -v $GOPATH/src/github.com/fstab/grok_exporter:/go/src/github.com/fstab/grok_exporter \
         --net none \
         --user $(id -u):$(id -g) \
-        --rm -ti fstab/grok_exporter-compiler-amd64 \
+        --rm -ti "fstab/grok_exporter-compiler-amd64:v$VERSION" \
         ./compile-windows-amd64.sh -ldflags "$VERSION_FLAGS" -o "dist/grok_exporter-$VERSION.windows-amd64/grok_exporter.exe"
 }
 
@@ -108,7 +99,7 @@ function run_docker_linux_arm64v8 {
         -v $GOPATH/src/github.com/fstab/grok_exporter:/go/src/github.com/fstab/grok_exporter \
         --net none \
         --user $(id -u):$(id -g) \
-        --rm -ti fstab/grok_exporter-compiler-arm64v8 \
+        --rm -ti "fstab/grok_exporter-compiler-arm64v8:v$VERSION" \
         ./compile-linux.sh -ldflags "$VERSION_FLAGS" -o "dist/grok_exporter-$VERSION.linux-arm64v8/grok_exporter"
 }
 
@@ -117,7 +108,7 @@ function run_docker_linux_arm32v6 {
         -v $GOPATH/src/github.com/fstab/grok_exporter:/go/src/github.com/fstab/grok_exporter \
         --net none \
         --user $(id -u):$(id -g) \
-        --rm -ti fstab/grok_exporter-compiler-arm32v6 \
+        --rm -ti "fstab/grok_exporter-compiler-arm32v6:v$VERSION" \
         ./compile-linux.sh -ldflags "$VERSION_FLAGS" -o "dist/grok_exporter-$VERSION.linux-arm32v6/grok_exporter"
 }
 
@@ -173,57 +164,43 @@ case $1 in
     linux-amd64)
         rm -rf dist/grok_exporter-*.linux-amd64*
         run_tests
-        create_vendor
         release_linux_amd64
-        remove_vendor
         ;;
     linux-arm64v8)
         rm -rf dist/grok_exporter-*.linux-arm64v8*
         run_tests
-        create_vendor
         release_linux_arm64v8
-        remove_vendor
         ;;
     linux-arm32v6)
         rm -rf dist/grok_exporter-*.linux-arm32v6*
         run_tests
-        create_vendor
         release_linux_arm32v6
-        remove_vendor
         ;;
     darwin-amd64)
         rm -rf dist/grok_exporter-*.darwin-amd64*
         run_tests
-        create_vendor
         release_darwin_amd64
-        remove_vendor
         ;;
     windows-amd64)
         rm -rf dist/grok_exporter-*.windows-amd64*
         run_tests
-        create_vendor
         release_windows_amd64
-        remove_vendor
         ;;
     all-amd64)
         rm -rf dist/grok_exporter-*.*-amd64*
         run_tests
-        create_vendor
         release_linux_amd64
         release_darwin_amd64
         release_windows_amd64
-        remove_vendor
         ;;
     all)
         rm -rf dist/grok_exporter-*
         run_tests
-        create_vendor
         release_linux_amd64
         release_darwin_amd64
         release_windows_amd64
         release_linux_arm64v8
         release_linux_arm32v6
-        remove_vendor
         ;;
     *)
         echo 'Usage: release.sh <arch>' >&2
