@@ -1,19 +1,28 @@
 language: go
 
+# go 1.13 is default on ubuntu 20.10 LTS
+# go 1.15 is the latest version, and the version used for the latest release
+
 go:
   - "1.13"
+  - "1.15"
 
 os:
   - linux
   - osx
 
+# oniguruma 5.9.6 was the default for a long time, and has slightly different API
+# oniguruma 6.9.4 is the current default on ubuntu 20.10 LTS
+# oniguruma 6.9.5-rev1 is the latest version, and the version used for the latest release
+
 env:
   matrix:
     - ONIG_VERSION=5.9.6 MODE=STATIC
-    - ONIG_VERSION=6.7.0 MODE=STATIC
     - ONIG_VERSION=6.9.4 MODE=STATIC
-    - ONIG_VERSION=6.9.4 MODE=DYNAMIC
-    - ONIG_VERSION=DEFAULT
+    - ONIG_VERSION=6.9.4 MODE=STATIC
+    - ONIG_VERSION=6.9.5-rev1 MODE=STATIC
+    - ONIG_VERSION=DEFAULT MODE=STATIC
+    - ONIG_VERSION=DEFAULT MODE=DYNAMIC
 
 before_install:
   - |
@@ -27,11 +36,20 @@ before_install:
     "DEFAULT")
         if [[ "$TRAVIS_OS_NAME" == "osx" ]] ; then
             brew update ;
-            brew install fstab/oniguruma/oniguruma-5.9.6 ;
+            brew install oniguruma ;
         elif [[ "$TRAVIS_OS_NAME" == "linux" ]] ; then
             sudo apt-get -qq update ;
             sudo apt-get install libonig-dev ;
         fi
+        ;;
+    "6.9.5-rev1")
+        PROJ_DIR=$(pwd) ;
+        cd /tmp ;
+        curl -sLO https://github.com/kkos/oniguruma/releases/download/v6.9.5_rev1/onig-6.9.5-rev1.tar.gz ;
+        tar xfz onig-6.9.5-rev1.tar.gz ;
+        cd onig-6.9.5 ;
+        ./configure && make && sudo make install ;
+        cd "${PROJ_DIR}" ;
         ;;
     *)
         PROJ_DIR=$(pwd) ;
@@ -62,7 +80,6 @@ script:
     else
         LDD_COMMAND="ldd" ;
     fi
-    export GO111MODULE=on ;
     case "$MODE" in
     "STATIC")
         if [[ "$TRAVIS_OS_NAME" == "osx" ]] ;
@@ -78,7 +95,7 @@ script:
         fi ;
         ./hack/smoke-test.sh ;
         ;;
-    *)
+    "DYNAMIC")
         go test -failfast -count=1 -v ./... ;
         go install ;
         if ! $LDD_COMMAND $GOPATH/bin/grok_exporter | grep libonig ;
@@ -86,23 +103,11 @@ script:
             echo "ERROR: Expected dynamically linked binary." >&2 ;
             exit -1 ;
         fi ;
+        ./hack/smoke-test.sh ;
+        ;;
+    *)
+        echo "Unknown mode $MODE" >&2 ;
+        exit 1 ;
         ;;
     esac ;
-    set +e ;
-
-after_success:
-  - |
-    set -e ;
-    set -x ;
-    export GO111MODULE=on ;
-    if [[ "$TRAVIS_OS_NAME" == "linux" && "$ONIG_VERSION" == "DEFAULT" ]] ;
-    then
-        go get golang.org/x/tools/cmd/cover github.com/mattn/goveralls github.com/modocache/gover ;
-        go list ./... | while read package ;
-        do
-            go test -covermode count -coverprofile=$(basename $package).coverprofile $package ;
-        done ;
-        gover && goveralls -coverprofile=gover.coverprofile -service=travis-ci ;
-        rm *.coverprofile ;
-    fi ;
     set +e ;
