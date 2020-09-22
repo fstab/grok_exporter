@@ -11,6 +11,9 @@ os:
   - linux
   - osx
 
+dist:
+  - focal
+
 # oniguruma 5.9.6 was the default for a long time, and has slightly different API
 # oniguruma 6.9.4 is the current default on ubuntu 20.10 LTS
 # oniguruma 6.9.5-rev1 is the latest version, and the version used for the latest release
@@ -21,7 +24,6 @@ env:
     - ONIG_VERSION=6.9.4 MODE=STATIC
     - ONIG_VERSION=6.9.4 MODE=STATIC
     - ONIG_VERSION=6.9.5-rev1 MODE=STATIC
-    - ONIG_VERSION=DEFAULT MODE=STATIC
     - ONIG_VERSION=DEFAULT MODE=DYNAMIC
 
 before_install:

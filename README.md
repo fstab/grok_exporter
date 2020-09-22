@@ -81,9 +81,9 @@ sudo apt-get install libonig-dev
 **Installing the Oniguruma library from source**
 
 ```bash
-curl -sLO https://github.com/kkos/oniguruma/releases/download/v6.9.4/onig-6.9.4.tar.gz
-tar xfz onig-6.9.4.tar.gz
-cd /tmp/onig-6.9.4
+curl -sLO https://github.com/kkos/oniguruma/releases/download/v6.9.5_rev1/onig-6.9.5-rev1.tar.gz
+tar xfz onig-6.9.5-rev1.tar.gz
+cd onig-6.9.5
 ./configure
 make
 make install
