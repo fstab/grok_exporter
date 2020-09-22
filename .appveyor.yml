@@ -2,7 +2,7 @@ version:
     "{build}"
 
 os:
-    Windows Server 2012 R2
+    Visual Studio 2019
 
 clone_folder:
     C:\grok_exporter
@@ -13,8 +13,6 @@ environment:
     CC: x86_64-w64-mingw32-gcc
     CGO_ENABLED: 1
     CGO_LDFLAGS: C:\msys64\mingw64\lib\libonig.a
-    matrix:
-    - ONIG_VERSION: 6.9.4
 
 # --------------------------------------------------------------------------
 # The install phase installs the Oniguruma library,
@@ -28,20 +26,20 @@ install:
 
     # Uncomment the following command to upgrade the cygwin packages:
     # - C:\cygwin\setup-x86.exe -q -g
-    - C:\cygwin\bin\bash -lc "cygcheck -dc cygwin"
+    - C:\cygwin64\bin\bash -lc "cygcheck -dc cygwin"
 
     # Download and unpack Oniguruma sources
 
     - cd C:\
-    - appveyor DownloadFile https://github.com/kkos/oniguruma/releases/download/v%ONIG_VERSION%/onig-%ONIG_VERSION%.tar.gz
-    - 7z x onig-%ONIG_VERSION%.tar.gz -so | 7z x -si -ttar > nul
-    - cd onig-%ONIG_VERSION%
+    - appveyor DownloadFile https://github.com/kkos/oniguruma/releases/download/v6.9.5_rev1/onig-6.9.5-rev1.tar.gz
+    - 7z x onig-6.9.5-rev1.tar.gz -so | 7z x -si -ttar > nul
+    - cd onig-6.9.5
 
     # Compile Oniguruma using x86_64-w64-mingw32-gcc
 
-    - C:\cygwin\bin\bash -c "PATH='/usr/sbin:/usr/bin:/sbin:/bin' ./configure -v --host=x86_64-w64-mingw32 --prefix=/cygdrive/c/msys64/mingw64"
-    - C:\cygwin\bin\bash -c "PATH='/usr/sbin:/usr/bin:/sbin:/bin' make"
-    - C:\cygwin\bin\bash -c "PATH='/usr/sbin:/usr/bin:/sbin:/bin' make install"
+    - C:\cygwin64\bin\bash -c "PATH='/usr/sbin:/usr/bin:/sbin:/bin' ./configure -v --host=x86_64-w64-mingw32 --prefix=/cygdrive/c/msys64/mingw64"
+    - C:\cygwin64\bin\bash -c "PATH='/usr/sbin:/usr/bin:/sbin:/bin' make"
+    - C:\cygwin64\bin\bash -c "PATH='/usr/sbin:/usr/bin:/sbin:/bin' make install"
 
 # --------------------------------------------------------------------------
 # The build phase compiles and tests grok_exporter.
@@ -50,15 +48,14 @@ install:
 build_script:
     - cd c:\grok_exporter
     - git submodule update --init --recursive
-    - set GO111MODULE=on
     - go version
     - go test ./...
     - go install
-    - C:\cygwin\bin\bash -c "cd /cygdrive/c/grok_exporter ; PATH='/usr/sbin:/usr/bin:/sbin:/bin' ./hack/smoke-test.sh"
+    - C:\cygwin64\bin\bash -c "cd /cygdrive/c/grok_exporter ; PATH='/usr/sbin:/usr/bin:/sbin:/bin' ./hack/smoke-test.sh"
 
     # Print the linked DLLs, so we can check that grok_exporter does not have
     # a runtime dependency on Oniguruma.
-    - C:\cygwin\bin\bash -c "PATH='/usr/sbin:/usr/bin:/sbin:/bin' x86_64-w64-mingw32-objdump -p /cygdrive/c/go/bin/grok_exporter.exe | grep 'DLL Name:'"
+    - C:\cygwin64\bin\bash -c "PATH='/usr/sbin:/usr/bin:/sbin:/bin' x86_64-w64-mingw32-objdump -p /cygdrive/c/go/bin/grok_exporter.exe | grep 'DLL Name:'"
 
     # Success.
     - grok_exporter -version
