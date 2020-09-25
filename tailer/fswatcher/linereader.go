@@ -15,16 +15,19 @@
 package fswatcher
 
 import (
-	"bytes"
 	"io"
+	"regexp"
+	"strings"
 )
 
 type lineReader struct {
+	lineDelimiter              string
 	remainingBytesFromLastRead []byte
 }
 
-func NewLineReader() *lineReader {
+func NewLineReader(lineDelimiter string) *lineReader {
 	return &lineReader{
+		lineDelimiter:              lineDelimiter,
 		remainingBytesFromLastRead: []byte{},
 	}
 }
@@ -41,19 +44,32 @@ func (r *lineReader) ReadLine(file io.Reader) (string, bool, error) {
 		err error
 		buf = make([]byte, 512)
 		n   = 0
+		reg = regexp.MustCompile(r.lineDelimiter)
 	)
 	for {
-		newlinePos := bytes.IndexByte(r.remainingBytesFromLastRead, '\n')
-		if newlinePos >= 0 {
+		newlinesLoc := reg.FindAllIndex(r.remainingBytesFromLastRead, 2)
+		var newlinePos int
+		if newlinesLoc != nil {
+			// if first found match is not the first symbol(s)
+			newlinePos = newlinesLoc[0][0]
+			if len(newlinesLoc) == 2 && newlinePos == 0 {
+				// if first found match is message start symbol(s)
+				newlinePos = newlinesLoc[1][0]
+			}
+		}
+		if newlinePos != 0 {
 			l := len(r.remainingBytesFromLastRead)
 			result := make([]byte, newlinePos)
 			copy(result, r.remainingBytesFromLastRead[:newlinePos])
 			copy(r.remainingBytesFromLastRead, r.remainingBytesFromLastRead[newlinePos+1:])
 			r.remainingBytesFromLastRead = r.remainingBytesFromLastRead[:l-(newlinePos+1)]
-			return string(stripWindowsLineEnding(result)), false, nil
+			return stripLineEnding(string(result)), false, nil
 		} else if err != nil {
 			if err == io.EOF {
-				return "", true, nil
+				result := make([]byte, len(r.remainingBytesFromLastRead))
+				copy(result, r.remainingBytesFromLastRead)
+				r.remainingBytesFromLastRead = []byte{}
+				return stripLineEnding(string(result)), true, nil
 			} else {
 				return "", false, err
 			}
@@ -67,12 +83,11 @@ func (r *lineReader) ReadLine(file io.Reader) (string, bool, error) {
 	}
 }
 
-func stripWindowsLineEnding(s []byte) []byte {
-	if len(s) > 0 && s[len(s)-1] == '\r' {
-		return s[:len(s)-1]
-	} else {
-		return s
-	}
+func stripLineEnding(s string) string {
+	// in standard delimiter case
+	s = strings.TrimPrefix(s, "\n")
+	s = strings.TrimSuffix(s, "\r")
+	return s
 }
 
 func (r *lineReader) Clear() {

@@ -16,6 +16,7 @@ package v3
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -26,6 +27,7 @@ global:
     config_version: 3
 input:
     type: file
+    line_delimiter: \n
     path: x/x/x
     fail_on_missing_logfile: false
     readall: true
@@ -47,6 +49,7 @@ global:
     config_version: 3
 input:
     type: file
+    line_delimiter: \n
     path: x/x/x
 metrics:
     - type: gauge
@@ -66,6 +69,7 @@ global:
     config_version: 3
 input:
     type: stdin
+    line_delimiter: \n
 metrics:
     - type: histogram
       name: test_histogram
@@ -83,6 +87,7 @@ global:
     config_version: 3
 input:
     type: stdin
+    line_delimiter: \n
 metrics:
     - type: summary
       name: test_summary
@@ -100,6 +105,7 @@ global:
     config_version: 3
 input:
     type: stdin
+    line_delimiter: \n
 metrics:
     - type: counter
       name: test_count_total
@@ -121,6 +127,7 @@ global:
     config_version: 3
 input:
     type: stdin
+    line_delimiter: \n
 metrics:
     - type: counter
       name: test_count_total
@@ -139,6 +146,7 @@ global:
     config_version: 3
 input:
     type: file
+    line_delimiter: \n
     paths:
     - /tmp/dir1/*.log
     - /tmp/dir2/*.log
@@ -165,6 +173,7 @@ global:
     config_version: 3
 input:
     type: file
+    line_delimiter: \n
     path: /tmp/test/*.log
 metrics:
     - type: counter
@@ -181,6 +190,7 @@ global:
     config_version: 3
 input:
     type: stdin
+    line_delimiter: \n
 imports:
     - type: metrics
       file: /etc/grok/metrics.d/*.yaml
@@ -430,6 +440,19 @@ func TestImportSuccess(t *testing.T) {
 	expectMetric(t, cfg.AllMetrics[2], "test_summary_1", []string{"/var/log/syslog/*"}, 0, 3, 4*time.Hour+30*time.Minute)
 	expectMetric(t, cfg.AllMetrics[3], "test_histogram_2", []string{"/var/log/syslog/*"}, 5, 0, 5*time.Hour+30*time.Minute)
 	expectMetric(t, cfg.AllMetrics[4], "test_summary_2", []string{"/var/log/syslog/*"}, 0, 4, 2*time.Hour+30*time.Minute)
+}
+
+func TestLineDelimiterGeneration(t *testing.T) {
+	re := regexp.MustCompile("[\\s]*line_delimiter:[^\\n]*")
+	cfgWithoutDelimiter := re.ReplaceAllString(counter_config, "")
+	cfgWithDelimiter, err := Unmarshal([]byte(cfgWithoutDelimiter))
+	if err != nil {
+		t.Fatalf("unexpected unmarshalling error: %v", err)
+	}
+	err = equalsIgnoreIndentation(cfgWithDelimiter.String(), counter_config)
+	if err != nil {
+		t.Fatalf("Expected:\n%v\nActual:\n%v\n%v", counter_config, cfgWithDelimiter, err)
+	}
 }
 
 func expectMetric(t *testing.T, metric MetricConfig, name string, paths []string, bucketLen, quantilesLen int, retention time.Duration) {

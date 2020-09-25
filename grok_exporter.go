@@ -339,18 +339,18 @@ func startTailer(cfg *v3.Config, registry prometheus.Registerer) (fswatcher.File
 	switch {
 	case cfg.Input.Type == "file":
 		if cfg.Input.PollInterval == 0 {
-			tail, err = fswatcher.RunFileTailer(cfg.Input.Globs, cfg.Input.Readall, cfg.Input.FailOnMissingLogfile, logger)
+			tail, err = fswatcher.RunFileTailer(cfg.Input.Globs, cfg.Input.Readall, cfg.Input.FailOnMissingLogfile, cfg.Input.LineDelimiter, logger)
 			if err != nil {
 				return nil, err
 			}
 		} else {
-			tail, err = fswatcher.RunPollingFileTailer(cfg.Input.Globs, cfg.Input.Readall, cfg.Input.FailOnMissingLogfile, cfg.Input.PollInterval, logger)
+			tail, err = fswatcher.RunPollingFileTailer(cfg.Input.Globs, cfg.Input.Readall, cfg.Input.FailOnMissingLogfile, cfg.Input.LineDelimiter, cfg.Input.PollInterval, logger)
 			if err != nil {
 				return nil, err
 			}
 		}
 	case cfg.Input.Type == "stdin":
-		tail = tailer.RunStdinTailer()
+		tail = tailer.RunStdinTailer(cfg.Input.LineDelimiter)
 	case cfg.Input.Type == "webhook":
 		tail = tailer.InitWebhookTailer(&cfg.Input)
 	case cfg.Input.Type == "kafka":

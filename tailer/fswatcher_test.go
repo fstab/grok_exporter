@@ -600,6 +600,7 @@ func startFileTailer(t *testing.T, ctx *context, params []string) {
 		tailer            fswatcher.FileTailer
 		readall           = false
 		failOnMissingFile = true
+		lineDelimiter     = "\n"
 		globs             []string
 		err               error
 	)
@@ -625,9 +626,9 @@ func startFileTailer(t *testing.T, ctx *context, params []string) {
 		parsedGlobs = append(parsedGlobs, parsedGlob)
 	}
 	if ctx.tailerCfg == fseventTailer {
-		tailer, err = fswatcher.RunFileTailer(parsedGlobs, readall, failOnMissingFile, ctx.log)
+		tailer, err = fswatcher.RunFileTailer(parsedGlobs, readall, failOnMissingFile, lineDelimiter, ctx.log)
 	} else {
-		tailer, err = fswatcher.RunPollingFileTailer(parsedGlobs, readall, failOnMissingFile, 10*time.Millisecond, ctx.log)
+		tailer, err = fswatcher.RunPollingFileTailer(parsedGlobs, readall, failOnMissingFile, lineDelimiter, 10*time.Millisecond, ctx.log)
 	}
 	if err != nil {
 		fatalf(t, ctx, "%v", err)
@@ -944,7 +945,7 @@ func runTestShutdown(t *testing.T, mode string) {
 	if err != nil {
 		fatalf(t, ctx, "%q: failed to parse glob: %q", parsedGlob, err)
 	}
-	tailer, err := fswatcher.RunFileTailer([]glob.Glob{parsedGlob}, false, true, ctx.log)
+	tailer, err := fswatcher.RunFileTailer([]glob.Glob{parsedGlob}, false, true, "\n", ctx.log)
 	if err != nil {
 		fatalf(t, ctx, "failed to start tailer: %v", err)
 	}

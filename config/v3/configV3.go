@@ -95,6 +95,7 @@ type GlobalConfig struct {
 
 type InputConfig struct {
 	Type                       string `yaml:",omitempty"`
+	LineDelimiter              string `yaml:"line_delimiter"`
 	PathsAndGlobs              `yaml:",inline"`
 	FailOnMissingLogfileString string        `yaml:"fail_on_missing_logfile,omitempty"` // cannot use bool directly, because yaml.v2 doesn't support true as default value.
 	FailOnMissingLogfile       bool          `yaml:"-"`
@@ -262,6 +263,11 @@ func (c *InputConfig) addDefaults() {
 	}
 	if c.Type == inputTypeFile && len(c.FailOnMissingLogfileString) == 0 {
 		c.FailOnMissingLogfileString = "true"
+	}
+	if c.Type == inputTypeFile || c.Type == inputTypeStdin {
+		if len(c.LineDelimiter) == 0 {
+			c.LineDelimiter = "\n"
+		}
 	}
 	if c.Type == inputTypeWebhook {
 		if len(c.WebhookPath) == 0 {
@@ -730,6 +736,7 @@ func (cfg *Config) copy() *Config {
 func (cfg *Config) marshalToString() string {
 	var newlineEscape = "___GROK_EXPORTER_NEWLINE_ESCAPE___"
 	cfg.Input.WebhookTextBulkSeparator = strings.Replace(cfg.Input.WebhookTextBulkSeparator, "\n", newlineEscape, -1)
+	cfg.Input.LineDelimiter = strings.Replace(cfg.Input.LineDelimiter, "\n", newlineEscape, -1)
 	out, err := yaml.Marshal(cfg)
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "unexpected fatal error: failed to marshal config: %v", err)

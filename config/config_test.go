@@ -24,6 +24,7 @@ global:
     PLACEHOLDER
 input:
     type: file
+	line_delimiter: \n
     path: x/x/x
     readall: true
 grok:
@@ -41,6 +42,7 @@ server:
 const globalMissing = `
 input:
     type: file
+    line_delimiter: \n
     path: x/x/x
     readall: true
 grok:
