@@ -146,12 +146,14 @@ func main() {
 					selfMonitoring.ObserveLineMatched(metric.Name())
 					matched = true
 				}
-				processorState.ProcessingDeleteMatch(metric.Name())
-				_, err = metric.ProcessDeleteMatch(line.Line, makeAdditionalFields(line))
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "WARNING: skipping log line: %v\n", err.Error())
-					fmt.Fprintf(os.Stderr, "%v\n", line.Line)
-					selfMonitoring.ObserverLineProcessingError(metric.Name())
+				if metric.HasDeleteMatch() {
+					processorState.ProcessingDeleteMatch(metric.Name())
+					_, err = metric.ProcessDeleteMatch(line.Line, makeAdditionalFields(line))
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "WARNING: skipping log line: %v\n", err.Error())
+						fmt.Fprintf(os.Stderr, "%v\n", line.Line)
+						selfMonitoring.ObserverLineProcessingError(metric.Name())
+					}
 				}
 				// TODO: create metric to monitor number of matching delete_patterns
 			}
