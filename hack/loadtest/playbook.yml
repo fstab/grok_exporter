@@ -20,6 +20,16 @@
         dest: /usr/local/
         remote_src: yes
       become: true
+    - name: download node_exporter
+      get_url:
+        url: 'https://github.com/prometheus/node_exporter/releases/download/v1.0.1/node_exporter-1.0.1.linux-amd64.tar.gz'
+        dest: /home/{{ ansible_user}}/
+        checksum: 'sha256:3369b76cd2b0ba678b6d618deab320e565c3d93ccb5c2a0d5db51a53857768ae'
+    - name: extract node_exporter
+      ansible.builtin.unarchive:
+        src: /home/{{ ansible_user }}/node_exporter-1.0.1.linux-amd64.tar.gz
+        dest: /home/{{ ansible_user }}
+        remote_src: yes
     - name: check out grok_exporter
       git:
         repo: 'https://github.com/fstab/grok_exporter.git'
