@@ -1,0 +1,42 @@
+- name: load test
+  hosts: all
+  tasks:
+    - name: install build-essential libonig-dev git tmux
+      apt:
+        pkg:
+          - build-essential
+          - libonig-dev
+          - git
+          - tmux
+      become: true
+    - name: download golang
+      get_url:
+        url: 'https://golang.org/dl/go1.15.6.linux-amd64.tar.gz'
+        dest: /home/{{ ansible_user}}/
+        checksum: 'sha256:3918e6cc85e7eaaa6f859f1bdbaac772e7a825b0eb423c63d3ae68b21f84b844'
+    - name: extract golang into /usr/local/
+      ansible.builtin.unarchive:
+        src: /home/{{ ansible_user }}/go1.15.6.linux-amd64.tar.gz
+        dest: /usr/local/
+        remote_src: yes
+      become: true
+    - name: check out grok_exporter
+      git:
+        repo: 'https://github.com/fstab/grok_exporter.git'
+        dest: 'grok_exporter'
+        version: built-in-metrics-improvement
+    - name: install grok_exporter
+      command: /usr/local/go/bin/go install
+      args:
+        chdir: grok_exporter
+        creates: /home/{{ ansible_user }}/go/bin/grok_exporter
+    - name: install load-generator
+      command: /usr/local/go/bin/go install load-generator.go
+      args:
+        chdir: grok_exporter/hack/loadtest
+        creates: /home/{{ ansible_user }}/go/bin/load-generator
+    - name: schedule logrotate
+      ansible.builtin.cron:
+        name: logrotate grok_exporter load test
+        minute: '*/2'
+        job: '/usr/sbin/logrotate -s /home/{{ ansible_user }}/grok_exporter-load-test/logrotate.status -f /home/{{ ansible_user }}/grok_exporter/hack/loadtest/logrotate.conf'

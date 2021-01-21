@@ -1,0 +1,20 @@
+global:
+  config_version: 3
+input:
+  type: file
+  path: ./grok_exporter-load-test/*.log
+imports:
+- type: grok_patterns
+  dir: ./grok_exporter/logstash-patterns-core/patterns
+grok_patterns:
+- 'EXIM_MESSAGE [a-zA-Z ]*'
+metrics:
+- type: counter
+  name: all
+  help: All lines
+  match: '.*'
+  labels:
+    logfile: '{{base .logfile}}'
+server:
+  protocol: http
+  port: 9144
