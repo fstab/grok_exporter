@@ -45,6 +45,14 @@
       args:
         chdir: grok_exporter/hack/loadtest
         creates: /home/{{ ansible_user }}/go/bin/load-generator
+    - name: copy logrotate.conf
+      ansible.builtin.template:
+        src: logrotate.conf.j2
+        dest: /home/{{ ansible_user }}/logrotate.conf
+    - name: copy config.yaml
+      ansible.builtin.copy:
+        src: config.yaml
+        dest: /home/{{ ansible_user }}/config.yaml
     - name: schedule logrotate
       ansible.builtin.cron:
         name: logrotate grok_exporter load test
