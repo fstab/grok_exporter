@@ -45,7 +45,7 @@ export VERSION_FLAGS="\
 #--------------------------------------------------------------
 
 function run_tests {
-    if [ -z ${SKIPTESTS+x} ]; then                   # if SKIPTESTS is undeclared skip tests
+    if [ -z ${SKIPTESTS+x} ]; then                   # if SKIPTESTS is declared skip tests
         go fmt ./... && go vet ./... && go test ./...
     fi
 }
