@@ -16,16 +16,17 @@ package exporter
 
 import (
 	"fmt"
+	"regexp"
+	"strings"
+
 	configuration "github.com/fstab/grok_exporter/config/v3"
 	"github.com/fstab/grok_exporter/oniguruma"
 	"github.com/fstab/grok_exporter/template"
-	"regexp"
-	"strings"
 )
 
 // Compile a grok pattern string into a regular expression.
 func Compile(pattern string, patterns *Patterns) (*oniguruma.Regex, error) {
-	regex, err := expand(pattern, patterns)
+	regex, err := Expand(pattern, patterns)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +86,7 @@ func verifyFieldName(metricName string, template template.Template, regex *onigu
 const PATTERN_RE = `%{(.+?)}`
 
 // Expand recursively resolves all grok patterns %{..} and returns a regular expression.
-func expand(pattern string, patterns *Patterns) (string, error) {
+func Expand(pattern string, patterns *Patterns) (string, error) {
 	result := pattern
 	for i := 0; i < 1000; i++ { // After 1000 replacements, we assume this is an infinite loop and abort.
 		match := regexp.MustCompile(PATTERN_RE).FindStringSubmatch(result)
