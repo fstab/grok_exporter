@@ -1,0 +1,10 @@
+[Unit]
+Description=process_exporter
+ConditionPathExists=/home/{{ ansible_user }}/process-exporter-{{ process_exporter_version }}.linux-amd64/process-exporter
+
+[Service]
+ExecStart=/home/{{ ansible_user }}/process-exporter-{{ process_exporter_version }}.linux-amd64/process-exporter -procnames grok_exporter
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

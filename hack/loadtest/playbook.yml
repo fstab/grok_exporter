@@ -1,5 +1,16 @@
 - name: load test
   hosts: all
+  vars:
+    node_exporter_version: 1.0.1
+    node_exporter_checksum: 'sha256:3369b76cd2b0ba678b6d618deab320e565c3d93ccb5c2a0d5db51a53857768ae'
+    process_exporter_version: 0.7.5
+    process_exporter_checksum: 'sha256:27f133596205654a67b4a3e3af11db640f7d4609a457f48c155901835bd349c6'
+    golang_version: 1.15.6
+    golang_checksum: 'sha256:3918e6cc85e7eaaa6f859f1bdbaac772e7a825b0eb423c63d3ae68b21f84b844'
+    prometheus_version: 2.26.0
+    prometheus_checksum: 'sha256:8dd6786c338dc62728e8891c13b62eda66c7f28a01398869f2b3712895b441b9'
+    grafana_version: 7.5.2
+    grafana_checksum: 'sha256:c95b3030d38b5ff005b6fe394d79bc59c1c4cadc9882d8ef8bb5747517b00dd7'
   tasks:
     - name: install build-essential libonig-dev git tmux
       apt:
@@ -9,42 +20,103 @@
           - git
           - tmux
       become: true
+
+    # golang
+
     - name: download golang
       get_url:
-        url: 'https://golang.org/dl/go1.15.6.linux-amd64.tar.gz'
+        url: 'https://golang.org/dl/go{{ golang_version }}.linux-amd64.tar.gz'
         dest: /home/{{ ansible_user}}/
-        checksum: 'sha256:3918e6cc85e7eaaa6f859f1bdbaac772e7a825b0eb423c63d3ae68b21f84b844'
+        checksum: '{{ golang_checksum }}'
     - name: extract golang into /usr/local/
       ansible.builtin.unarchive:
-        src: /home/{{ ansible_user }}/go1.15.6.linux-amd64.tar.gz
+        src: /home/{{ ansible_user }}/go{{ golang_version }}.linux-amd64.tar.gz
         dest: /usr/local/
         remote_src: yes
       become: true
+
+    # node_exporter
+
     - name: download node_exporter
       get_url:
-        url: 'https://github.com/prometheus/node_exporter/releases/download/v1.0.1/node_exporter-1.0.1.linux-amd64.tar.gz'
+        url: 'https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version}}/node_exporter-{{ node_exporter_version}}.linux-amd64.tar.gz'
         dest: /home/{{ ansible_user}}/
-        checksum: 'sha256:3369b76cd2b0ba678b6d618deab320e565c3d93ccb5c2a0d5db51a53857768ae'
+        checksum: '{{ node_exporter_checksum }}'
+      notify: start node_exporter
     - name: extract node_exporter
       ansible.builtin.unarchive:
-        src: /home/{{ ansible_user }}/node_exporter-1.0.1.linux-amd64.tar.gz
+        src: /home/{{ ansible_user }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz
         dest: /home/{{ ansible_user }}
         remote_src: yes
+    - name: copy node_exporter.service
+      ansible.builtin.template:
+        src: node_exporter.service.j2
+        dest: /lib/systemd/system/node_exporter.service
+      become: true
+      notify: start node_exporter
+
+    # grok_exporter
+
     - name: check out grok_exporter
       git:
         repo: 'https://github.com/fstab/grok_exporter.git'
         dest: 'grok_exporter'
         version: built-in-metrics-improvement
+      notify: start grok_exporter
     - name: install grok_exporter
       command: /usr/local/go/bin/go install
       args:
         chdir: grok_exporter
         creates: /home/{{ ansible_user }}/go/bin/grok_exporter
+    - name: copy config.yml
+      ansible.builtin.copy:
+        src: config.yaml
+        dest: /home/{{ ansible_user }}/config.yaml
+      notify: start grok_exporter
+    - name: copy grok_exporter.service
+      ansible.builtin.template:
+        src: grok_exporter.service.j2
+        dest: /lib/systemd/system/grok_exporter.service
+      become: true
+      notify: start grok_exporter
+
+    # process_exporter
+
+    - name: download process_exporter
+      get_url:
+        url: 'https://github.com/ncabatoff/process-exporter/releases/download/v{{ process_exporter_version }}/process-exporter-{{ process_exporter_version }}.linux-amd64.tar.gz'
+        dest: /home/{{ ansible_user}}/
+        checksum: '{{ process_exporter_checksum }}'
+      notify: start process_exporter
+    - name: extract process_exporter
+      ansible.builtin.unarchive:
+        src: /home/{{ ansible_user }}/process-exporter-{{ process_exporter_version }}.linux-amd64.tar.gz
+        dest: /home/{{ ansible_user }}
+        remote_src: yes
+    - name: copy process_exporter.service
+      ansible.builtin.template:
+        src: process_exporter.service.j2
+        dest: /lib/systemd/system/process_exporter.service
+      become: true
+      notify: start process_exporter
+
+    # load-generator
+
     - name: install load-generator
       command: /usr/local/go/bin/go install load-generator.go
       args:
         chdir: grok_exporter/hack/loadtest
         creates: /home/{{ ansible_user }}/go/bin/load-generator
+      notify: start load generator
+    - name: copy grok_exporter-load-gen.service
+      ansible.builtin.template:
+        src: grok_exporter-load-gen.service.j2
+        dest: /lib/systemd/system/grok_exporter-load-gen.service
+      become: true
+      notify: start load generator
+
+    # logrotate
+
     - name: copy logrotate.conf
       ansible.builtin.template:
         src: logrotate.conf.j2
@@ -57,4 +129,87 @@
       ansible.builtin.cron:
         name: logrotate grok_exporter load test
         minute: '*/2'
-        job: '/usr/sbin/logrotate -s /home/{{ ansible_user }}/grok_exporter-load-test/logrotate.status -f /home/{{ ansible_user }}/grok_exporter/hack/loadtest/logrotate.conf'
+        job: '/usr/sbin/logrotate -s /home/{{ ansible_user }}/grok_exporter-load-test/logrotate.status -f /home/{{ ansible_user }}/logrotate.conf'
+
+    # Prometheus
+
+    - name: download prometheus
+      get_url:
+        url: 'https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-amd64.tar.gz'
+        dest: /home/{{ ansible_user}}/
+        checksum: '{{ prometheus_checksum }}'
+      notify: start prometheus
+    - name: extract prometheus
+      ansible.builtin.unarchive:
+        src: /home/{{ ansible_user }}/prometheus-{{ prometheus_version }}.linux-amd64.tar.gz
+        dest: /home/{{ ansible_user }}
+        remote_src: yes
+    - name: copy prometheus.yaml
+      ansible.builtin.copy:
+        src: prometheus.yaml
+        dest: /home/{{ ansible_user }}/prometheus.yaml
+      notify: start prometheus
+    - name: copy prometheus.service
+      ansible.builtin.template:
+        src: prometheus.service.j2
+        dest: /lib/systemd/system/prometheus.service
+      become: true
+      notify: start prometheus
+
+    # Grafana
+
+    - name: download grafana
+      get_url:
+        url: 'https://dl.grafana.com/oss/release/grafana-{{ grafana_version }}.linux-amd64.tar.gz'
+        dest: /home/{{ ansible_user}}/
+        checksum: '{{ grafana_checksum }}'
+      notify: start grafana
+    - name: extract grafana
+      ansible.builtin.unarchive:
+        src: /home/{{ ansible_user }}/grafana-{{ grafana_version }}.linux-amd64.tar.gz
+        dest: /home/{{ ansible_user }}
+        remote_src: yes
+    - name: copy grafana.service
+      ansible.builtin.template:
+        src: grafana.service.j2
+        dest: /lib/systemd/system/grafana.service
+      become: true
+      notify: start grafana
+
+  handlers:
+    - name: start load generator
+      ansible.builtin.systemd:
+        daemon_reload: yes
+        state: restarted
+        name: grok_exporter-load-gen
+      become: true
+    - name: start node_exporter
+      ansible.builtin.systemd:
+        daemon_reload: yes
+        state: restarted
+        name: node_exporter
+      become: true
+    - name: start grok_exporter
+      ansible.builtin.systemd:
+        daemon_reload: yes
+        state: restarted
+        name: grok_exporter
+      become: true
+    - name: start process_exporter
+      ansible.builtin.systemd:
+        daemon_reload: yes
+        state: restarted
+        name: process_exporter
+      become: true
+    - name: start prometheus
+      ansible.builtin.systemd:
+        daemon_reload: yes
+        state: restarted
+        name: prometheus
+      become: true
+    - name: start grafana
+      ansible.builtin.systemd:
+        daemon_reload: yes
+        state: restarted
+        name: grafana
+      become: true

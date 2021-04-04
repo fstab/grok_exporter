@@ -1,0 +1,13 @@
+[Unit]
+Description=grafana
+ConditionPathExists=/home/{{ ansible_user }}/grafana-{{ grafana_version }}/bin/grafana-server
+
+[Service]
+ExecStart=/home/{{ ansible_user }}/grafana-{{ grafana_version }}/bin/grafana-server
+WorkingDirectory=/home/{{ ansible_user }}/grafana-{{ grafana_version }}
+Restart=always
+User={{ ansible_user }}
+Group={{ ansible_user }}
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,12 @@
+[Unit]
+Description=grok_exporter load generator
+ConditionPathExists=/home/{{ ansible_user }}/go/bin/load-generator
+
+[Service]
+ExecStart=/home/{{ ansible_user }}/go/bin/load-generator
+Restart=always
+User={{ ansible_user }}
+Group={{ ansible_user }}
+
+[Install]
+WantedBy=multi-user.target

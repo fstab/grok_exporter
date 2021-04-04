@@ -1,0 +1,10 @@
+[Unit]
+Description=node_exporter
+ConditionPathExists=/home/{{ ansible_user }}/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter
+
+[Service]
+ExecStart=/home/{{ ansible_user }}/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=prometheus
+ConditionPathExists=/home/{{ ansible_user }}/prometheus-{{ prometheus_version }}.linux-amd64/prometheus
+
+[Service]
+ExecStart=/home/{{ ansible_user }}/prometheus-{{ prometheus_version }}.linux-amd64/prometheus --config.file="prometheus.yaml"
+WorkingDirectory=/home/{{ ansible_user }}
+Restart=always
+User={{ ansible_user }}
+Group={{ ansible_user }}
+
+[Install]
+WantedBy=multi-user.target

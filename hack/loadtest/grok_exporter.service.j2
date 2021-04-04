@@ -1,0 +1,13 @@
+[Unit]
+Description=grok_exporter
+ConditionPathExists=/home/{{ ansible_user }}/go/bin/grok_exporter
+
+[Service]
+ExecStart=/home/{{ ansible_user }}/go/bin/grok_exporter -config config.yaml
+WorkingDirectory=/home/{{ ansible_user }}
+Restart=always
+User={{ ansible_user }}
+Group={{ ansible_user }}
+
+[Install]
+WantedBy=multi-user.target
