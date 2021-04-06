@@ -1,0 +1,13 @@
+[Unit]
+Description=GROK Exporter Service
+After=network.target
+
+[Service]
+Type=simple
+# User=grok
+WorkingDirectory=/opt/grok
+ExecStart=/opt/grok/grok_exporter -debug -config /opt/grok/config.yml
+#ExecStart=/opt/grok/grok_exporter -config /opt/grok/config.yml
+
+[Install]
+WantedBy=multi-user.target
