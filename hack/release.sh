@@ -2,7 +2,8 @@
 
 set -e
 
-if [[ $(go version) != *"go1.11"* && $(go version) != *"go1.12"* && $(go version) != *"go1.13"* && $(go version) != *"go1.14"* && $(go version) != *"go1.15"* ]] ; then
+GOVERSION=$(go version| awk ' { print $3; }'| sed 's/go\(.*\)\.\(.*\)/\1/')
+if [ $(echo "$GOVERSION<1.11"|bc) -gt 0 ]; then 
     echo "grok_exporter uses Go 1.11 Modules. Please use Go version >= 1.11." >&2
     echo "Version found is $(go version)" >&2
     exit 1
@@ -21,9 +22,16 @@ export GO111MODULE=on
 # The Darwin release is built natively, Linux and Windows are built in a Docker container
 #========================================================================================
 
-cd ${GOPATH:=$HOME/go}/src/github.com/fstab/grok_exporter
+SKIPTESTS="yes"                                     # Comment this var to skip tests
+GOPATH=$HOME/go
+SRCDIR=$(pwd)                                       # Source is current dir, in my case
+#SRCDIR $GOPATH/src/github.com/fstab/grok_exporter  # you can change $SRCDIR at will...
+#cd $SRCDIR
 
 export VERSION=1.0.0-SNAPSHOT
+
+DOCKER_IMAGENAME="fstab/grok_exporter-compiler-amd64"
+#DOCKER_IMAGENAME="fstab/grok_exporter-compiler-amd64:v$VERSION"  docker image not found
 
 export VERSION_FLAGS="\
         -X github.com/fstab/grok_exporter/exporter.Version=$VERSION
@@ -37,7 +45,9 @@ export VERSION_FLAGS="\
 #--------------------------------------------------------------
 
 function run_tests {
-    go fmt ./... && go vet ./... && go test ./...
+    if [ -z ${SKIPTESTS+x} ]; then                   # if SKIPTESTS is declared skip tests
+        go fmt ./... && go vet ./... && go test ./...
+    fi
 }
 
 #--------------------------------------------------------------
@@ -78,25 +88,25 @@ function create_zip_file {
 
 function run_docker_linux_amd64 {
     docker run \
-        -v $GOPATH/src/github.com/fstab/grok_exporter:/go/src/github.com/fstab/grok_exporter \
+        -v $SRCDIR:/go/src/github.com/fstab/grok_exporter \
         --net none \
         --user $(id -u):$(id -g) \
-        --rm -ti "fstab/grok_exporter-compiler-amd64:v$VERSION" \
+        --rm -ti "$DOCKER_IMAGENAME" \
         ./compile-linux.sh -ldflags "$VERSION_FLAGS" -o "dist/grok_exporter-$VERSION.linux-amd64/grok_exporter"
 }
 
 function run_docker_windows_amd64 {
     docker run \
-        -v $GOPATH/src/github.com/fstab/grok_exporter:/go/src/github.com/fstab/grok_exporter \
+        -v $SRCDIR:/go/src/github.com/fstab/grok_exporter \
         --net none \
         --user $(id -u):$(id -g) \
-        --rm -ti "fstab/grok_exporter-compiler-amd64:v$VERSION" \
+        --rm -ti "$DOCKER_IMAGENAME" \
         ./compile-windows-amd64.sh -ldflags "$VERSION_FLAGS" -o "dist/grok_exporter-$VERSION.windows-amd64/grok_exporter.exe"
 }
 
 function run_docker_linux_arm64v8 {
     docker run \
-        -v $GOPATH/src/github.com/fstab/grok_exporter:/go/src/github.com/fstab/grok_exporter \
+        -v $SRCDIR:/go/src/github.com/fstab/grok_exporter \
         --net none \
         --user $(id -u):$(id -g) \
         --rm -ti "fstab/grok_exporter-compiler-arm64v8:v$VERSION" \
@@ -105,7 +115,7 @@ function run_docker_linux_arm64v8 {
 
 function run_docker_linux_arm32v6 {
     docker run \
-        -v $GOPATH/src/github.com/fstab/grok_exporter:/go/src/github.com/fstab/grok_exporter \
+        -v $SRCDIR:/go/src/github.com/fstab/grok_exporter \
         --net none \
         --user $(id -u):$(id -g) \
         --rm -ti "fstab/grok_exporter-compiler-arm32v6:v$VERSION" \

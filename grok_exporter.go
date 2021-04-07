@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/fstab/grok_exporter/config"
-	"github.com/fstab/grok_exporter/config/v3"
+	v3 "github.com/fstab/grok_exporter/config/v3"
 	"github.com/fstab/grok_exporter/exporter"
 	"github.com/fstab/grok_exporter/oniguruma"
 	"github.com/fstab/grok_exporter/tailer"
@@ -35,6 +35,7 @@ import (
 var (
 	printVersion           = flag.Bool("version", false, "Print the grok_exporter version.")
 	configPath             = flag.String("config", "", "Path to the config file. Try '-config ./example/config.yml' to get started.")
+	debug                  = flag.Bool("debug", false, "Debug/Verbose output, useful for debugging on failed regexps")
 	showConfig             = flag.Bool("showconfig", false, "Print the current configuration to the console. Example: 'grok_exporter -showconfig -config ./example/config.yml'")
 	disableExporterMetrics = flag.Bool("disable-exporter-metrics", false, "If this flag is set, the metrics about the exporter itself (go_*, process_*, promhttp_*) will be excluded from /metrics")
 )
@@ -106,6 +107,16 @@ func main() {
 		})
 	}
 
+	if *debug {
+		fmt.Fprintf(os.Stdout, "DEBUG: Using configuration file %v\n", *configPath)
+		for _, m := range cfg.AllMetrics {
+			regExpr, _ := exporter.Expand(m.Match, patterns)
+			fmt.Fprintf(os.Stdout, "DEBUG: [%v]\n", m.Name)
+			fmt.Fprintf(os.Stdout, "DEBUG:     %v\n", m.Match)
+			fmt.Fprintf(os.Stdout, "DEBUG:         %v\n", regExpr)
+		}
+		fmt.Fprintf(os.Stdout, "DEBUG:\n")
+	}
 	fmt.Print(startMsg(cfg, httpHandlers))
 	serverErrors := startServer(cfg.Server, httpHandlers)
 
@@ -149,6 +160,14 @@ func main() {
 			if matched {
 				nLinesTotal.WithLabelValues(number_of_lines_matched_label).Inc()
 			} else {
+				if *debug {
+					for _, m := range cfg.AllMetrics {
+						regExpr, _ := exporter.Expand(m.Match, patterns)
+						fmt.Fprintf(os.Stdout, "DEBUG: metric [%v], match(%v)\n", m.Name, m.Match)
+						fmt.Fprintf(os.Stdout, "DEBUG: [  expr  ] %v\n", regExpr)
+					}
+					fmt.Fprintf(os.Stdout, "DEBUG: [no match] %v\n", line.Line)
+				}
 				nLinesTotal.WithLabelValues(number_of_lines_ignored_label).Inc()
 			}
 		case <-retentionTicker.C:
@@ -201,11 +220,11 @@ func exitOnError(err error) {
 
 func validateCommandLineOrExit() {
 	if len(*configPath) == 0 {
-		if *showConfig {
-			fmt.Fprint(os.Stderr, "Usage: grok_exporter -showconfig -config <path>\n")
-		} else {
-			fmt.Fprint(os.Stderr, "Usage: grok_exporter -config <path>\n")
-		}
+		fmt.Fprintln(os.Stderr, "Usage: grok_exporter [options]")
+		fmt.Fprintln(os.Stderr, "    -version         Show program version and exit")
+		fmt.Fprintln(os.Stderr, "    -showconfig      Print current config and exit")
+		fmt.Fprintln(os.Stderr, "    -config <path>   Run daemon with supplied configuration file")
+		fmt.Fprintln(os.Stderr, "    -debug           Verbose output, useful for debugging")
 		os.Exit(-1)
 	}
 }
