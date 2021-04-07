@@ -108,7 +108,14 @@ func main() {
 	}
 
 	if *debug {
-		fmt.Fprintf(os.Stdout, "DEBUG: Using configuration file %v\n\n", *configPath)
+		fmt.Fprintf(os.Stdout, "DEBUG: Using configuration file %v\n", *configPath)
+		for _, m := range cfg.AllMetrics {
+			regExpr, _ := exporter.Expand(m.Match, patterns)
+			fmt.Fprintf(os.Stdout, "DEBUG: [%v]\n", m.Name)
+			fmt.Fprintf(os.Stdout, "DEBUG:     %v\n", m.Match)
+			fmt.Fprintf(os.Stdout, "DEBUG:         %v\n", regExpr)
+		}
+		fmt.Fprintf(os.Stdout, "DEBUG:\n")
 	}
 	fmt.Print(startMsg(cfg, httpHandlers))
 	serverErrors := startServer(cfg.Server, httpHandlers)
