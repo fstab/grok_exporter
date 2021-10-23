@@ -16,7 +16,7 @@ package oniguruma
 
 /*
 #cgo CFLAGS: -I/usr/local/include
-#cgo LDFLAGS: -L/usr/local/lib -lonig
+#cgo LDFLAGS: /usr/local/lib/libonig.a
 #include <stdlib.h>
 #include <string.h>
 #include <oniguruma.h>
@@ -94,15 +94,15 @@ func (regex *Regex) NumberOfCaptureGroups(name string) int {
 	return len(groups)
 }
 
-func (r *Regex) getCaptureGroupNums(name string) ([]C.int, error) {
-	cached, ok := r.cachedCaptureGroupNums[name]
+func (regex *Regex) getCaptureGroupNums(name string) ([]C.int, error) {
+	cached, ok := regex.cachedCaptureGroupNums[name]
 	if ok {
 		return cached, nil
 	}
 	nameStart, nameEnd := pointers(name)
 	defer free(nameStart, nameEnd)
 	var groupNums *C.int
-	n := C.onig_name_to_group_numbers(r.regex, nameStart, nameEnd, &groupNums)
+	n := C.onig_name_to_group_numbers(regex.regex, nameStart, nameEnd, &groupNums)
 	if n <= 0 {
 		return nil, fmt.Errorf("%v: no such capture group in pattern", name)
 	}
@@ -110,7 +110,7 @@ func (r *Regex) getCaptureGroupNums(name string) ([]C.int, error) {
 	for i := 0; i < int(n); i++ {
 		result = append(result, getPos(groupNums, C.int(i)))
 	}
-	r.cachedCaptureGroupNums[name] = result
+	regex.cachedCaptureGroupNums[name] = result
 	return result, nil
 }
 
