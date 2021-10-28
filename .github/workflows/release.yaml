@@ -1,4 +1,4 @@
-bion:
+on:
   release:
     types: [released]
 name: Build, test and publish
@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@master
+        with:
+          submodules: recursive
     - name: Login to Artifactory
       uses: docker/login-action@v1 
       with:
