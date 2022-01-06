@@ -16,13 +16,13 @@ package fswatcher
 
 import (
 	"fmt"
-	"github.com/fstab/grok_exporter/tailer/glob"
-	"github.com/prometheus/common/log"
-	"github.com/sirupsen/logrus"
 	"io"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/fstab/grok_exporter/tailer/glob"
+	"github.com/sirupsen/logrus"
 )
 
 type FileTailer interface {
@@ -129,7 +129,7 @@ func runFileTailer(initFunc func() (fswatcher, Error), globs []glob.Glob, readal
 
 	go func() {
 
-		defer t.shutdown()
+		defer t.shutdown(log)
 
 		Err = t.watchDirs(log)
 		if Err != nil {
@@ -199,7 +199,7 @@ func runFileTailer(initFunc func() (fswatcher, Error), globs []glob.Glob, readal
 	return t, nil
 }
 
-func (t *fileTailer) shutdown() {
+func (t *fileTailer) shutdown(log logrus.FieldLogger) {
 
 	close(t.lines)
 	close(t.errors)
