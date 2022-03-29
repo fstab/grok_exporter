@@ -162,14 +162,15 @@ type DefaultConfig struct {
 }
 
 type ServerConfig struct {
-	Protocol   string `yaml:",omitempty"`
-	Host       string `yaml:",omitempty"`
-	Port       int    `yaml:",omitempty"`
-	Path       string `yaml:",omitempty"`
-	Cert       string `yaml:",omitempty"`
-	Key        string `yaml:",omitempty"`
-	ClientCA   string `yaml:"client_ca,omitempty"`
-	ClientAuth string `yaml:"client_auth,omitempty"`
+	Protocol   string   `yaml:",omitempty"`
+	Host       string   `yaml:",omitempty"`
+	Port       int      `yaml:",omitempty"`
+	Path       string   `yaml:",omitempty"`
+	Cert       string   `yaml:",omitempty"`
+	Key        string   `yaml:",omitempty"`
+	ClientCA   string   `yaml:"client_ca,omitempty"`
+	ClientAuth string   `yaml:"client_auth,omitempty"`
+	Ciphers    []uint16 `yaml:"ciphers,omitempty"`
 }
 
 func importMetrics(importsConfig ImportsConfig, fileLoader FileLoader) (MetricsConfig, error) {

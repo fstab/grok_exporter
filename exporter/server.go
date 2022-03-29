@@ -18,11 +18,12 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	config "github.com/fstab/grok_exporter/config/v3"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
+
+	config "github.com/fstab/grok_exporter/config/v3"
 )
 
 type HttpServerPathHandler struct {
@@ -182,6 +183,10 @@ func makeTLSConfig(cfg config.ServerConfig) (*tls.Config, error) {
 		if !result.ClientCAs.AppendCertsFromPEM(bytes) {
 			return nil, fmt.Errorf("failed to read certificates from the client_ca file")
 		}
+	}
+
+	if len(cfg.Ciphers) > 0 {
+		result.CipherSuites = cfg.Ciphers
 	}
 
 	switch cfg.ClientAuth {
