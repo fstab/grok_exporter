@@ -679,6 +679,8 @@ server:
 * `client_ca` is the CA certificate used for client authentication. It is optional. If omitted, `grok_exporter` will not validate client certificates.
 * `client_auth` is the policy used for client authentication. It can only be used together with `client_ca`. It is optional. The default is `RequireAndVerifyClientCert`, meaning if you specify a `client_ca`, you want to allow only clients with a valid certificate. [Golang's tls.ClientAuthType](https://golang.org/pkg/crypto/tls/#ClientAuthType) documentation contains a list of valid values: `NoClientCert`, `RequestClientCert`, `RequireAnyClientCert`, `VerifyClientCertIfGiven`, and `RequireAndVerifyClientCert`.
 
+adding ciphers
+
 Example commands for creating SSL test certificates:
 
 The following will generate `server.crt` and `server.key`:
