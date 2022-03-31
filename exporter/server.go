@@ -196,7 +196,7 @@ func makeTLSConfig(cfg config.ServerConfig) (*tls.Config, error) {
 	/* 	// if len(cfg.Ciphers) > 0 {
 	   	// 	result.CipherSuites = cfg.Ciphers
 	   	// } */
-
+	//
 	switch cfg.ClientAuth {
 	case "RequestClientCert":
 		result.ClientAuth = tls.RequestClientCert
