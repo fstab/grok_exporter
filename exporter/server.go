@@ -185,9 +185,17 @@ func makeTLSConfig(cfg config.ServerConfig) (*tls.Config, error) {
 		}
 	}
 
-	if len(cfg.Ciphers) > 0 {
-		result.CipherSuites = cfg.Ciphers
+	var cf []uint16
+	for _, cfg := range cfg.Ciphers {
+		cf = append(cf, (uint16)(cfg))
 	}
+	if len(cf) > 0 {
+		result.CipherSuites = cf
+	}
+
+	/* 	// if len(cfg.Ciphers) > 0 {
+	   	// 	result.CipherSuites = cfg.Ciphers
+	   	// } */
 
 	switch cfg.ClientAuth {
 	case "RequestClientCert":
