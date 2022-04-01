@@ -50,7 +50,7 @@ func unmarshal(config []byte, fileLoader FileLoader) (*Config, error) {
 	err := yaml.Unmarshal(config, cfg)
 	if err != nil {
 
-		return nil, fmt.Errorf("invalid configuration!!!!!!!!: %v. make sure to use 'single quotes' around strings with special characters (like match patterns or label templates), and make sure to use '-' only for lists (metrics) but not for maps (labels)", err.Error())
+		return nil, fmt.Errorf("error is invalid configuration!!!!!!!!: %v. make sure to use 'single quotes' around strings with special characters (like match patterns or label templates), and make sure to use '-' only for lists (metrics) but not for maps (labels)", err.Error())
 	}
 	importedMetrics, err := importMetrics(cfg.Imports, fileLoader)
 	if err != nil {
