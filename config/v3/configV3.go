@@ -173,7 +173,7 @@ type ServerConfig struct {
 	Key        string   `yaml:",omitempty"`
 	ClientCA   string   `yaml:"client_ca,omitempty"`
 	ClientAuth string   `yaml:"client_auth,omitempty"`
-	Ciphers    []uint16 `yaml:"ciphers,omitempty"`
+	Ciphers    []string `yaml:"ciphers,omitempty"`
 }
 
 func importMetrics(importsConfig ImportsConfig, fileLoader FileLoader) (MetricsConfig, error) {
