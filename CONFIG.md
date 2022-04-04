@@ -668,6 +668,8 @@ server:
     key: /path/to/key
     client_ca: /path/to/client_ca
     client_auth: RequireAndVerifyClientCert
+    ciphers: [list of ciphers]
+    min_version: TLS10/TLS11/TLS12/TLS13
 ```
 
 * `protocol` can be `http` or `https`. Default is `http`.
@@ -678,8 +680,9 @@ server:
 * `key` is the path to the SSL key file for protocol `https`. It is optional. If omitted, a hard-coded default key will be used.
 * `client_ca` is the CA certificate used for client authentication. It is optional. If omitted, `grok_exporter` will not validate client certificates.
 * `client_auth` is the policy used for client authentication. It can only be used together with `client_ca`. It is optional. The default is `RequireAndVerifyClientCert`, meaning if you specify a `client_ca`, you want to allow only clients with a valid certificate. [Golang's tls.ClientAuthType](https://golang.org/pkg/crypto/tls/#ClientAuthType) documentation contains a list of valid values: `NoClientCert`, `RequestClientCert`, `RequireAnyClientCert`, `VerifyClientCertIfGiven`, and `RequireAndVerifyClientCert`.
+* `ciphers` is a list of supported cipher suites for TLS versions. If empty, Go default cipher suites are used. Available cipher suites are documented in the go documentation: https://golang.org/pkg/crypto/tls/#pkg-constants (eg.: ['TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256', 'TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256'])
+* `min_version` is the minimum TLS version that is acceptable. 
 
-adding ciphers
 
 Example commands for creating SSL test certificates:
 

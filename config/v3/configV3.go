@@ -45,12 +45,11 @@ func Unmarshal(config []byte) (*Config, error) {
 // For testing, allow injection of mock file loader.
 func unmarshal(config []byte, fileLoader FileLoader) (*Config, error) {
 	cfg := &Config{}
-	fmt.Printf("print:\t %v \n", []byte(config))
 
 	err := yaml.Unmarshal(config, cfg)
 	if err != nil {
 
-		return nil, fmt.Errorf("error is invalid configuration!!!!!!!!: %v. make sure to use 'single quotes' around strings with special characters (like match patterns or label templates), and make sure to use '-' only for lists (metrics) but not for maps (labels)", err.Error())
+		return nil, fmt.Errorf("invalid configuration: %v. make sure to use 'single quotes' around strings with special characters (like match patterns or label templates), and make sure to use '-' only for lists (metrics) but not for maps (labels)", err.Error())
 	}
 	importedMetrics, err := importMetrics(cfg.Imports, fileLoader)
 	if err != nil {
@@ -174,6 +173,7 @@ type ServerConfig struct {
 	ClientCA   string   `yaml:"client_ca,omitempty"`
 	ClientAuth string   `yaml:"client_auth,omitempty"`
 	Ciphers    []string `yaml:"ciphers,omitempty"`
+	MinVersion string   `yaml:"min_version"`
 }
 
 func importMetrics(importsConfig ImportsConfig, fileLoader FileLoader) (MetricsConfig, error) {
