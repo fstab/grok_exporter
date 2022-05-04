@@ -59,7 +59,7 @@ COPY . .
 RUN go mod download
 RUN go build -o /bin/grok-exporter
 
-FROM quay.io/sysdig/sysdig-mini-ubi:1.1.10 as ubi
+FROM quay.io/sysdig/sysdig-mini-ubi:1.2.12 as ubi
 
 COPY --from=builder /go/src/github.com/fstab/grok_exporter/logstash-patterns-core/patterns /patterns
 COPY --from=builder /bin/grok-exporter /bin/grok-exporter
