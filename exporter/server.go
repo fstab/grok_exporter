@@ -184,6 +184,7 @@ func makeTLSConfig(cfg config.ServerConfig) (*tls.Config, error) {
 			return nil, fmt.Errorf("failed to read certificates from the client_ca file")
 		}
 	}
+
 	if len(cfg.Ciphers) > 0 {
 		var idc uint16
 		var cf []uint16
