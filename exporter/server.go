@@ -18,11 +18,12 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	config "github.com/fstab/grok_exporter/config/v3"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
+
+	config "github.com/fstab/grok_exporter/config/v3"
 )
 
 type HttpServerPathHandler struct {
@@ -181,6 +182,38 @@ func makeTLSConfig(cfg config.ServerConfig) (*tls.Config, error) {
 		}
 		if !result.ClientCAs.AppendCertsFromPEM(bytes) {
 			return nil, fmt.Errorf("failed to read certificates from the client_ca file")
+		}
+	}
+
+	if len(cfg.Ciphers) > 0 {
+		var idc uint16
+		var cf []uint16
+		var cfstring []string
+		for _, cfg := range cfg.Ciphers {
+			for _, cs := range tls.CipherSuites() {
+				if cs.Name == cfg {
+					idc = (cs.ID)
+					cfstring = append(cfstring, cfg)
+				}
+				cf = append(cf, idc)
+			}
+		}
+		fmt.Println("ciphers loaded: ", cfstring)
+		if len(cf) > 0 {
+			result.CipherSuites = cf
+		}
+	}
+
+	if len(cfg.MinVersion) > 0 {
+		var tlsVersions = map[string]uint16{
+			"TLS13": (uint16)(tls.VersionTLS13),
+			"TLS12": (uint16)(tls.VersionTLS12),
+			"TLS11": (uint16)(tls.VersionTLS11),
+			"TLS10": (uint16)(tls.VersionTLS10),
+		}
+		if v, ok := tlsVersions[cfg.MinVersion]; ok {
+			result.MinVersion = v
+			fmt.Println("min tls version : ", cfg.MinVersion)
 		}
 	}
 
