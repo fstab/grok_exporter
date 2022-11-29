@@ -170,6 +170,13 @@ type ServerConfig struct {
 	Key        string `yaml:",omitempty"`
 	ClientCA   string `yaml:"client_ca,omitempty"`
 	ClientAuth string `yaml:"client_auth,omitempty"`
+	AuthBasic  AuthBasicConfig `yaml:"auth_basic,omitempty"`
+}
+
+type AuthBasicConfig struct {
+	Enabled   bool   `yaml:",omitempty"`
+	Username  string `yaml:",omitempty"`
+	Password  string `yaml:",omitempty"`
 }
 
 func importMetrics(importsConfig ImportsConfig, fileLoader FileLoader) (MetricsConfig, error) {
