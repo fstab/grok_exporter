@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	auth "github.com/abbot/go-http-auth"
 	"github.com/fstab/grok_exporter/config"
 	"github.com/fstab/grok_exporter/config/v3"
 	"github.com/fstab/grok_exporter/exporter"
@@ -92,13 +93,30 @@ func main() {
 	// gather up the handlers with which to start the webserver
 	var httpHandlers []exporter.HttpServerPathHandler
 	metricsHandler := promhttp.HandlerFor(registry, promhttp.HandlerOpts{})
+
 	if !*disableExporterMetrics {
 		metricsHandler = promhttp.InstrumentMetricHandler(registry, metricsHandler)
 	}
+
+	// Support auth basic.
+	if cfg.Server.AuthBasic.Enabled {
+		host, _ := os.Hostname()
+		authenticator := auth.NewBasicAuthenticator(host, func(user, realm string) string {
+			if user == cfg.Server.AuthBasic.Username {
+				return cfg.Server.AuthBasic.Password
+			}
+
+			return ""
+		})
+
+		metricsHandler = auth.JustCheck(authenticator, metricsHandler.ServeHTTP)
+	}
+
 	httpHandlers = append(httpHandlers, exporter.HttpServerPathHandler{
 		Path:    cfg.Server.Path,
 		Handler: metricsHandler,
 	})
+
 	if cfg.Input.Type == "webhook" {
 		httpHandlers = append(httpHandlers, exporter.HttpServerPathHandler{
 			Path:    cfg.Input.WebhookPath,
