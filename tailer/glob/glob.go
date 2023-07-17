@@ -17,6 +17,7 @@ package glob
 import (
 	"fmt"
 	"path/filepath"
+	"github.com/bmatcuk/doublestar/v4"
 	"runtime"
 )
 
@@ -36,9 +37,6 @@ func Parse(pattern string) (Glob, error) {
 		return "", fmt.Errorf("%q: failed to find absolute path for glob pattern: %v", pattern, err)
 	}
 	result = Glob(absglob)
-	if containsWildcards(result.Dir()) {
-		return "", fmt.Errorf("%q: wildcards are only allowed in the file name, but not in the directory path", pattern)
-	}
 	return result, nil
 }
 
@@ -47,7 +45,7 @@ func (g Glob) Dir() string {
 }
 
 func (g Glob) Match(path string) bool {
-	matched, _ := filepath.Match(string(g), path)
+	matched, _ := doublestar.Match(string(g), path)
 	return matched
 }
 

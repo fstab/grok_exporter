@@ -10,6 +10,7 @@ require (
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.13.0
 	github.com/sirupsen/logrus v1.6.0
+	github.com/bmatcuk/doublestar/v4 v4.6.0
 	golang.org/x/crypto v0.0.0-20200820211705-5c72a883971a // indirect
 	golang.org/x/exp v0.0.0-20200917184745-18d7dbdd5567
 	golang.org/x/net v0.0.0-20200904194848-62affa334b73 // indirect
